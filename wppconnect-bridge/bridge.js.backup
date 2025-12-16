@@ -1,0 +1,415 @@
+// WPPConnect Bridge for Shepherd AI
+const wppconnect = require('@wppconnect-team/wppconnect');
+const express = require('express');
+const cors = require('cors');
+const WebSocket = require('ws');
+
+const app = express();
+
+// CORS setup
+app.use((req, res, next) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PUT, PATCH, DELETE");
+  res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Authorization");
+  res.header("Access-Control-Allow-Private-Network", "true");
+  if (req.method === 'OPTIONS') return res.sendStatus(200);
+  next();
+});
+app.use(express.json());
+
+const PORT = 3001;
+const WS_PORT = 3002;
+let clientSession = null;
+let bridgeStatus = 'initializing';
+
+// WebSocket Server
+const wss = new WebSocket.Server({ port: WS_PORT });
+const wsClients = new Set();
+
+wss.on('connection', (ws) => {
+  console.log('🔌 WebSocket client connected');
+  wsClients.add(ws);
+  ws.send(JSON.stringify({ type: 'status', status: bridgeStatus }));
+  ws.on('close', () => wsClients.delete(ws));
+});
+
+function broadcastToClients(data) {
+  const message = JSON.stringify(data);
+  wsClients.forEach(client => {
+    if (client.readyState === WebSocket.OPEN) client.send(message);
+  });
+}
+
+// Event handler setup function (reusable for reconnection)
+function setupEventHandlers(client) {
+  // Incoming messages
+  client.onMessage(async (message) => {
+    if (!message.isGroupMsg && !message.from.includes('status@broadcast')) {
+      const body = message.body || '[media]';
+      console.log(`📩 INCOMING from ${message.from}: ${body.substring(0, 50)}...`);
+
+      let phoneNumber = message.from.replace('@c.us', '').replace('@lid', '');
+      let contactName = null;
+      let pushname = null;
+      let realPhone = null;
+
+      if (message.from.includes('@lid')) {
+        try {
+          const contact = await client.getContact(message.from);
+          if (contact) {
+            contactName = contact.name || contact.shortName || contact.formattedName;
+            pushname = contact.pushname;
+
+            if (contact.id && contact.id.user) {
+              realPhone = contact.id.user;
+            } else if (contact.number) {
+              realPhone = contact.number;
+            } else if (contact.formattedNumber) {
+              realPhone = contact.formattedNumber.replace(/\D/g, '');
+            }
+
+            if (realPhone && realPhone.length < 10) {
+              realPhone = null;
+            }
+
+            if (!realPhone && contactName && /^\+?\d{10,15}$/.test(contactName.replace(/[\s\-]/g, ''))) {
+              realPhone = contactName.replace(/\D/g, '');
+              console.log('✅ Extracted phone from contactName:', realPhone);
+            }
+
+            console.log(`📛 Contact name: "${contactName}", Pushname: "${pushname}", Real Phone: "${realPhone}"`);
+          }
+        } catch (e) {
+          console.log('Could not get contact info:', e.message);
+        }
+      } else {
+        realPhone = phoneNumber;
+      }
+
+      broadcastToClients({
+        type: 'incoming_message',
+        from: message.from,
+        phone: phoneNumber,
+        realPhone: realPhone,
+        contactName: contactName,
+        pushname: pushname,
+        body: body,
+        timestamp: message.timestamp || Date.now() / 1000
+      });
+    }
+  });
+
+  // Message acknowledgments
+  client.onAck((ack) => {
+    broadcastToClients({
+      type: 'message_ack',
+      messageId: ack.id?._serialized,
+      ack: ack.ack
+    });
+  });
+}
+
+// Reconnect function
+let isReconnecting = false;
+function attemptReconnect() {
+  if (isReconnecting) {
+    console.log('⏭️ Reconnect already in progress, skipping...');
+    return;
+  }
+
+  isReconnecting = true;
+  bridgeStatus = 'reconnecting';
+  broadcastToClients({ type: 'status', status: 'reconnecting' });
+
+  console.log('🔄 Reconnecting to WhatsApp...');
+
+  wppconnect.create({
+    session: 'shepherd-session',
+    headless: false,
+    logQR: true,
+    autoClose: 0,
+    puppeteerOptions: {
+      args: ['--no-sandbox', '--disable-setuid-sandbox']
+    }
+  })
+    .then((client) => {
+      clientSession = client;
+      bridgeStatus = 'connected';
+      isReconnecting = false;
+      console.log('✅ Reconnected successfully!');
+      broadcastToClients({ type: 'status', status: 'connected' });
+
+      // Re-register event handlers
+      setupEventHandlers(client);
+
+      // Monitor connection state changes
+      client.onStateChange((state) => {
+        console.log(`📡 State changed to: ${state}`);
+
+        if (state === 'CONFLICT' || state === 'UNLAUNCHED') {
+          console.log('⚠️ Connection lost, will attempt reconnect...');
+          bridgeStatus = 'disconnected';
+          broadcastToClients({ type: 'status', status: 'disconnected' });
+
+          setTimeout(() => {
+            console.log('🔄 Attempting to reconnect...');
+            attemptReconnect();
+          }, 5000);
+        } else if (state === 'CONNECTED') {
+          bridgeStatus = 'connected';
+          broadcastToClients({ type: 'status', status: 'connected' });
+        }
+      });
+    })
+    .catch((error) => {
+      console.error('❌ Reconnect failed:', error);
+      isReconnecting = false;
+      bridgeStatus = 'disconnected';
+      broadcastToClients({ type: 'status', status: 'disconnected' });
+
+      console.log('🔄 Will retry in 30 seconds...');
+      setTimeout(attemptReconnect, 30000);
+    });
+}
+
+console.log('🚀 Shepherd AI WPPConnect Bridge Starting...');
+
+// Initialize WPPConnect
+wppconnect.create({
+  session: 'shepherd-session',
+  headless: false, // Show browser for debugging
+  logQR: true,
+  autoClose: 0,
+  puppeteerOptions: {
+    args: ['--no-sandbox', '--disable-setuid-sandbox']
+  }
+})
+  .then((client) => {
+    clientSession = client;
+    bridgeStatus = 'connected';
+    console.log('✅ WPPConnect Bot connected!');
+    console.log('🔓 Bridge Status: CONNECTED');
+    broadcastToClients({ type: 'status', status: 'connected' });
+
+    // Setup event handlers
+    setupEventHandlers(client);
+
+    // Monitor connection state changes
+    client.onStateChange((state) => {
+      console.log(`📡 State changed to: ${state}`);
+
+      if (state === 'CONFLICT' || state === 'UNLAUNCHED') {
+        console.log('⚠️ Connection lost, will attempt reconnect...');
+        bridgeStatus = 'disconnected';
+        broadcastToClients({ type: 'status', status: 'disconnected' });
+
+        // Attempt reconnect after 5 seconds
+        setTimeout(() => {
+          console.log('🔄 Attempting to reconnect...');
+          attemptReconnect();
+        }, 5000);
+      } else if (state === 'CONNECTED') {
+        bridgeStatus = 'connected';
+        broadcastToClients({ type: 'status', status: 'connected' });
+      }
+    });
+
+    // Health check - ping WhatsApp every 30 seconds
+    setInterval(async () => {
+      try {
+        const state = await client.getConnectionState();
+        if (state !== 'CONNECTED') {
+          console.log('⚠️ Connection health check failed, state:', state);
+          bridgeStatus = 'disconnected';
+          broadcastToClients({ type: 'status', status: 'disconnected' });
+        }
+      } catch (error) {
+        console.log('⚠️ Health check error:', error.message);
+        if (error.message.includes('detached')) {
+          console.log('🔄 Session detached, attempting reconnect...');
+          bridgeStatus = 'reconnecting';
+          broadcastToClients({ type: 'status', status: 'reconnecting' });
+          attemptReconnect();
+        }
+      }
+    }, 30000);
+  })
+  .catch((error) => {
+    console.error('❌ Error:', error);
+    bridgeStatus = 'disconnected';
+    broadcastToClients({ type: 'status', status: 'disconnected' });
+
+    // Auto-retry connection
+    console.log('🔄 Will retry connection in 10 seconds...');
+    setTimeout(attemptReconnect, 10000);
+  });
+
+// Reconnect function
+let isReconnecting = false;
+function attemptReconnect() {
+  if (isReconnecting) {
+    console.log('⏭️ Reconnect already in progress, skipping...');
+    return;
+  }
+
+  isReconnecting = true;
+  bridgeStatus = 'reconnecting';
+  broadcastToClients({ type: 'status', status: 'reconnecting' });
+
+  console.log('🔄 Reconnecting to WhatsApp...');
+
+  wppconnect.create({
+    session: 'shepherd-session',
+    headless: false,
+    logQR: true,
+    autoClose: 0,
+    puppeteerOptions: {
+      args: ['--no-sandbox', '--disable-setuid-sandbox']
+    }
+  })
+    .then((client) => {
+      clientSession = client;
+      bridgeStatus = 'connected';
+      isReconnecting = false;
+      console.log('✅ Reconnected successfully!');
+      broadcastToClients({ type: 'status', status: 'connected' });
+
+      // Re-register event handlers
+      setupEventHandlers(client);
+    })
+    .catch((error) => {
+      console.error('❌ Reconnect failed:', error);
+      isReconnecting = false;
+      bridgeStatus = 'disconnected';
+      broadcastToClients({ type: 'status', status: 'disconnected' });
+
+      // Retry after 30 seconds
+      console.log('🔄 Will retry in 30 seconds...');
+      setTimeout(attemptReconnect, 30000);
+    });
+}
+
+// Extract event handler setup to reuse for reconnection
+function setupEventHandlers(client) {
+  // Incoming messages
+  client.onMessage(async (message) => {
+    if (!message.isGroupMsg && !message.from.includes('status@broadcast')) {
+      const body = message.body || '[media]';
+      console.log(`📩 INCOMING from ${message.from}: ${body.substring(0, 50)}...`);
+
+      let phoneNumber = message.from.replace('@c.us', '').replace('@lid', '');
+      let contactName = null;
+      let pushname = null;
+      let realPhone = null;
+
+      if (message.from.includes('@lid')) {
+        try {
+          const contact = await client.getContact(message.from);
+          if (contact) {
+            contactName = contact.name || contact.shortName || contact.formattedName;
+            pushname = contact.pushname;
+
+            if (contact.id && contact.id.user) {
+              realPhone = contact.id.user;
+            } else if (contact.number) {
+              realPhone = contact.number;
+            } else if (contact.formattedNumber) {
+              realPhone = contact.formattedNumber.replace(/\D/g, '');
+            }
+
+            if (realPhone && realPhone.length < 10) {
+              realPhone = null;
+            }
+
+            if (!realPhone && contactName && /^\+?\d{10,15}$/.test(contactName.replace(/[\s\-]/g, ''))) {
+              realPhone = contactName.replace(/\D/g, '');
+              console.log('✅ Extracted phone from contactName:', realPhone);
+            }
+
+            console.log(`📛 Contact name: "${contactName}", Pushname: "${pushname}", Real Phone: "${realPhone}"`);
+          }
+        } catch (e) {
+          console.log('Could not get contact info:', e.message);
+        }
+      } else {
+        realPhone = phoneNumber;
+      }
+
+      broadcastToClients({
+        type: 'incoming_message',
+        from: message.from,
+        phone: phoneNumber,
+        realPhone: realPhone,
+        contactName: contactName,
+        pushname: pushname,
+        body: body,
+        timestamp: message.timestamp || Date.now() / 1000
+      });
+    }
+  });
+
+  // Message acknowledgments
+  client.onAck((ack) => {
+    broadcastToClients({
+      type: 'message_ack',
+      messageId: ack.id?._serialized,
+      ack: ack.ack
+    });
+  });
+}
+
+// Logging
+app.use((req, res, next) => {
+  console.log(`[${new Date().toLocaleTimeString()}] ${req.method} ${req.path}`);
+  next();
+});
+
+// Status
+app.get('/api/status', (req, res) => {
+  res.json({ status: bridgeStatus, wsPort: WS_PORT });
+});
+
+// Send message
+app.post('/api/send', async (req, res) => {
+  const { phone, message, whatsappId } = req.body;
+  if (bridgeStatus !== 'connected' || !clientSession) {
+    return res.status(503).json({ success: false, error: 'Not connected' });
+  }
+  try {
+    let chatId;
+
+    // If whatsappId is provided (for replies to @lid senders), use it directly
+    if (whatsappId && whatsappId.includes('@')) {
+      chatId = whatsappId;
+      console.log(`📤 Replying to WhatsApp ID: ${chatId}...`);
+    } else {
+      // Clean phone number and format for WhatsApp
+      let cleanPhone = phone.replace(/\D/g, '');
+
+      // Add country code if missing (assuming Nigerian numbers)
+      if (cleanPhone.startsWith('0')) {
+        cleanPhone = '234' + cleanPhone.substring(1);
+      }
+
+      chatId = `${cleanPhone}@c.us`;
+      console.log(`📤 Sending to phone: ${chatId}...`);
+    }
+
+    console.log(`📝 Message: ${message.substring(0, 50)}...`);
+
+    // Use WPPConnect's sendText
+    const result = await clientSession.sendText(chatId, message);
+    console.log('✅ Sent successfully!', result?.id || '');
+    res.json({ success: true, messageId: result?.id });
+  } catch (error) {
+    console.error('❌ Send Error:', error.message || error);
+
+    res.status(500).json({ success: false, error: error.message || error.toString() });
+  }
+});
+
+
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`📡 REST: http://localhost:${PORT}`);
+  console.log(`🔌 WebSocket: ws://localhost:${WS_PORT}`);
+});

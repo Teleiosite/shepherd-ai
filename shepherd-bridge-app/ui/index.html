@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shepherd AI Bridge</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #fff;
+            overflow: hidden;
+        }
+
+        .container {
+            max-width: 450px;
+            margin: 0 auto;
+            padding: 20px;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header {
+            text-align: center;
+            padding: 30px 0;
+        }
+
+        .header h1 {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 14px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            color: #333;
+        }
+
+        .step {
+            display: none;
+        }
+
+        .step.active {
+            display: block;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #555;
+            font-size: 14px;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 16px;
+            transition: border 0.3s;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 14px;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .status {
+            text-align: center;
+            padding: 20px;
+        }
+
+        .status-icon {
+            font-size: 64px;
+            margin-bottom: 16px;
+        }
+
+        .status-text {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .status-subtext {
+            font-size: 14px;
+            color: #666;
+        }
+
+        .qr-container {
+            text-align: center;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 15px;
+            margin: 20px 0;
+        }
+
+        .qr-placeholder {
+            width: 250px;
+            height: 250px;
+            background: white;
+            margin: 0 auto 16px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            color: #999;
+        }
+
+        .instructions {
+            background: #f0f4ff;
+            border-left: 4px solid #667eea;
+            padding: 16px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .instructions h3 {
+            font-size: 16px;
+            margin-bottom: 12px;
+            color: #667eea;
+        }
+
+        .instructions ol {
+            margin-left: 20px;
+        }
+
+        .instructions li {
+            margin-bottom: 8px;
+            line-height: 1.6;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 16px;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        .error {
+            background: #fee;
+            color: #c33;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+            font-size: 14px;
+        }
+
+        .success {
+            background: #efe;
+            color: #3c3;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+            font-size: 14px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🐑 Shepherd AI Bridge</h1>
+            <p>Connect your WhatsApp to Shepherd AI</p>
+        </div>
+
+        <div class="card">
+            <!-- Step 1: Enter Connection Code -->
+            <div class="step active" id="step-code">
+                <div class="instructions">
+                    <h3>📝 Setup Instructions</h3>
+                    <ol>
+                        <li>Login to your Shepherd AI account</li>
+                        <li>Go to Settings → WhatsApp</li>
+                        <li>Copy your connection code</li>
+                        <li>Paste it below</li>
+                    </ol>
+                </div>
+
+                <div class="form-group">
+                    <label for="connectionCode">Connection Code</label>
+                    <input type="text" id="connectionCode" placeholder="e.g., ABC12345" autocomplete="off">
+                </div>
+
+                <div id="codeError" class="error" style="display: none;"></div>
+
+                <button onclick="connectBridge()" class="btn btn-primary" id="connectBtn">
+                    Connect to Shepherd AI
+                </button>
+            </div>
+
+            <!-- Step 2: Connecting -->
+            <div class="step" id="step-connecting">
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <p>Connecting to Shepherd AI...</p>
+                </div>
+            </div>
+
+            <!-- Step 3: Scan QR Code -->
+            <div class="step" id="step-qr">
+                <div class="status">
+                    <div class="status-icon">✅</div>
+                    <div class="status-text">Connected to Shepherd AI!</div>
+                    <div class="status-subtext">Now scan QR code with WhatsApp</div>
+                </div>
+
+                <div class="qr-container">
+                    <div class="qr-placeholder">
+                        QR Code will appear here<br>
+                        when bridge starts
+                    </div>
+                    <p style="font-size: 12px; color: #666;">
+                        Open WhatsApp → Settings → Linked Devices → Link a Device
+                    </p>
+                </div>
+
+                <button onclick="openWhatsAppSetup()" class="btn btn-primary">
+                    Open WhatsApp Instructions
+                </button>
+            </div>
+
+            <!-- Step 4: Connected -->
+            <div class="step" id="step-connected">
+                <div class="status">
+                    <div class="status-icon">🎉</div>
+                    <div class="status-text">WhatsApp Connected!</div>
+                    <div class="status-subtext">Bridge is running in background</div>
+                </div>
+
+                <div style="background: #f8f9fa; padding: 20px; border-radius: 10px; margin: 20px 0;">
+                    <p style="font-size: 14px; color: #666; margin-bottom: 12px;">
+                        <strong>Status:</strong> <span style="color: #28a745;">● Online</span>
+                    </p>
+                    <p style="font-size: 14px; color: #666; margin-bottom: 12px;">
+                        <strong>Messages sent today:</strong> <span id="messageCount">0</span>
+                    </p>
+                    <p style="font-size: 14px; color: #666;">
+                        <strong>Running on:</strong> http://localhost:3001
+                    </p>
+                </div>
+
+                <button onclick="minimizeToTray()" class="btn btn-primary">
+                    Minimize to System Tray
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="renderer.js"></script>
+</body>
+
+</html>
