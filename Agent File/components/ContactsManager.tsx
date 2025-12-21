@@ -213,7 +213,7 @@ const ContactsManager: React.FC<ContactsManagerProps> = ({ contacts, setContacts
           <input
             type="text"
             placeholder="Search by name or phone..."
-            className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 text-base"
+            className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-full focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-base transition-all bg-slate-50"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
@@ -449,9 +449,9 @@ const ContactsManager: React.FC<ContactsManagerProps> = ({ contacts, setContacts
                   <input
                     required
                     type="text"
-                    className="w-full border border-slate-300 rounded-3xl px-6 py-3 text-base focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none bg-white transition-all""
-                  value={editingContact.name}
-                  onChange={e => setEditingContact({ ...editingContact, name: e.target.value })}
+                    className="w-full border border-slate-300 rounded-3xl px-6 py-3 text-base focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none bg-white transition-all"
+                    value={editingContact.name}
+                    onChange={e => setEditingContact({ ...editingContact, name: e.target.value })}
                   />
                 </div>
 
@@ -460,9 +460,9 @@ const ContactsManager: React.FC<ContactsManagerProps> = ({ contacts, setContacts
                   <input
                     required
                     type="tel"
-                    className="w-full border border-slate-300 rounded-3xl px-6 py-3 text-base focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none bg-white transition-all""
-                  value={editingContact.phone}
-                  onChange={e => setEditingContact({ ...editingContact, phone: e.target.value })}
+                    className="w-full border border-slate-300 rounded-3xl px-6 py-3 text-base focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none bg-white transition-all"
+                    value={editingContact.phone}
+                    onChange={e => setEditingContact({ ...editingContact, phone: e.target.value })}
                   />
                 </div>
 
@@ -470,49 +470,49 @@ const ContactsManager: React.FC<ContactsManagerProps> = ({ contacts, setContacts
                   <label className="block text-sm font-medium text-slate-700 mb-2">Email (Optional)</label>
                   <input
                     type="email"
-                    className="w-full border border-slate-300 rounded-3xl px-6 py-3 text-base focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none bg-white transition-all""
-                  value={editingContact.email || ''}
-                  onChange={e => setEditingContact({ ...editingContact, email: e.target.value })}
+                    className="w-full border border-slate-300 rounded-3xl px-6 py-3 text-base focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none bg-white transition-all"
+                    value={editingContact.email || ''}
+                    onChange={e => setEditingContact({ ...editingContact, email: e.target.value })}
                   />
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">Category</label>
                   <select
-                    className="w-full border border-slate-300 rounded-3xl px-6 py-3 text-base focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none bg-white transition-all" bg-white"
-                  value={editingContact.category}
-                  onChange={e => setEditingContact({ ...editingContact, category: e.target.value })}
+                    className="w-full border border-slate-300 rounded-3xl px-6 py-3 text-base focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none bg-white transition-all"
+                    value={editingContact.category}
+                    onChange={e => setEditingContact({ ...editingContact, category: e.target.value })}
                   >
-                  {categories.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
-            </div>
+                    {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
 
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Notes (Optional)</label>
-              <textarea
-                className="w-full border border-slate-300 rounded-3xl px-6 py-3 text-base focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none bg-white transition-all""
-              rows={3}
-              value={editingContact.notes || ''}
-              onChange={e => setEditingContact({ ...editingContact, notes: e.target.value })}
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Notes (Optional)</label>
+                  <textarea
+                    className="w-full border border-slate-300 rounded-3xl px-6 py-3 text-base focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none bg-white transition-all"
+                    rows={3}
+                    value={editingContact.notes || ''}
+                    onChange={e => setEditingContact({ ...editingContact, notes: e.target.value })}
                   ></textarea>
-          </div>
+                </div>
 
-          <div className="flex justify-end gap-3 pt-4">
-            <button
-              type="button"
-              onClick={() => setShowEditModal(false)}
-              className="px-5 py-2.5 text-slate-600 hover:bg-slate-100 rounded-lg text-base font-medium transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="px-6 py-3 bg-teal-500 text-white rounded-full hover:bg-teal-600 text-base font-medium transition-all duration-200 flex items-center gap-2 shadow-sm hover:shadow-md"
-            >
-              Save Changes
-            </button>
-          </div>
-        </form>
+                <div className="flex justify-end gap-3 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => setShowEditModal(false)}
+                    className="px-5 py-2.5 text-slate-600 hover:bg-slate-100 rounded-lg text-base font-medium transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-6 py-3 bg-teal-500 text-white rounded-full hover:bg-teal-600 text-base font-medium transition-all duration-200 flex items-center gap-2 shadow-sm hover:shadow-md"
+                  >
+                    Save Changes
+                  </button>
+                </div>
+              </form>
             </div>
           </div >
         </div >

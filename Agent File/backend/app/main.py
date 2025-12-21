@@ -11,13 +11,20 @@ app = FastAPI(
     redoc_url="/api/redoc",
 )
 
-# Configure CORS - Allow all origins for development (Electron app needs this)
+# Configure CORS - Allow frontend origins
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins (Electron + browser)
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:5173",
+        "*"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 

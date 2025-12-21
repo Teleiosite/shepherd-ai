@@ -307,7 +307,7 @@ const LiveChats: React.FC<LiveChatsProps> = ({ contacts, logs, setLogs }) => {
             <input
               type="text"
               placeholder="Search contacts..."
-              className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-primary-500 transition-shadow"
+              className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-full text-base focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 transition-all"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
@@ -645,7 +645,7 @@ const LiveChats: React.FC<LiveChatsProps> = ({ contacts, logs, setLogs }) => {
               </div>
               <div>
                 <label className="block text-base font-medium text-slate-600 mb-2">Time</label>
-                <input type="time" className="w-full border border-slate-300 rounded-3xl px-6 py-3 text-base focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all" value={schedule Time} onChange={(e) => setScheduleTime(e.target.value)} />
+                <input type="time" className="w-full border border-slate-300 rounded-3xl px-6 py-3 text-base focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all" value={scheduleTime} onChange={(e) => setScheduleTime(e.target.value)} />
               </div>
               <div className="pt-6 flex gap-4">
                 <button onClick={() => setScheduleModalOpen(false)} className="flex-1 py-3 text-slate-600 bg-slate-100 rounded-lg hover:bg-slate-200 text-base font-medium">Cancel</button>
