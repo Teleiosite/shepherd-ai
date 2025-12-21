@@ -472,7 +472,7 @@ const LiveChats: React.FC<LiveChatsProps> = ({ contacts, logs, setLogs }) => {
                               <button
                                 type="button"
                                 onClick={handleSaveEdit}
-                                className={`text-xs px-3 py-1.5 rounded-md font-bold transition-colors flex items-center gap-1 ${isOutbound ? 'bg-white text-primary-600 hover:bg-slate-100' : 'bg-primary-600 text-white hover:bg-primary-700'}`}
+                                className={`text-xs px-3 py-1.5 rounded-full font-bold transition-all duration-200 flex items-center gap-1 shadow-sm ${isOutbound ? 'bg-white text-teal-600 hover:bg-slate-100' : 'bg-teal-500 text-white hover:bg-teal-600'}`}
                               >
                                 Save
                               </button>
@@ -607,7 +607,7 @@ const LiveChats: React.FC<LiveChatsProps> = ({ contacts, logs, setLogs }) => {
                   <button
                     type="submit"
                     disabled={(!newMessage.trim() && !pendingAttachment) || isSending}
-                    className="mb-1 bg-primary-600 hover:bg-primary-700 text-white p-3 rounded-full shadow-lg disabled:opacity-50 disabled:shadow-none hover:shadow-xl hover:scale-105 active:scale-95 transition-all flex items-center justify-center shrink-0"
+                    className="mb-1 bg-teal-500 hover:bg-teal-600 text-white p-3 rounded-full shadow-lg disabled:opacity-50 disabled:shadow-none hover:shadow-xl hover:scale-105 active:scale-95 transition-all flex items-center justify-center shrink-0"
                     title="Send Message"
                   >
                     <Send size={22} className={(newMessage.trim() || pendingAttachment) ? "ml-0.5" : ""} />
@@ -641,15 +641,15 @@ const LiveChats: React.FC<LiveChatsProps> = ({ contacts, logs, setLogs }) => {
             <div className="space-y-5">
               <div>
                 <label className="block text-base font-medium text-slate-600 mb-2">Date</label>
-                <input type="date" className="w-full border border-slate-300 rounded-lg px-4 py-3 text-base" min={today} value={scheduleDate} onChange={(e) => setScheduleDate(e.target.value)} />
+                <input type="date" className="w-full border border-slate-300 rounded-3xl px-6 py-3 text-base focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all" min={today} value={scheduleDate} onChange={(e) => setScheduleDate(e.target.value)} />
               </div>
               <div>
                 <label className="block text-base font-medium text-slate-600 mb-2">Time</label>
-                <input type="time" className="w-full border border-slate-300 rounded-lg px-4 py-3 text-base" value={scheduleTime} onChange={(e) => setScheduleTime(e.target.value)} />
+                <input type="time" className="w-full border border-slate-300 rounded-3xl px-6 py-3 text-base focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all" value={schedule Time} onChange={(e) => setScheduleTime(e.target.value)} />
               </div>
               <div className="pt-6 flex gap-4">
                 <button onClick={() => setScheduleModalOpen(false)} className="flex-1 py-3 text-slate-600 bg-slate-100 rounded-lg hover:bg-slate-200 text-base font-medium">Cancel</button>
-                <button onClick={confirmSchedule} disabled={!scheduleDate || !scheduleTime} className="flex-1 py-3 text-white bg-primary-600 rounded-lg hover:bg-primary-700 disabled:opacity-50 text-base font-bold">
+                <button onClick={confirmSchedule} disabled={!scheduleDate || !scheduleTime} className="flex-1 py-3 text-white bg-teal-500 rounded-full hover:bg-teal-600 disabled:opacity-50 text-base font-bold transition-all duration-200 shadow-sm hover:shadow-md">
                   {editingMessageId ? 'Update Time' : 'Confirm Schedule'}
                 </button>
               </div>
