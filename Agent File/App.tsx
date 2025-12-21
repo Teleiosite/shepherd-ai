@@ -688,7 +688,17 @@ function App() {
     const location = useLocation();
     const isActive = location.pathname === to;
     return (
-      <Link to={to} className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-colors text-base ${isActive ? 'bg-primary-50 text-primary-700 font-medium' : 'text-slate-600 hover:bg-slate-50'}`}>
+      <Link
+        to={to}
+        className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 text-base ${isActive
+            ? 'font-medium'
+            : 'hover:bg-white/10'
+          }`}
+        style={{
+          backgroundColor: isActive ? 'var(--teal-500)' : 'transparent',
+          color: isActive ? 'white' : 'var(--teal-100)'
+        }}
+      >
         <Icon size={22} />
         {isSidebarOpen && <span>{label}</span>}
       </Link>
@@ -713,13 +723,13 @@ function App() {
 
   return (
     <HashRouter>
-      <div className="flex h-screen bg-slate-50 font-sans text-slate-800">
+      <div className="flex h-screen bg-gray-50 font-sans text-gray-900">
 
         {/* Sidebar */}
-        <aside className={`${isSidebarOpen ? 'w-72' : 'w-24'} bg-white border-r border-slate-200 transition-all duration-300 flex flex-col z-20`}>
-          <div className="p-6 h-20 flex items-center justify-between border-b border-slate-100">
-            {isSidebarOpen && <h1 className="text-2xl font-bold text-primary-600 flex items-center gap-2">Shepherd AI</h1>}
-            <button onClick={() => setSidebarOpen(!isSidebarOpen)} className="p-2 hover:bg-slate-100 rounded-lg text-slate-500">
+        <aside className={`${isSidebarOpen ? 'w-72' : 'w-24'} transition-all duration-300 flex flex-col z-20`} style={{ backgroundColor: 'var(--forest-500)', color: 'white' }}>
+          <div className="p-6 h-20 flex items-center justify-between" style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+            {isSidebarOpen && <h1 className="text-2xl font-bold flex items-center gap-2" style={{ color: 'var(--teal-300)' }}>Shepherd AI</h1>}
+            <button onClick={() => setSidebarOpen(!isSidebarOpen)} className="p-2 rounded-lg" style={{ color: 'var(--teal-200)', transition: 'background-color 200ms' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.1)'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}>
               <Menu size={24} />
             </button>
           </div>
@@ -733,7 +743,7 @@ function App() {
             <NavItem to="/settings" icon={SettingsIcon} label="Settings" />
           </nav>
 
-          <div className="p-4 border-t border-slate-100">
+          <div className="p-4" style={{ borderTop: '1px solid rgba(255,255,255,0.1)' }}>
             <button onClick={handleLogout} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors text-base text-red-600 hover:bg-red-50`}>
               <LogOut size={22} />
               {isSidebarOpen && <span>Sign Out</span>}
@@ -743,7 +753,7 @@ function App() {
 
         {/* Main Content */}
         <main className="flex-1 overflow-auto relative">
-          <header className="h-20 bg-white border-b border-slate-200 flex items-center px-8 justify-between sticky top-0 z-10">
+          <header className="h-20 bg-white flex items-center px-8 justify-between sticky top-0 z-10" style={{ borderBottom: '1px solid var(--gray-200)' }}>
             <h2 className="text-xl font-semibold text-slate-700">{organizationName} Follow-up System</h2>
             <div className="flex items-center gap-4">
               <div className="hidden md:flex flex-col items-end mr-2">
