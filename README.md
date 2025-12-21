@@ -485,11 +485,12 @@ This project is licensed under the **MIT License** - see [LICENSE](LICENSE) file
 ---
 
 ## 👨‍💻 Author
+Frontend Engineer | Product Architect| AI Agents & Automation
+AWS Certified Cloud Practitioner | AI-Accelerated Development
+Email: abosey23@gmail.com
+LinkedIn: www.linkedin.com/in/abomide-oluwaseye
+Portfolio/GitHub: https://github.com/Teleiosite?tab=repositories
 
-**[Your Name]**
-- LinkedIn: [Your Profile]
-- Twitter: [@YourHandle]
-- Email: your.email@example.com
 
 **Built with AI pair programming** 🤖  
 *Proving what's possible when human creativity meets AI assistance*
