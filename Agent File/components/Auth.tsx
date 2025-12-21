@@ -61,137 +61,265 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden flex flex-col">
-        {/* Header */}
-        <div className="bg-primary-600 p-8 text-center">
-          <img src={logoImage} alt="Shepherd AI" className="w-24 h-24 mx-auto mb-4" />
-          <h1 className="text-3xl font-bold text-white mb-2">Shepherd AI</h1>
-          <p className="text-primary-100">Church Follow-up & Discipleship System</p>
-        </div>
+    <div className="min-h-screen bg-gradient-to-br from-emerald-900 via-emerald-800 to-teal-900 flex items-center justify-center p-4 relative overflow-hidden">
+      {/* Blurred background circles */}
+      <div className="absolute top-20 left-20 w-64 h-64 bg-emerald-500/20 rounded-full blur-3xl"></div>
+      <div className="absolute bottom-20 right-20 w-96 h-96 bg-teal-500/20 rounded-full blur-3xl"></div>
+      <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-72 h-72 bg-green-500/10 rounded-full blur-3xl"></div>
 
-        {/* Form Container */}
-        <div className="p-8">
-          <div className="mb-6 text-center">
-            <h2 className="text-xl font-bold text-slate-800">
-              {view === 'login' && 'Welcome Back'}
-              {view === 'register' && 'Create Account'}
-              {view === 'forgot-password' && 'Recover Password'}
-            </h2>
-            <p className="text-slate-500 text-sm mt-1">
-              {view === 'login' && 'Sign in to access your dashboard'}
-              {view === 'register' && 'Start automating your follow-up today'}
-              {view === 'forgot-password' && 'Enter your email to reset password'}
-            </p>
+      {/* Main Card */}
+      <div className="relative w-full max-w-6xl h-[700px] bg-white rounded-3xl shadow-2xl overflow-hidden flex">
+
+        {/* Left Side - Branding & Illustration */}
+        <div className="relative w-1/2 bg-white p-12 flex flex-col">
+          {/* Logo */}
+          <div className="flex items-center gap-3 mb-auto">
+            <img src={logoImage} alt="Shepherd AI" className="w-12 h-12" />
+            <span className="text-2xl font-bold text-slate-800">Shepherd AI</span>
           </div>
 
-          {error && (
-            <div className="mb-4 bg-red-50 text-red-600 p-3 rounded-lg text-sm flex items-center gap-2">
-              <AlertCircle size={16} /> {error}
+          {/* Festive Illustration */}
+          <div className="flex-1 flex items-center justify-center">
+            <div className="relative w-full max-w-md">
+              {/* Illustration placeholder - festive theme */}
+              <div className="relative">
+                {/* Background circle */}
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="w-96 h-96 bg-gradient-to-br from-emerald-100 to-teal-50 rounded-full opacity-60"></div>
+                </div>
+
+                {/* Christmas Tree & Shepherd Scene */}
+                <div className="relative z-10 flex flex-col items-center justify-center py-12">
+                  {/* Christmas Tree */}
+                  <div className="mb-4">
+                    <div className="relative">
+                      {/* Tree */}
+                      <div className="w-0 h-0 border-l-[60px] border-l-transparent border-r-[60px] border-r-transparent border-b-[100px] border-b-emerald-700"></div>
+                      <div className="absolute top-12 left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-[70px] border-l-transparent border-r-[70px] border-r-transparent border-b-[110px] border-b-emerald-600"></div>
+                      <div className="absolute top-20 left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-[80px] border-l-transparent border-r-[80px] border-r-transparent border-b-[120px] border-b-emerald-500"></div>
+
+                      {/* Star on top */}
+                      <div className="absolute -top-6 left-1/2 transform -translate-x-1/2 text-yellow-400 text-4xl">⭐</div>
+
+                      {/* Ornaments */}
+                      <div className="absolute top-8 left-12 w-3 h-3 bg-red-500 rounded-full"></div>
+                      <div className="absolute top-16 right-16 w-3 h-3 bg-red-500 rounded-full"></div>
+                      <div className="absolute top-24 left-20 w-3 h-3 bg-red-400 rounded-full"></div>
+                      <div className="absolute top-28 right-24 w-3 h-3 bg-red-400 rounded-full"></div>
+                    </div>
+                  </div>
+
+                  {/* Shepherd & Sheep */}
+                  <div className="flex items-end gap-4 mt-8">
+                    {/* Shepherd */}
+                    <div className="relative">
+                      <div className="w-2 h-12 bg-amber-800"></div>
+                      <div className="absolute -top-2 left-1/2 transform -translate-x-1/2 w-6 h-6 bg-amber-700 rounded-full"></div>
+                      <div className="absolute top-0 -right-1 text-2xl">🦯</div>
+                    </div>
+
+                    {/* Sheep 1 */}
+                    <div className="w-10 h-8 bg-slate-100 rounded-full relative">
+                      <div className="absolute -top-1 left-1 w-4 h-4 bg-slate-200 rounded-full"></div>
+                      <div className="absolute -top-1 right-1 w-4 h-4 bg-slate-200 rounded-full"></div>
+                    </div>
+
+                    {/* Sheep 2 */}
+                    <div className="w-10 h-8 bg-slate-100 rounded-full relative">
+                      <div className="absolute -top-1 left-1 w-4 h-4 bg-slate-200 rounded-full"></div>
+                      <div className="absolute -top-1 right-1 w-4 h-4 bg-slate-200 rounded-full"></div>
+                    </div>
+
+                    {/* Sheep 3 */}
+                    <div className="w-10 h-8 bg-slate-100 rounded-full relative">
+                      <div className="absolute -top-1 left-1 w-4 h-4 bg-slate-200 rounded-full"></div>
+                      <div className="absolute -top-1 right-1 w-4 h-4 bg-slate-200 rounded-full"></div>
+                    </div>
+                  </div>
+
+                  {/* Grass */}
+                  <div className="w-full h-2 bg-emerald-600 rounded-full mt-2"></div>
+                </div>
+              </div>
             </div>
-          )}
+          </div>
 
-          {success && (
-            <div className="mb-4 bg-green-50 text-green-600 p-3 rounded-lg text-sm flex items-center gap-2">
-              <CheckCircle size={16} /> {success}
-            </div>
-          )}
+          {/* Footer */}
+          <div className="text-xs text-slate-400 mt-auto">
+            © 2025 Shepherd AI. All rights reserved.
+          </div>
+        </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+        {/* Organic Wave Divider */}
+        <div className="absolute top-0 left-1/2 h-full w-24 -ml-12 z-10">
+          <svg viewBox="0 0 100 700" className="h-full w-full" preserveAspectRatio="none">
+            <path d="M0,0 Q50,175 0,350 T0,700 L100,700 L100,0 Z" fill="rgb(6 78 59)" />
+          </svg>
+        </div>
 
-            {view === 'register' && (
-              <>
-                <div className="relative">
-                  <User className="absolute left-3 top-3 text-slate-400" size={18} />
+        {/* Right Side - Login Form */}
+        <div className="w-1/2 bg-emerald-900 p-12 flex items-center justify-center relative">
+          <div className="w-full max-w-sm">
+            {/* Header */}
+            <h2 className="text-4xl font-bold text-white mb-2">
+              {view === 'login' && 'Welcome Back'}
+              {view === 'register' && 'Create Account'}
+              {view === 'forgot-password' && 'Reset Password'}
+            </h2>
+            <p className="text-emerald-200 text-sm mb-8">
+              {view === 'login' && 'Sign in to access your dashboard'}
+              {view === 'register' && 'Start your journey with us'}
+              {view === 'forgot-password' && 'Enter your email to reset password'}
+            </p>
+
+            {/* Alerts */}
+            {error && (
+              <div className="mb-6 bg-red-500/20 border border-red-500/50 text-red-200 p-3 rounded-2xl text-sm flex items-center gap-2">
+                <AlertCircle size={16} /> {error}
+              </div>
+            )}
+
+            {success && (
+              <div className="mb-6 bg-green-500/20 border border-green-500/50 text-green-200 p-3 rounded-2xl text-sm flex items-center gap-2">
+                <CheckCircle size={16} /> {success}
+              </div>
+            )}
+
+            {/* Form */}
+            <form onSubmit={handleSubmit} className="space-y-4">
+
+              {view === 'register' && (
+                <>
                   <input
                     required
                     type="text"
                     placeholder="Full Name"
-                    className="w-full pl-10 pr-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500 outline-none"
+                    className="w-full px-6 py-4 bg-emerald-800/50 border border-emerald-700/50 text-white placeholder-emerald-300/50 rounded-full focus:outline-none focus:ring-2 focus:ring-teal-400"
                     value={formData.name}
                     onChange={e => setFormData({ ...formData, name: e.target.value })}
                   />
-                </div>
-                <div className="relative">
-                  <Building2 className="absolute left-3 top-3 text-slate-400" size={18} />
                   <input
                     required
                     type="text"
                     placeholder="Church / Ministry Name"
-                    className="w-full pl-10 pr-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500 outline-none"
+                    className="w-full px-6 py-4 bg-emerald-800/50 border border-emerald-700/50 text-white placeholder-emerald-300/50 rounded-full focus:outline-none focus:ring-2 focus:ring-teal-400"
                     value={formData.churchName}
                     onChange={e => setFormData({ ...formData, churchName: e.target.value })}
                   />
-                </div>
-              </>
-            )}
+                </>
+              )}
 
-            <div className="relative">
-              <Mail className="absolute left-3 top-3 text-slate-400" size={18} />
               <input
                 required
                 type="email"
-                placeholder="Email Address"
-                className="w-full pl-10 pr-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500 outline-none"
+                placeholder="Enter your email"
+                className="w-full px-6 py-4 bg-emerald-800/50 border border-emerald-700/50 text-white placeholder-emerald-300/50 rounded-full focus:outline-none focus:ring-2 focus:ring-teal-400"
                 value={formData.email}
                 onChange={e => setFormData({ ...formData, email: e.target.value })}
               />
-            </div>
 
-            {view !== 'forgot-password' && (
-              <div className="relative">
-                <Lock className="absolute left-3 top-3 text-slate-400" size={18} />
-                <input
-                  required
-                  type="password"
-                  placeholder="Password"
-                  className="w-full pl-10 pr-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500 outline-none"
-                  value={formData.password}
-                  onChange={e => setFormData({ ...formData, password: e.target.value })}
-                />
-              </div>
-            )}
-
-            <button
-              disabled={loading}
-              type="submit"
-              className="w-full bg-slate-900 text-white py-3 rounded-lg font-bold hover:bg-slate-800 transition-colors flex items-center justify-center gap-2 disabled:opacity-70"
-            >
-              {loading ? 'Processing...' : (
+              {view !== 'forgot-password' && (
                 <>
-                  {view === 'login' && 'Sign In'}
-                  {view === 'register' && 'Create Account'}
-                  {view === 'forgot-password' && 'Send Recovery Link'}
-                  {!loading && view !== 'forgot-password' && <ArrowRight size={18} />}
+                  <input
+                    required
+                    type="password"
+                    placeholder="Enter your password"
+                    className="w-full px-6 py-4 bg-emerald-800/50 border border-emerald-700/50 text-white placeholder-emerald-300/50 rounded-full focus:outline-none focus:ring-2 focus:ring-teal-400"
+                    value={formData.password}
+                    onChange={e => setFormData({ ...formData, password: e.target.value })}
+                  />
+
+                  {view === 'login' && (
+                    <div className="flex items-center justify-between text-sm">
+                      <label className="flex items-center gap-2 text-emerald-200 cursor-pointer">
+                        <input type="checkbox" className="w-4 h-4 rounded border-emerald-600 bg-emerald-800/50" />
+                        <span>Remember Me</span>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setView('forgot-password')}
+                        className="text-teal-300 hover:text-teal-200 transition"
+                      >
+                        Forgot Password?
+                      </button>
+                    </div>
+                  )}
                 </>
               )}
-            </button>
-          </form>
 
-          {/* Footer Links */}
-          <div className="mt-6 pt-6 border-t border-slate-100 flex flex-col gap-3 text-center">
+              <button
+                disabled={loading}
+                type="submit"
+                className="w-full bg-teal-500 hover:bg-teal-400 text-white font-bold py-4 rounded-full transition-all transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
+              >
+                {loading ? 'Processing...' : (
+                  <>
+                    {view === 'login' && 'Login to Dashboard'}
+                    {view === 'register' && 'Create Account'}
+                    {view === 'forgot-password' && 'Send Recovery Link'}
+                  </>
+                )}
+              </button>
+            </form>
+
+            {/* Social Login */}
             {view === 'login' && (
-              <>
-                <button onClick={() => setView('forgot-password')} className="text-sm text-slate-500 hover:text-primary-600 transition-colors">
-                  Forgot Password?
-                </button>
-                <div className="text-sm text-slate-600">
-                  Don't have an account? <button onClick={() => setView('register')} className="text-primary-600 font-bold hover:underline">Create Account</button>
+              <div className="mt-8">
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center">
+                    <div className="w-full border-t border-emerald-700/50"></div>
+                  </div>
+                  <div className="relative flex justify-center text-sm">
+                    <span className="px-4 bg-emerald-900 text-emerald-300">Or continue with</span>
+                  </div>
                 </div>
-              </>
-            )}
 
-            {view === 'register' && (
-              <div className="text-sm text-slate-600">
-                Already have an account? <button onClick={() => setView('login')} className="text-primary-600 font-bold hover:underline">Sign In</button>
+                <div className="mt-6 flex gap-4">
+                  <button type="button" className="flex-1 bg-white/10 hover:bg-white/20 border border-emerald-700/50 p-3 rounded-full transition flex items-center justify-center">
+                    <span className="text-white text-lg">G</span>
+                  </button>
+                  <button type="button" className="flex-1 bg-white/10 hover:bg-white/20 border border-emerald-700/50 p-3 rounded-full transition flex items-center justify-center">
+                    <span className="text-white text-lg"></span>
+                  </button>
+                  <button type="button" className="flex-1 bg-white/10 hover:bg-white/20 border border-emerald-700/50 p-3 rounded-full transition flex items-center justify-center">
+                    <span className="text-white text-lg">M</span>
+                  </button>
+                </div>
               </div>
             )}
 
-            {view === 'forgot-password' && (
-              <button onClick={() => setView('login')} className="text-sm text-slate-600 hover:text-primary-600 flex items-center justify-center gap-2 font-medium">
-                <ArrowLeft size={16} /> Back to Login
-              </button>
-            )}
+            {/* Footer Links */}
+            <div className="mt-8 text-center">
+              {view === 'login' && (
+                <p className="text-emerald-200 text-sm">
+                  Don't have an account?{' '}
+                  <button onClick={() => setView('register')} className="text-teal-300 hover:text-teal-200 font-semibold transition">
+                    Sign Up
+                  </button>
+                </p>
+              )}
+
+              {view === 'register' && (
+                <p className="text-emerald-200 text-sm">
+                  Already have an account?{' '}
+                  <button onClick={() => setView('login')} className="text-teal-300 hover:text-teal-200 font-semibold transition">
+                    Sign In
+                  </button>
+                </p>
+              )}
+
+              {view === 'forgot-password' && (
+                <button onClick={() => setView('login')} className="text-emerald-200 hover:text-white flex items-center justify-center gap-2 mx-auto transition">
+                  <ArrowLeft size={16} /> Back to Login
+                </button>
+              )}
+
+              <div className="mt-6 flex gap-4 justify-center text-xs text-emerald-400">
+                <a href="#" className="hover:text-emerald-200 transition">Privacy Policy</a>
+                <span>•</span>
+                <a href="#" className="hover:text-emerald-200 transition">Terms of Service</a>
+              </div>
+            </div>
           </div>
         </div>
       </div>
