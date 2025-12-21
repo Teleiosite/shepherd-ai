@@ -485,6 +485,7 @@ This project is licensed under the **MIT License** - see [LICENSE](LICENSE) file
 ---
 
 ## 👨‍💻 Author
+Abomide Oluwaseye
 Frontend Engineer | Product Architect| AI Agents & Automation
 AWS Certified Cloud Practitioner | AI-Accelerated Development
 Email: abosey23@gmail.com
