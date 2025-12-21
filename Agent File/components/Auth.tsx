@@ -64,6 +64,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden flex flex-col">
         {/* Header */}
         <div className="bg-primary-600 p-8 text-center">
+          <img src="/logo.png" alt="Shepherd AI" className="w-24 h-24 mx-auto mb-4" />
           <h1 className="text-3xl font-bold text-white mb-2">Shepherd AI</h1>
           <p className="text-primary-100">Church Follow-up & Discipleship System</p>
         </div>
