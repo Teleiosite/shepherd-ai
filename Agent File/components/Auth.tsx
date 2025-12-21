@@ -75,7 +75,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
           {/* Logo */}
           <div className="flex items-center gap-3 mb-auto">
             <img src={logoImage} alt="Shepherd AI" className="w-12 h-12" />
-            <span className="text-2xl font-bold text-slate-800">Shepherd AI</span>
+            <span className="text-2xl font-extrabold text-slate-800">Shepherd AI</span>
           </div>
 
           {/* Festive Illustration */}
