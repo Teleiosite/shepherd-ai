@@ -4,6 +4,7 @@ import { authService } from '../services/authService';
 import { User, Lock, Mail, ArrowRight, Building2, AlertCircle, CheckCircle, ArrowLeft } from 'lucide-react';
 import logoImage from '../logo.png';
 import illustrationImage from '../illustration.png';
+import shepherdSheepImage from '../shepherd-sheep.png';
 
 interface AuthProps {
   onLogin: () => void;
@@ -81,16 +82,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
           {/* Festive Illustration */}
           <div className="flex-1 flex items-center justify-center">
-            <div className="flex flex-col items-center gap-6">
-              {/* Shepherd emoji */}
-              <div className="text-9xl">🧑‍🌾</div>
-              {/* Sheep emojis */}
-              <div className="flex gap-4 text-6xl">
-                <span>🐑</span>
-                <span>🐑</span>
-                <span>🐑</span>
-              </div>
-            </div>
+            <img src={shepherdSheepImage} alt="Shepherd with sheep" className="w-80 h-80 object-contain" />
           </div>
 
           {/* Footer */}
