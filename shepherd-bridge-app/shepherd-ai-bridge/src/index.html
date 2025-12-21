@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shepherd AI WhatsApp Bridge</title>
+    <link rel="stylesheet" href="css/main.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="logo">
+                <span class="logo-icon">🐑</span>
+                <div class="logo-text">
+                    <h1>Shepherd AI</h1>
+                    <p>WhatsApp Bridge v1.0.0</p>
+                </div>
+            </div>
+        </header>
+
+        <!-- Status Section -->
+        <section class="status-section">
+            <h2>Connection Status</h2>
+            <div class="status-container">
+                <div class="status-indicator">
+                    <span class="status-dot" id="status-dot"></span>
+                    <span class="status-text" id="status-text">Disconnected</span>
+                </div>
+                
+                <button class="btn btn-primary" id="toggle-bridge-btn">
+                    <span id="btn-icon">▶</span>
+                    <span id="btn-text">Start Bridge</span>
+                </button>
+            </div>
+
+            <div class="stats-container">
+                <div class="stat-item">
+                    <span class="stat-label">Last Connected:</span>
+                    <span class="stat-value" id="last-connected">Never</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Uptime:</span>
+                    <span class="stat-value" id="uptime">--</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Messages Today:</span>
+                    <span class="stat-value" id="messages-count">--</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Action Buttons -->
+        <section class="actions-section">
+            <button class="btn btn-secondary" id="qr-btn">
+                <span>📱</span> View QR Code
+            </button>
+            <button class="btn btn-secondary" id="settings-btn">
+                <span>⚙️</span> Settings
+            </button>
+            <button class="btn btn-secondary" id="logs-btn">
+                <span>📋</span> Logs
+            </button>
+        </section>
+
+        <!-- Logs Section (Hidden by default) -->
+        <section class="logs-section" id="logs-section" style="display: none;">
+            <div class="logs-header">
+                <h3>Bridge Logs</h3>
+                <button class="btn-close" id="close-logs">✕</button>
+            </div>
+            <div class="logs-content" id="logs-content"></div>
+            <button class="btn btn-secondary btn-small" id="clear-logs">Clear Logs</button>
+        </section>
+
+        <!-- QR Code Modal -->
+        <div class="modal" id="qr-modal" style="display: none;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>Scan QR Code</h3>
+                    <button class="btn-close" id="close-qr">✕</button>
+                </div>
+                <div class="modal-body">
+                    <div class="qr-container" id="qr-container">
+                        <p class="qr-message">Waiting for QR code...</p>
+                        <p class="qr-spinner">⏳</p>
+                    </div>
+                    <div class="qr-instructions">
+                        <h4>Steps to connect:</h4>
+                        <ol>
+                            <li>Open WhatsApp on your phone</li>
+                            <li>Tap Menu (⋮) → <strong>Linked Devices</strong></li>
+                            <li>Tap <strong>"Link a Device"</strong></li>
+                            <li>Scan this QR code</li>
+                        </ol>
+                        <p class="qr-status" id="qr-status">Waiting for scan... ⏳</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/renderer.js"></script>
+</body>
+</html>
