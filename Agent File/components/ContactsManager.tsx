@@ -5,6 +5,7 @@ import { Plus, Upload, Search, Trash2, Edit2, User, FileSpreadsheet, Download, Z
 import { v4 as uuidv4 } from 'uuid';
 import * as XLSX from 'xlsx';
 import { getNextWorkflowStep } from '../utils/workflows';
+import { storage } from '../services/storage';
 
 interface ContactsManagerProps {
   contacts: Contact[];
@@ -140,8 +141,15 @@ const ContactsManager: React.FC<ContactsManagerProps> = ({ contacts, setContacts
     reader.readAsBinaryString(file);
   };
 
-  const handleDelete = (id: string) => {
-    setContacts(contacts.filter(c => c.id !== id));
+  const handleDelete = async (id: string) => {
+    const success = await storage.deleteContact(id);
+
+    if (success) {
+      // Update local state after successful backend deletion
+      setContacts(contacts.filter(c => c.id !== id));
+    } else {
+      alert('Failed to delete contact. Please try again.');
+    }
   };
 
   const handleEdit = (contact: Contact) => {
@@ -149,15 +157,21 @@ const ContactsManager: React.FC<ContactsManagerProps> = ({ contacts, setContacts
     setShowEditModal(true);
   };
 
-  const handleEditSubmit = (e: React.FormEvent) => {
+  const handleEditSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingContact) return;
 
-    setContacts(contacts.map(c =>
-      c.id === editingContact.id ? editingContact : c
-    ));
-    setShowEditModal(false);
-    setEditingContact(null);
+    const success = await storage.updateContact(editingContact);
+
+    if (success) {
+      setContacts(contacts.map(c =>
+        c.id === editingContact.id ? editingContact : c
+      ));
+      setShowEditModal(false);
+      setEditingContact(null);
+    } else {
+      alert('Failed to update contact. Please try again.');
+    }
   };
 
   const filteredContacts = contacts.filter(c =>

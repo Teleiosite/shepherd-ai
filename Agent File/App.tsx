@@ -15,6 +15,7 @@ import { generateMessage } from './services/geminiService';
 import { getRecommendedWorkflowStep } from './utils/workflows';
 import { whatsappService } from './services/whatsappService';
 import { authService } from './services/authService';
+import { storage } from './services/storage';
 
 // Mock Data for Initial Load
 const initialContacts: Contact[] = [
@@ -151,16 +152,9 @@ function App() {
     checkAuth();
   }, []);
 
-  // Data State
-  const [contacts, setContacts] = useState<Contact[]>(() => {
-    try {
-      const saved = localStorage.getItem('shepherd_contacts');
-      return saved ? JSON.parse(saved) : initialContacts;
-    } catch (e) {
-      console.error("Failed to parse contacts", e);
-      return initialContacts;
-    }
-  });
+  // Data State - Initialize as empty and load from backend
+  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [contactsLoaded, setContactsLoaded] = useState(false);
 
   const [resources, setResources] = useState<KnowledgeResource[]>(() => {
     try {
@@ -206,8 +200,35 @@ function App() {
   const [isSidebarOpen, setSidebarOpen] = useState(true);
   const [autoRunProgress, setAutoRunProgress] = useState<{ current: number, total: number } | null>(null);
 
-  // Persistence
-  useEffect(() => localStorage.setItem('shepherd_contacts', JSON.stringify(contacts)), [contacts]);
+  // Load contacts from backend when user authenticates
+  useEffect(() => {
+    const loadContactsFromBackend = async () => {
+      if (!user) {
+        setContacts([]);
+        setContactsLoaded(false);
+        return;
+      }
+
+      try {
+        console.log('📡 Loading contacts from backend...');
+        const backendContacts = await storage.refreshContacts();
+        setContacts(backendContacts);
+        setContactsLoaded(true);
+        console.log(`✅ Loaded ${backendContacts.length} contacts from backend`);
+      } catch (error) {
+        console.error('Failed to load contacts:', error);
+        // Fallback to empty array on error
+        setContacts([]);
+        setContactsLoaded(true);
+      }
+    };
+
+    loadContactsFromBackend();
+  }, [user]);
+
+  // Persistence - REMOVED contacts localStorage (now using backend)
+  // useEffect(() => localStorage.setItem('shepherd_contacts', JSON.stringify(contacts)), [contacts]);
+  useEffect(() => localStorage.setItem('shepherd_resources', JSON.stringify(resources)), [resources]);
   useEffect(() => localStorage.setItem('shepherd_resources', JSON.stringify(resources)), [resources]);
   useEffect(() => localStorage.setItem('shepherd_logs', JSON.stringify(logs)), [logs]);
   useEffect(() => localStorage.setItem('shepherd_ai_name', aiName), [aiName]);
@@ -606,27 +627,43 @@ function App() {
 
 
   const handleContactAdded = async (contact: Contact, autoGenerate: boolean) => {
-    setContacts(prev => [...prev, contact]);
+    // Save to backend first
+    const success = await storage.saveContact(contact);
+
+    if (!success) {
+      alert('Failed to save contact. Please try again.');
+      return;
+    }
+
+    // Refresh contacts from backend to get the updated list with server ID
+    const updatedContacts = await storage.refreshContacts();
+    setContacts(updatedContacts);
 
     if (autoGenerate) {
       try {
-        const prompt = "Day 1 Welcome Message";
-        const content = await generateMessage(contact, prompt, resources, aiName, organizationName);
+        // Find the newly created contact (match by phone since ID might change)
+        const savedContact = updatedContacts.find(c => c.phone === contact.phone) || contact;
+
+        const prompt = "Day 0: Send immediate welcome message";
+        const content = await generateMessage(savedContact, prompt, resources, aiName, organizationName);
         const waConfig = whatsappService.getConfig();
-        if (waConfig && contact.phone) {
-          await whatsappService.sendMessage(contact.phone, content);
+        if (waConfig && savedContact.phone) {
+          await whatsappService.sendMessage(savedContact.phone, content);
         }
         const newLog: MessageLog = {
           id: uuidv4(),
-          contactId: contact.id,
+          contactId: savedContact.id,
           content: content,
           timestamp: new Date().toISOString(),
           status: MessageStatus.SENT,
           type: 'Outbound'
         };
         setLogs(prev => [newLog, ...prev]);
+
+        console.log('✅ Welcome message sent to', savedContact.name);
       } catch (err) {
         console.error("Auto-generation failed", err);
+        alert('Contact saved but failed to send welcome message. You can send it manually from Live Chats.');
       }
     }
   };

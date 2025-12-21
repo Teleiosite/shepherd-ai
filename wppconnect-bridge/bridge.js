@@ -21,8 +21,8 @@ app.use((req, res, next) => {
 app.use(express.json({ limit: '50mb' })); // Increase limit for Base64 images
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-const PORT = 3001;
-const WS_PORT = 3002;
+const PORT = 3003; // REST API port (changed from 3001 to avoid frontend conflict)
+const WS_PORT = 3002; // WebSocket port
 let clientSession = null;
 let bridgeStatus = 'initializing';
 

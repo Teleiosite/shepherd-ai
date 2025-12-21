@@ -67,7 +67,22 @@ export const storage = {
         throw new Error(`HTTP ${response.status}`);
       }
 
-      const contacts = await response.json();
+      const backendContacts = await response.json();
+
+      // Transform backend snake_case to frontend camelCase
+      const contacts = backendContacts.map((c: any) => ({
+        id: c.id,
+        name: c.name,
+        phone: c.phone,
+        email: c.email,
+        category: c.category,
+        joinDate: c.join_date || c.joinDate, // Map join_date -> joinDate
+        notes: c.notes,
+        status: c.status,
+        lastContacted: c.last_contacted || c.lastContacted,
+        whatsappId: c.whatsapp_id || c.whatsappId
+      }));
+
       // Cache for synchronous access
       localStorage.setItem('shepherd_contacts_cache', JSON.stringify(contacts));
       return contacts;
@@ -98,8 +113,8 @@ export const storage = {
           category: contact.category,
           join_date: contact.joinDate,
           notes: contact.notes,
-          status: contact.status || 'Active',
-          whatsapp_id: contact.whatsappId
+          status: contact.status || 'Active'
+          // whatsapp_id removed - backend doesn't support it yet
         })
       });
 
@@ -134,8 +149,8 @@ export const storage = {
           email: contact.email,
           category: contact.category,
           notes: contact.notes,
-          status: contact.status,
-          whatsapp_id: contact.whatsappId
+          status: contact.status
+          // whatsapp_id removed - backend doesn't support it yet
         })
       });
 

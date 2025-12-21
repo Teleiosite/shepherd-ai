@@ -49,35 +49,35 @@ export const WORKFLOWS: Record<string, WorkflowStep[]> = {
 
 // Generic fallback for custom categories
 export const GENERIC_WORKFLOW: WorkflowStep[] = [
-    { day: 1, title: 'Welcome', prompt: 'Day 1: Warm welcome and appreciation for connecting.' },
-    { day: 7, title: 'Follow-up', prompt: 'Day 7: Checking in to see how they are doing and offering assistance.' },
-    { day: 30, title: 'Monthly Check-in', prompt: 'Day 30: A friendly monthly check-in to maintain the relationship.' }
+  { day: 1, title: 'Welcome', prompt: 'Day 1: Warm welcome and appreciation for connecting.' },
+  { day: 7, title: 'Follow-up', prompt: 'Day 7: Checking in to see how they are doing and offering assistance.' },
+  { day: 30, title: 'Monthly Check-in', prompt: 'Day 30: A friendly monthly check-in to maintain the relationship.' }
 ];
 
 const getDaysSinceJoin = (joinDateStr: string): number => {
   const joinDate = new Date(joinDateStr);
   const now = new Date();
-  
+
   const joinDateMidnight = new Date(joinDate);
-  joinDateMidnight.setHours(0,0,0,0);
-  
+  joinDateMidnight.setHours(0, 0, 0, 0);
+
   const nowMidnight = new Date(now);
-  nowMidnight.setHours(0,0,0,0);
+  nowMidnight.setHours(0, 0, 0, 0);
 
   const diffTime = nowMidnight.getTime() - joinDateMidnight.getTime();
-  return Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+  return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 };
 
 export const getRecommendedWorkflowStep = (joinDateStr: string, category: string): WorkflowStep | null => {
   const diffDays = getDaysSinceJoin(joinDateStr);
   const steps = WORKFLOWS[category] || GENERIC_WORKFLOW;
-  
+
   // "Grace Period" Logic:
   // We check if there is a step for Today (diffDays)
   // OR if there was a step yesterday (diffDays - 1) or the day before (diffDays - 2) that we might have missed.
   // The system (App.tsx) handles the check of whether a message was ALREADY sent.
   // So here, we simply return the *latest* step that is valid for this window.
-  
+
   // Priority 1: Exact match for today
   const exactMatch = steps.find(s => s.day === diffDays);
   if (exactMatch) return exactMatch;
@@ -89,7 +89,7 @@ export const getRecommendedWorkflowStep = (joinDateStr: string, category: string
 
   const catchUp2 = steps.find(s => s.day === diffDays - 2);
   if (catchUp2) return catchUp2;
-  
+
   return null;
 };
 
@@ -98,14 +98,15 @@ export const getNextWorkflowStep = (joinDateStr: string, category: string): { st
   const diffDays = getDaysSinceJoin(joinDateStr);
   const steps = WORKFLOWS[category] || GENERIC_WORKFLOW;
 
-  // Find the first step that is greater than current days
+  // Find the first step that is AFTER current days
+  // This ensures we show the next upcoming task, not the current day's task
   const nextStep = steps.find(s => s.day > diffDays);
-  
+
   if (!nextStep) return null;
 
   const joinDate = new Date(joinDateStr);
   const dueDate = new Date(joinDate);
   dueDate.setDate(dueDate.getDate() + nextStep.day);
-  
+
   return { step: nextStep, dueDate };
 };

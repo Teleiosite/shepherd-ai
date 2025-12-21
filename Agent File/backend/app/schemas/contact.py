@@ -11,7 +11,7 @@ class ContactCreate(BaseModel):
     category: str
     join_date: datetime
     notes: Optional[str] = None
-    whatsapp_id: Optional[str] = None  # WhatsApp @lid ID for message routing
+    # whatsapp_id removed - not in database model yet
 
 
 class ContactUpdate(BaseModel):
@@ -22,7 +22,7 @@ class ContactUpdate(BaseModel):
     category: Optional[str] = None
     notes: Optional[str] = None
     status: Optional[str] = None
-    whatsapp_id: Optional[str] = None  # WhatsApp @lid ID
+    # whatsapp_id removed - not in database model yet
 
 
 class ContactResponse(BaseModel):
@@ -37,7 +37,7 @@ class ContactResponse(BaseModel):
     notes: Optional[str]
     status: str
     last_contacted: Optional[datetime]
-    whatsapp_id: Optional[str]  # WhatsApp @lid ID
+    # whatsapp_id removed - not in database model yet
     created_at: datetime
     updated_at: datetime
     
