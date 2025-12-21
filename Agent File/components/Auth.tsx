@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { authService } from '../services/authService';
 import { User, Lock, Mail, ArrowRight, Building2, AlertCircle, CheckCircle, ArrowLeft } from 'lucide-react';
 import logoImage from '../logo.png';
+import illustrationImage from '../illustration.png';
 
 interface AuthProps {
   onLogin: () => void;
@@ -80,68 +81,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
           {/* Festive Illustration */}
           <div className="flex-1 flex items-center justify-center">
-            <div className="relative w-full max-w-md">
-              {/* Illustration placeholder - festive theme */}
-              <div className="relative">
-                {/* Background circle */}
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="w-72 h-72 bg-gradient-to-br from-emerald-100 to-teal-50 rounded-full opacity-60"></div>
-                </div>
-
-                {/* Christmas Tree & Shepherd Scene */}
-                <div className="relative z-10 flex flex-col items-center justify-center py-6">
-                  {/* Christmas Tree */}
-                  <div className="mb-4">
-                    <div className="relative">
-                      {/* Tree */}
-                      <div className="w-0 h-0 border-l-[40px] border-l-transparent border-r-[40px] border-r-transparent border-b-[70px] border-b-emerald-700"></div>
-                      <div className="absolute top-8 left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-[50px] border-l-transparent border-r-[50px] border-r-transparent border-b-[80px] border-b-emerald-600"></div>
-                      <div className="absolute top-14 left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-[60px] border-l-transparent border-r-[60px] border-r-transparent border-b-[90px] border-b-emerald-500"></div>
-
-                      {/* Star on top */}
-                      <div className="absolute -top-4 left-1/2 transform -translate-x-1/2 text-yellow-400 text-2xl">⭐</div>
-
-                      {/* Ornaments */}
-                      <div className="absolute top-8 left-12 w-3 h-3 bg-red-500 rounded-full"></div>
-                      <div className="absolute top-16 right-16 w-3 h-3 bg-red-500 rounded-full"></div>
-                      <div className="absolute top-24 left-20 w-3 h-3 bg-red-400 rounded-full"></div>
-                      <div className="absolute top-28 right-24 w-3 h-3 bg-red-400 rounded-full"></div>
-                    </div>
-                  </div>
-
-                  {/* Shepherd & Sheep */}
-                  <div className="flex items-end gap-3 mt-4">
-                    {/* Shepherd */}
-                    <div className="relative">
-                      <div className="w-2 h-12 bg-amber-800"></div>
-                      <div className="absolute -top-2 left-1/2 transform -translate-x-1/2 w-6 h-6 bg-amber-700 rounded-full"></div>
-                      <div className="absolute top-0 -right-1 text-2xl">🦯</div>
-                    </div>
-
-                    {/* Sheep 1 */}
-                    <div className="w-10 h-8 bg-slate-100 rounded-full relative">
-                      <div className="absolute -top-1 left-1 w-4 h-4 bg-slate-200 rounded-full"></div>
-                      <div className="absolute -top-1 right-1 w-4 h-4 bg-slate-200 rounded-full"></div>
-                    </div>
-
-                    {/* Sheep 2 */}
-                    <div className="w-10 h-8 bg-slate-100 rounded-full relative">
-                      <div className="absolute -top-1 left-1 w-4 h-4 bg-slate-200 rounded-full"></div>
-                      <div className="absolute -top-1 right-1 w-4 h-4 bg-slate-200 rounded-full"></div>
-                    </div>
-
-                    {/* Sheep 3 */}
-                    <div className="w-10 h-8 bg-slate-100 rounded-full relative">
-                      <div className="absolute -top-1 left-1 w-4 h-4 bg-slate-200 rounded-full"></div>
-                      <div className="absolute -top-1 right-1 w-4 h-4 bg-slate-200 rounded-full"></div>
-                    </div>
-                  </div>
-
-                  {/* Grass */}
-                  <div className="w-full h-2 bg-emerald-600 rounded-full mt-2"></div>
-                </div>
-              </div>
-            </div>
+            <img src={illustrationImage} alt="Shepherd with sheep" className="w-72 h-72 object-contain" />
           </div>
 
           {/* Footer */}
