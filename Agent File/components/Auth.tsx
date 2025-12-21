@@ -81,7 +81,16 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
           {/* Festive Illustration */}
           <div className="flex-1 flex items-center justify-center">
-            <img src={illustrationImage} alt="Shepherd with sheep" className="w-72 h-72 object-contain" />
+            <div className="flex flex-col items-center gap-6">
+              {/* Shepherd emoji */}
+              <div className="text-9xl">🧑‍🌾</div>
+              {/* Sheep emojis */}
+              <div className="flex gap-4 text-6xl">
+                <span>🐑</span>
+                <span>🐑</span>
+                <span>🐑</span>
+              </div>
+            </div>
           </div>
 
           {/* Footer */}
