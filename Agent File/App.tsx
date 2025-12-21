@@ -130,6 +130,35 @@ const initialResources: KnowledgeResource[] = [
   { id: '103', title: '30-Day New Convert Follow-Up Plan', type: 'Book', content: newConvertPlanContent, uploadDate: new Date().toISOString() },
 ];
 
+// Mobile Bottom Navigation Component
+const MobileBottomNav = () => {
+  const location = useLocation();
+  return (
+    <nav className="md:hidden fixed bottom-0 left-0 right-0 z-30 h-16 flex items-center justify-around px-4 shadow-lg" style={{ backgroundColor: 'var(--forest-500)', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+      <Link to="/" className={`flex flex-col items-center justify-center w-16 h-12 rounded-lg transition-all ${location.pathname === '/' ? 'bg-teal-500' : ''}`}>
+        <LayoutDashboard size={20} className={location.pathname === '/' ? 'text-white' : 'text-teal-100'} />
+        <span className={`text-[10px] mt-0.5 ${location.pathname === '/' ? 'text-white font-medium' : 'text-teal-100'}`}>Dashboard</span>
+      </Link>
+      <Link to="/contacts" className={`flex flex-col items-center justify-center w-16 h-12 rounded-lg transition-all ${location.pathname === '/contacts' ? 'bg-teal-500' : ''}`}>
+        <Users size={20} className={location.pathname === '/contacts' ? 'text-white' : 'text-teal-100'} />
+        <span className={`text-[10px] mt-0.5 ${location.pathname === '/contacts' ? 'text-white font-medium' : 'text-teal-100'}`}>Contacts</span>
+      </Link>
+      <Link to="/chats" className={`flex flex-col items-center justify-center w-16 h-12 rounded-lg transition-all ${location.pathname === '/chats' ? 'bg-teal-500' : ''}`}>
+        <MessageCircle size={20} className={location.pathname === '/chats' ? 'text-white' : 'text-teal-100'} />
+        <span className={`text-[10px] mt-0.5 ${location.pathname === '/chats' ? 'text-white font-medium' : 'text-teal-100'}`}>Chats</span>
+      </Link>
+      <Link to="/campaigns" className={`flex flex-col items-center justify-center w-16 h-12 rounded-lg transition-all ${location.pathname === '/campaigns' ? 'bg-teal-500' : ''}`}>
+        <Send size={20} className={location.pathname === '/campaigns' ? 'text-white' : 'text-teal-100'} />
+        <span className={`text-[10px] mt-0.5 ${location.pathname === '/campaigns' ? 'text-white font-medium' : 'text-teal-100'}`}>Send</span>
+      </Link>
+      <Link to="/settings" className={`flex flex-col items-center justify-center w-16 h-12 rounded-lg transition-all ${location.pathname === '/settings' ? 'bg-teal-500' : ''}`}>
+        <SettingsIcon size={20} className={location.pathname === '/settings' ? 'text-white' : 'text-teal-100'} />
+        <span className={`text-[10px] mt-0.5 ${location.pathname === '/settings' ? 'text-white font-medium' : 'text-teal-100'}`}>Settings</span>
+      </Link>
+    </nav>
+  );
+};
+
 function App() {
   // Authentication State
   const [user, setUser] = useState<User | null>(authService.getCurrentUserSync());
@@ -197,7 +226,10 @@ function App() {
     return localStorage.getItem('shepherd_autorun_enabled') === 'true';
   });
 
-  const [isSidebarOpen, setSidebarOpen] = useState(true);
+  const [isSidebarOpen, setSidebarOpen] = useState(() => {
+    // Start closed on mobile, open on desktop
+    return window.innerWidth >= 768;
+  });
   const [autoRunProgress, setAutoRunProgress] = useState<{ current: number, total: number } | null>(null);
 
   // Load contacts from backend when user authenticates
@@ -691,8 +723,8 @@ function App() {
       <Link
         to={to}
         className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 text-base ${isActive
-            ? 'font-medium'
-            : 'hover:bg-white/10'
+          ? 'font-medium'
+          : 'hover:bg-white/10'
           }`}
         style={{
           backgroundColor: isActive ? 'var(--teal-500)' : 'transparent',
@@ -725,8 +757,19 @@ function App() {
     <HashRouter>
       <div className="flex h-screen bg-gray-50 font-sans text-gray-900">
 
+        {/* Mobile Overlay */}
+        {isSidebarOpen && (
+          <div
+            className="fixed inset-0 bg-black/50 z-10 md:hidden"
+            onClick={() => setSidebarOpen(false)}
+          />
+        )}
+
         {/* Sidebar */}
-        <aside className={`${isSidebarOpen ? 'w-72' : 'w-24'} transition-all duration-300 flex flex-col z-20`} style={{ backgroundColor: 'var(--forest-500)', color: 'white' }}>
+        <aside
+          className={`${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 ${isSidebarOpen ? 'w-72' : 'md:w-24 w-72'} transition-all duration-300 flex flex-col z-20 fixed md:relative h-full`}
+          style={{ backgroundColor: 'var(--forest-500)', color: 'white' }}
+        >
           <div className="p-6 h-20 flex items-center justify-between" style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
             {isSidebarOpen && <h1 className="text-2xl font-bold flex items-center gap-2" style={{ color: 'var(--teal-300)' }}>Shepherd AI</h1>}
             <button onClick={() => setSidebarOpen(!isSidebarOpen)} className="p-2 rounded-lg" style={{ color: 'var(--teal-200)', transition: 'background-color 200ms' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.1)'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}>
@@ -753,8 +796,17 @@ function App() {
 
         {/* Main Content */}
         <main className="flex-1 overflow-auto relative">
-          <header className="h-20 bg-white flex items-center px-8 justify-between sticky top-0 z-10" style={{ borderBottom: '1px solid var(--gray-200)' }}>
-            <h2 className="text-xl font-semibold text-slate-700">{organizationName} Follow-up System</h2>
+          <header className="h-16 md:h-20 bg-white flex items-center px-4 md:px-8 justify-between sticky top-0 z-10" style={{ borderBottom: '1px solid var(--gray-200)' }}>
+            <div className="flex items-center gap-3">
+              {/* Mobile Menu Button */}
+              <button
+                onClick={() => setSidebarOpen(true)}
+                className="md:hidden p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <Menu size={24} className="text-gray-700" />
+              </button>
+              <h2 className="text-lg md:text-xl font-semibold text-slate-700 truncate">{organizationName} Follow-up System</h2>
+            </div>
             <div className="flex items-center gap-4">
               <div className="hidden md:flex flex-col items-end mr-2">
                 <span className="text-sm font-bold text-slate-800">{user?.name || 'User'}</span>
@@ -767,7 +819,7 @@ function App() {
             </div>
           </header>
 
-          <div className="p-8 max-w-7xl mx-auto">
+          <div className="p-4 md:p-8 pb-20 md:pb-8 max-w-7xl mx-auto">
             <Routes>
               <Route path="/" element={<Dashboard contacts={contacts} logs={logs} resources={resources} />} />
               <Route path="/contacts" element={<ContactsManager contacts={contacts} setContacts={setContacts} onAddContact={handleContactAdded} categories={categories} onAddCategory={handleAddCategory} />} />
@@ -801,6 +853,8 @@ function App() {
             </div>
           )}
         </main>
+
+        <MobileBottomNav />
       </div>
     </HashRouter>
   );
