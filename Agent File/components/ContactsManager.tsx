@@ -200,7 +200,7 @@ const ContactsManager: React.FC<ContactsManagerProps> = ({ contacts, setContacts
         <h2 className="text-3xl font-bold text-slate-800">Contacts</h2>
         <button
           onClick={() => setShowAddModal(true)}
-          className="bg-primary-600 hover:bg-primary-700 text-white px-5 py-2.5 rounded-lg flex items-center gap-2 transition-colors text-base font-medium"
+          className="bg-teal-500 hover:bg-teal-600 text-white px-6 py-3 rounded-full flex items-center gap-2 transition-all duration-200 text-base font-medium shadow-sm hover:shadow-md"
         >
           <Plus size={20} />
           Add Contacts
@@ -365,7 +365,7 @@ const ContactsManager: React.FC<ContactsManagerProps> = ({ contacts, setContacts
 
                   <div className="flex justify-end gap-4 mt-6">
                     <button type="button" onClick={() => setShowAddModal(false)} className="px-5 py-2.5 text-slate-600 hover:bg-slate-100 rounded-lg text-base">Cancel</button>
-                    <button type="submit" className="px-5 py-2.5 bg-primary-600 text-white rounded-lg hover:bg-primary-700 text-base font-medium">Add Contact</button>
+                    <button type="submit" className="px-6 py-3 bg-teal-500 text-white rounded-full hover:bg-teal-600 text-base font-medium transition-all duration-200 shadow-sm hover:shadow-md">Add Contact</button>
                   </div>
                 </form>
               ) : (
@@ -423,7 +423,7 @@ const ContactsManager: React.FC<ContactsManagerProps> = ({ contacts, setContacts
 
                   <div className="flex justify-end gap-4 mt-6">
                     <button onClick={() => setShowAddModal(false)} className="px-5 py-2.5 text-slate-600 hover:bg-slate-100 rounded-lg text-base">Cancel</button>
-                    <button onClick={handleBulkTextSubmit} disabled={!bulkText} className="px-5 py-2.5 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 text-base font-medium">
+                    <button onClick={handleBulkTextSubmit} disabled={!bulkText} className="px-6 py-3 bg-teal-500 text-white rounded-full hover:bg-teal-600 disabled:opacity-50 text-base font-medium transition-all duration-200 shadow-sm hover:shadow-md">
                       Import Manual Text
                     </button>
                   </div>
@@ -507,7 +507,7 @@ const ContactsManager: React.FC<ContactsManagerProps> = ({ contacts, setContacts
                   </button>
                   <button
                     type="submit"
-                    className="px-5 py-2.5 bg-primary-600 text-white rounded-lg hover:bg-primary-700 text-base font-medium transition-colors flex items-center gap-2"
+                    className="px-6 py-3 bg-teal-500 text-white rounded-full hover:bg-teal-600 text-base font-medium transition-all duration-200 flex items-center gap-2 shadow-sm hover:shadow-md"
                   >
                     Save Changes
                   </button>
