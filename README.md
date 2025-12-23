@@ -26,6 +26,24 @@ Shepherd AI is a **multi-tenant SaaS platform** that helps churches nurture new 
 - 📊 **Campaign Scheduler** - Bulk message automation with smart workflows
 - 🖥️ **Desktop Bridge App** - Standalone Electron app for non-technical users
 
+### **🎨 Recent UI Updates (December 2023)**
+
+- ✨ **Redesigned Login Page**
+  - Minimalist design with centered, extra-large logo (384px × 384px)
+  - Smooth float animation for welcoming first impression
+  - New teal neural-network sheep logo matching design system
+  
+- 📱 **Mobile-First Responsiveness**
+  - Vertical stacking on mobile devices
+  - Adaptive logo sizing (128px mobile → 384px desktop)
+  - Optimized padding and spacing for all screen sizes
+  
+- 🎯 **Enhanced Branding**
+  - Updated favicon with new logo
+  - Consistent teal/forest green color scheme
+  - Custom CSS animations (float effect)
+  - Professional, modern aesthetic
+
 ---
 
 ## 🏗️ Architecture
