@@ -70,19 +70,18 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
       <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-72 h-72 bg-green-500/10 rounded-full blur-3xl"></div>
 
       {/* Main Card */}
-      <div className="relative w-full max-w-5xl h-[600px] bg-white rounded-3xl shadow-2xl overflow-hidden flex">
+      <div className="relative w-full max-w-5xl h-[480px] bg-white rounded-3xl shadow-2xl overflow-hidden flex">
 
         {/* Left Side - Branding & Illustration */}
-        <div className="relative w-1/2 bg-white p-12 flex flex-col">
-          {/* Logo */}
-          <div className="flex items-center gap-3 mb-auto">
-            <img src={logoImage} alt="Shepherd AI" className="w-12 h-12" />
-            <span className="text-2xl font-extrabold text-slate-800">Shepherd AI</span>
+        <div className="relative w-1/2 bg-white p-8 flex flex-col">
+          {/* Logo - Centered and Larger */}
+          <div className="flex items-center justify-center mb-6">
+            <img src={logoImage} alt="Shepherd AI" className="w-20 h-20" />
           </div>
 
           {/* Festive Illustration */}
           <div className="flex-1 flex items-center justify-center">
-            <img src={shepherdSheepImage} alt="Shepherd with sheep" className="w-80 h-80 object-contain" />
+            <img src={shepherdSheepImage} alt="Shepherd with sheep" className="w-64 h-64 object-contain" />
           </div>
 
           {/* Footer */}
