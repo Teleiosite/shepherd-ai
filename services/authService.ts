@@ -1,8 +1,7 @@
 
 import { User } from '../types';
+import { BACKEND_URL } from './env';
 
-// Use environment variable with fallback
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
 const AUTH_TOKEN_KEY = 'authToken';
 const CURRENT_USER_KEY = 'currentUser';
 

@@ -1,5 +1,13 @@
+/**
+ * WhatsApp Service
+ * 
+ * Handles all WhatsApp-related functionality through the backend API
+ * The backend manages wppconnect-server for WhatsApp interactions
+ */
 
-import { MessageLog } from '../types';
+import { Message } from '../types';
+import { authService } from './authService';
+import { BACKEND_URL } from './env';
 
 export type WhatsAppProvider = 'meta' | 'venom';
 
@@ -9,10 +17,6 @@ export interface WhatsAppConfig {
   token?: string;
   bridgeUrl?: string;
 }
-
-// Backend API URL
-// Use environment variable with fallback
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
 
 // Get auth token from localStorage
 const getAuthToken = (): string | null => {
