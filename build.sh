@@ -5,15 +5,14 @@ set -o errexit  # Exit on error
 
 echo "🚀 Starting Shepherd AI Backend build..."
 
+# Upgrade pip, setuptools, and wheel first
+echo "⬆️ Upgrading build tools..."
+pip install --upgrade pip setuptools wheel
+
 # Navigate to backend directory
 cd "Agent File/backend"
 
 echo "📦 Installing Python dependencies..."
-pip install --upgrade pip
 pip install -r requirements.txt
-
-echo "🗄️ Running database migrations..."
-# Run your database setup if you have migrations
-# python -m alembic upgrade head
 
 echo "✅ Build complete!"
