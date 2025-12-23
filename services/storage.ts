@@ -1,5 +1,4 @@
-```typescript
-import { Contact, KnowledgeResource, Message, User, Campaign } from '../types';
+import { Contact, KnowledgeResource, MessageLog } from '../types';
 import { BACKEND_URL } from './env';
 
 // Get auth token
@@ -55,8 +54,8 @@ export const storage = {
     if (!token) return [];
 
     try {
-      const response = await fetch(`${ BACKEND_URL } /api/contacts`, {
-        headers: { 'Authorization': `Bearer ${ token } ` }
+      const response = await fetch(`${BACKEND_URL} /api/contacts`, {
+        headers: { 'Authorization': `Bearer ${token} ` }
       });
 
       if (!response.ok) {
@@ -64,7 +63,7 @@ export const storage = {
           localStorage.removeItem('authToken');
           return [];
         }
-        throw new Error(`HTTP ${ response.status } `);
+        throw new Error(`HTTP ${response.status} `);
       }
 
       const backendContacts = await response.json();
@@ -100,10 +99,10 @@ export const storage = {
     }
 
     try {
-      const response = await fetch(`${ BACKEND_URL } /api/contacts`, {
+      const response = await fetch(`${BACKEND_URL} /api/contacts`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${ token } `,
+          'Authorization': `Bearer ${token} `,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
@@ -137,10 +136,10 @@ export const storage = {
     if (!token) return false;
 
     try {
-      const response = await fetch(`${ BACKEND_URL } /api/contacts / ${ contact.id } `, {
+      const response = await fetch(`${BACKEND_URL} /api/contacts / ${contact.id} `, {
         method: 'PUT',
         headers: {
-          'Authorization': `Bearer ${ token } `,
+          'Authorization': `Bearer ${token} `,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
@@ -171,9 +170,9 @@ export const storage = {
     if (!token) return false;
 
     try {
-      const response = await fetch(`${ BACKEND_URL } /api/contacts / ${ contactId } `, {
+      const response = await fetch(`${BACKEND_URL} /api/contacts / ${contactId} `, {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${ token } ` }
+        headers: { 'Authorization': `Bearer ${token} ` }
       });
 
       if (!response.ok) {
@@ -195,8 +194,8 @@ export const storage = {
     if (!token) return [];
 
     try {
-      const response = await fetch(`${ BACKEND_URL } /api/knowledge`, {
-        headers: { 'Authorization': `Bearer ${ token } ` }
+      const response = await fetch(`${BACKEND_URL} /api/knowledge`, {
+        headers: { 'Authorization': `Bearer ${token} ` }
       });
 
       if (!response.ok) return [];
@@ -215,10 +214,10 @@ export const storage = {
     if (!token) return false;
 
     try {
-      const response = await fetch(`${ BACKEND_URL } /api/knowledge`, {
+      const response = await fetch(`${BACKEND_URL} /api/knowledge`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${ token } `,
+          'Authorization': `Bearer ${token} `,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
@@ -244,9 +243,9 @@ export const storage = {
     if (!token) return false;
 
     try {
-      const response = await fetch(`${ BACKEND_URL } /api/knowledge / ${ resourceId } `, {
+      const response = await fetch(`${BACKEND_URL} /api/knowledge / ${resourceId} `, {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${ token } ` }
+        headers: { 'Authorization': `Bearer ${token} ` }
       });
 
       if (!response.ok) return false;
@@ -266,8 +265,8 @@ export const storage = {
     if (!token) return [];
 
     try {
-      const response = await fetch(`${ BACKEND_URL } /api/messages`, {
-        headers: { 'Authorization': `Bearer ${ token } ` }
+      const response = await fetch(`${BACKEND_URL} /api/messages`, {
+        headers: { 'Authorization': `Bearer ${token} ` }
       });
 
       if (!response.ok) return [];
@@ -306,7 +305,7 @@ export const storage = {
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(backup, null, 2));
     const downloadAnchorNode = document.createElement('a');
     downloadAnchorNode.setAttribute("href", dataStr);
-    downloadAnchorNode.setAttribute("download", `shepherd_backup_${ new Date().toISOString().split('T')[0] }.json`);
+    downloadAnchorNode.setAttribute("download", `shepherd_backup_${new Date().toISOString().split('T')[0]}.json`);
     document.body.appendChild(downloadAnchorNode);
     downloadAnchorNode.click();
     downloadAnchorNode.remove();
