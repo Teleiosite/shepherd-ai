@@ -11,7 +11,8 @@ export interface WhatsAppConfig {
 }
 
 // Backend API URL
-const BACKEND_URL = 'http://localhost:8000';
+// Use environment variable with fallback
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
 
 // Get auth token from localStorage
 const getAuthToken = (): string | null => {

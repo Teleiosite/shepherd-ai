@@ -1,6 +1,7 @@
 import { Contact, KnowledgeResource, MessageLog } from '../types';
 
-const BACKEND_URL = 'http://localhost:8000';
+// Use environment variable with fallback
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
 
 // Get auth token
 const getAuthToken = (): string | null => {
