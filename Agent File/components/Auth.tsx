@@ -74,14 +74,18 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
         {/* Left Side - Branding & Illustration */}
         <div className="relative w-1/2 bg-white p-8 flex flex-col">
-          {/* Logo - Centered and Larger */}
+          {/* Logo - Centered, Larger with Pulse Animation */}
           <div className="flex items-center justify-center mb-6">
-            <img src={logoImage} alt="Shepherd AI" className="w-20 h-20" />
+            <img src={logoImage} alt="Shepherd AI" className="w-32 h-32 animate-pulse" />
           </div>
 
-          {/* Festive Illustration */}
+          {/* Festive Illustration with Float Animation */}
           <div className="flex-1 flex items-center justify-center">
-            <img src={shepherdSheepImage} alt="Shepherd with sheep" className="w-64 h-64 object-contain" />
+            <img
+              src={shepherdSheepImage}
+              alt="Shepherd with sheep"
+              className="w-64 h-64 object-contain animate-float"
+            />
           </div>
 
           {/* Footer */}
