@@ -1,23 +1,3 @@
-from pydantic_settings import BaseSettings
-from typing import Optional
-
-
-class Settings(BaseSettings):
-    """Application settings loaded from environment variables."""
-    
-    # Database
-    database_url: str
-    supabase_url: Optional[str] = None
-    supabase_key: Optional[str] = None
-    
-    # Authentication
-    secret_key: str
-    algorithm: str = "HS256"
-    access_token_expire_minutes: int = 30
-    
-    # AI
-    gemini_api_key: str
-    google_embedding_api_key: Optional[str] = None
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Optional
 
@@ -35,8 +15,8 @@ class Settings(BaseSettings):
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 30
     
-    # AI
-    gemini_api_key: str
+    # AI - Optional, users provide their own keys
+    gemini_api_key: Optional[str] = None
     google_embedding_api_key: Optional[str] = None
     
     # WhatsApp
