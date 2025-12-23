@@ -75,9 +75,9 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
         {/* Top/Left Side - Logo Showcase */}
         <div className="relative w-full md:w-1/2 bg-white p-6 md:p-8 flex flex-col justify-center items-center">
-          {/* Extra Large Centered Logo with Pulse Animation */}
+          {/* Extra Large Centered Logo with Float Animation */}
           <div className="flex items-center justify-center">
-            <img src={logoImage} alt="Shepherd AI" className="w-32 h-32 md:w-96 md:h-96 animate-pulse" />
+            <img src={logoImage} alt="Shepherd AI" className="w-32 h-32 md:w-96 md:h-96 animate-float" />
           </div>
 
           {/* Footer - Hidden on mobile */}
