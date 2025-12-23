@@ -1,4 +1,3 @@
-```typescript
 import './services/env';
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
@@ -12,7 +11,7 @@ if (!rootElement) {
 
 const root = createRoot(rootElement);
 root.render(
-  <React.StrictMode>
+  <StrictMode>
     <App />
-  </React.StrictMode>
+  </StrictMode>
 );
