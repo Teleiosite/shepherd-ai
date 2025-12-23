@@ -1,0 +1,16 @@
+{
+  "name": "shepherd-venom-bridge",
+  "version": "1.0.0",
+  "description": "Venom WhatsApp Bridge for Shepherd AI",
+  "main": "venom-bridge.cjs",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node venom-bridge.cjs"
+  },
+  "dependencies": {
+    "venom-bot": "^4.3.7",
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "ws": "^8.14.2"
+  }
+}
