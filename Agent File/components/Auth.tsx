@@ -70,31 +70,31 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
       <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-72 h-72 bg-green-500/10 rounded-full blur-3xl"></div>
 
       {/* Main Card */}
-      <div className="relative w-full max-w-5xl h-[480px] bg-white rounded-3xl shadow-2xl overflow-hidden flex">
+      <div className="relative w-full max-w-5xl md:h-[480px] bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col md:flex-row">
 
 
-        {/* Left Side - Logo Showcase */}
-        <div className="relative w-1/2 bg-white p-8 flex flex-col justify-center items-center">
+        {/* Top/Left Side - Logo Showcase */}
+        <div className="relative w-full md:w-1/2 bg-white p-6 md:p-8 flex flex-col justify-center items-center">
           {/* Extra Large Centered Logo with Pulse Animation */}
           <div className="flex items-center justify-center">
-            <img src={logoImage} alt="Shepherd AI" className="w-96 h-96 animate-pulse" />
+            <img src={logoImage} alt="Shepherd AI" className="w-32 h-32 md:w-96 md:h-96 animate-pulse" />
           </div>
 
-          {/* Footer */}
-          <div className="text-xs text-slate-400 mt-auto">
+          {/* Footer - Hidden on mobile */}
+          <div className="text-xs text-slate-400 mt-4 md:mt-auto hidden md:block">
             © 2025 Shepherd AI. All rights reserved.
           </div>
         </div>
 
-        {/* Organic Wave Divider */}
-        <div className="absolute top-0 left-1/2 h-full w-24 -ml-12 z-10">
+        {/* Organic Wave Divider - Hidden on mobile */}
+        <div className="hidden md:block absolute top-0 left-1/2 h-full w-24 -ml-12 z-10">
           <svg viewBox="0 0 100 700" className="h-full w-full" preserveAspectRatio="none">
             <path d="M0,0 Q50,175 0,350 T0,700 L100,700 L100,0 Z" fill="rgb(6 78 59)" />
           </svg>
         </div>
 
-        {/* Right Side - Login Form */}
-        <div className="w-1/2 bg-emerald-900 p-12 flex items-center justify-center relative">
+        {/* Bottom/Right Side - Login Form */}
+        <div className="w-full md:w-1/2 bg-emerald-900 p-6 md:p-12 flex items-center justify-center relative">
           <div className="w-full max-w-sm">
             {/* Header */}
             <h2 className="text-4xl font-bold text-white mb-2">
