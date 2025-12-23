@@ -198,3 +198,5 @@ uvicorn main:app --reload --port 8000
 npm run dev
 # Runs on http://localhost:5173
 ```
+#   B u i l d :   2 0 2 5 - 1 2 - 2 3   2 2 : 3 4  
+ 
