@@ -2,6 +2,7 @@
  * Environment configuration for the application.
  * This file enforces that required environment variables are set.
  * If VITE_BACKEND_URL is not defined, the build will fail with a clear error.
+ * Build: 2025-12-23 23:26 UTC
  */
 
 export const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
