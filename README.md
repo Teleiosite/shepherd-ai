@@ -1,576 +1,200 @@
-# 🐑 Shepherd AI
 
-> **AI-Powered Church Discipleship & Follow-up Platform**  
-> Automate pastoral care with intelligent WhatsApp messaging and 30-day discipleship tracking
+# Shepherd AI - Advanced Church Discipleship System
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![React](https://img.shields.io/badge/React-19.2-blue?logo=react)](https://react.dev/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.109-green?logo=fastapi)](https://fastapi.tiangolo.com/)
-[![Python](https://img.shields.io/badge/Python-3.11+-blue?logo=python)](https://www.python.org/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.8-blue?logo=typescript)](https://www.typescriptlang.org/)
-[![Live Demo](https://img.shields.io/badge/Demo-Live-success?logo=vercel)](https://shepherd-ai.vercel.app)
+Shepherd AI is a comprehensive, privacy-first CRM and automation tool designed for church follow-up. It acts as a digital pastoral assistant, tracking the spiritual journey of new converts and automating personal communication via WhatsApp.
 
 ---
 
-## 🌐 Live Demo
+## ✅ Current Achievements
 
-**Try it now:** [shepherd-ai.vercel.app](https://shepherd-ai.vercel.app)
+This project has evolved into a robust, client-side React application with the following capabilities:
 
-| Component | Platform | URL | Status |
-|-----------|----------|-----|--------|
-| **Frontend** | Vercel | [shepherd-ai.vercel.app](https://shepherd-ai.vercel.app) | 🟢 Live |
-| **Backend API** | Render | [shepherd-ai-backend.onrender.com](https://shepherd-ai-backend.onrender.com) | 🟢 Live |
-| **Database** | Supabase | PostgreSQL with pgvector | 🟢 Connected |
-| **Cost** | - | - | **$0/month** |
+1.  **Multi-Provider AI Engine**:
+    *   Native support for **Google Gemini** (Free Tier).
+    *   Integration with **OpenAI**, **DeepSeek**, **Groq** (Llama 3), and Custom OpenAI-compatible endpoints.
+    *   Users can switch providers instantly in Settings.
 
-**Note:** Backend uses free tier - first request may take 30-60 seconds (cold start).
+2.  **Advanced Contact Management**:
+    *   Bulk import contacts via Excel (`.xlsx`) or manual CSV text.
+    *   Dynamic categorization (New Convert, First Timer, Born Again, + Custom).
+    *   Instant search and filtering.
 
----
+3.  **Context-Aware Generation (RAG)**:
+    *   The AI doesn't just write generic text; it references your specific **Knowledge Base** (uploaded books, sermons, manuals).
+    *   It understands the user's spiritual journey stage (e.g., "Day 3" vs "Day 30").
 
-## 📖 Overview
+4.  **Smart Workflow Automation**:
+    *   Built-in logic tracks (Workflows) that automatically calculate which message a contact needs based on their join date.
+    *   Supports distinct tracks for New Converts vs. First Timers.
 
-Shepherd AI is a **multi-tenant SaaS platform** that helps churches nurture new converts and members through **AI-generated, personalized WhatsApp messages**. It combines CRM capabilities, workflow automation, and context-aware AI to streamline pastoral follow-up at scale.
+5.  **Comprehensive Scheduling**:
+    *   **Bulk Scheduling**: Generate and queue messages for 50+ people at once.
+    *   **Individual Scheduling**: Draft a specific message in Live Chat and set it for future delivery.
+    *   **Visual Queue**: Manage, edit, or cancel pending scheduled messages.
 
-### **✨ Key Features**
-
-- 🤖 **Multi-Provider AI** - Support for Google Gemini, OpenAI, DeepSeek, Groq, and custom endpoints
-- 📱 **Dual WhatsApp Delivery** - Free option (WPPConnect) or official Meta Cloud API
-- 📚 **Knowledge Base RAG** - AI reads your church's sermons/books for context-aware responses
-- 📅 **30-Day Workflows** - Automated spiritual journey tracking with timely messages
-- 👥 **Multi-Tenant Architecture** - Isolated data per organization
-- 💬 **Live Chat Interface** - 1-on-1 messaging with media support
-- 📊 **Campaign Scheduler** - Bulk message automation with smart workflows
-- 🖥️ **Desktop Bridge App** - Standalone Electron app for non-technical users
-
-### **🎨 Recent UI Updates (December 2023)**
-
-- ✨ **Redesigned Login Page**
-  - Minimalist design with centered, extra-large logo (384px × 384px)
-  - Smooth float animation for welcoming first impression
-  - New teal neural-network sheep logo matching design system
-  
-- 📱 **Mobile-First Responsiveness**
-  - Vertical stacking on mobile devices
-  - Adaptive logo sizing (128px mobile → 384px desktop)
-  - Optimized padding and spacing for all screen sizes
-  
-- 🎯 **Enhanced Branding**
-  - Updated favicon with new logo
-  - Consistent teal/forest green color scheme
-  - Custom CSS animations (float effect)
-  - Professional, modern aesthetic
+6.  **Data Sovereignty**:
+    *   All data resides in the browser's LocalStorage.
+    *   Full JSON Backup & Restore functionality ensures data portability.
 
 ---
 
-## 🏗️ Architecture
+## 📖 System Architecture & Page Guide
 
-### **Production Stack:**
+Here is how the different modules of Shepherd AI interconnect to create a seamless workflow:
 
+### 1. Dashboard (`/`)
+*   **Function**: The command center providing a bird's-eye view of ministry health.
+*   **Interconnections**:
+    *   Reads **Contacts** to show distribution charts (Pie Chart).
+    *   Reads **Message Logs** to show activity history (Bar Chart).
+    *   Reads **Resources** to show knowledge base stats.
+
+### 2. Contacts Manager (`/contacts`)
+*   **Function**: The CRM heart of the system. Add, edit, delete, or bulk import souls.
+*   **Interconnections**:
+    *   **Feeds Campaign Scheduler**: Contacts added here appear in the "Generate & Send" page.
+    *   **Feeds Live Chats**: You can search for these contacts in the chat interface.
+    *   **Auto-Generation**: When a contact is added, the system can trigger an immediate "Welcome Message" draft in the logs.
+
+### 3. Live Chats (`/chats`)
+*   **Function**: A 1-on-1 messaging interface tailored for pastoral care.
+*   **Key Features**:
+    *   **Chat History**: View the full timeline of AI-generated and manually sent messages.
+    *   **Rich Media**: Attach images to messages.
+    *   **Scheduling**: Click the *Calendar icon* to schedule a drafted message for later instead of sending immediately.
+*   **Interconnections**:
+    *   Updates the global **Message Log**, which reflects in the Dashboard.
+
+### 4. Knowledge Base (`/knowledge`)
+*   **Function**: The "Brain" of the AI. Upload PDF content, sermon notes, or books (manually or via Excel).
+*   **Interconnections**:
+    *   **Feeds the AI Service**: When generating messages in *Campaigns* or *Live Chats*, the AI reads these resources to answer spiritual questions or provide context-accurate encouragement.
+    *   *Example*: If you upload a sermon on "Faith", the AI can quote it when encouraging a discouraged member.
+
+### 5. Generate & Send (Campaign Scheduler) (`/campaigns`)
+*   **Function**: The automation engine. It has three distinct modes:
+    *   **Smart Workflows**: The system scans all contacts, checks their "Join Date", compares it to the "30-Day Discipleship Track", and suggests *exactly* what message they need today (e.g., "John is on Day 3, send the Prayer Check-in").
+    *   **Manual Draft**: Select specific groups (e.g., "All First Timers"), choose a goal (e.g., "Invite to Sunday Service"), and the AI bulk-writes unique messages for each.
+    *   **Scheduled Queue**: A table view of all messages waiting to be sent. You can "Send Now" or "Delete" them here.
+
+### 6. Settings (`/settings`)
+*   **Function**: Configuration hub.
+*   **Key Features**:
+    *   **Identity**: Set the AI's persona (e.g., "Pastor Michael") and Church Name.
+    *   **AI Provider**: Switch between Google Gemini, OpenAI, Groq, etc.
+    *   **Data Management**: Factory Reset or Restore from Backup.
+*   **Interconnections**:
+    *   These settings globally affect how the AI speaks and which API key is used throughout the app.
+
+---
+
+## 🏗️ Recommended Backend Architecture
+
+To achieve a production-grade system with data security, advanced AI, and reliable automation, Shepherd AI uses a specific **Hybrid Architecture**.
+
+This architecture solves the "Two Language Problem":
+1.  **Python** is best for AI and Logic.
+2.  **Node.js** is best for WhatsApp Automation (Venom-bot).
+
+### The Stack
+
+```mermaid
+graph TD
+    User((User))
+    
+    subgraph Frontend
+    UI[React / Vite App]
+    end
+    
+    subgraph "The Brain (Python)"
+    API[FastAPI Backend]
+    Logic[AI Logic & Prompts]
+    end
+    
+    subgraph "The Storage"
+    DB[(Supabase PostgreSQL)]
+    end
+    
+    subgraph "The Hands (Node.js)"
+    Bridge[Venom-Bridge Server]
+    Browser[Headless Chrome]
+    end
+    
+    User -->|Interacts| UI
+    UI <-->|JSON Data| API
+    API <-->|Read/Write| DB
+    API -->|Google GenAI SDK| AI_Cloud[Google Gemini]
+    API -->|Send Command| Bridge
+    Bridge -->|Controls| Browser
+    Browser -->|Network| WA[WhatsApp Servers]
 ```
-┌──────────────────────────────┐
-│  React Frontend (Vercel)     │  https://shepherd-ai.vercel.app
-│  TypeScript + Vite           │  
-└──────────────┬───────────────┘
-               │ REST API + JWT
-               ▼
-┌──────────────────────────────┐
-│  FastAPI Backend (Render)    │  https://shepherd-ai-backend.onrender.com
-│  Python 3.11 + PostgreSQL    │  Multi-tenant + RAG
-└──────────────┬───────────────┘
-               │
-          ┌────┴────┐
-          ▼         ▼
-┌──────────────┐  ┌─────────────────┐
-│ Supabase     │  │ WPPConnect      │
-│ PostgreSQL   │  │ Bridge (Local)  │
-│ + pgvector   │  │ (Port 3001)     │
-└──────────────┘  └─────┬───────────┘
-                        ▼
-                  📱 WhatsApp
-```
 
-**Deployment:** 100% free tier (Vercel + Render + Supabase)
+### Component Breakdown
+
+#### 1. The Frontend (React + Vite)
+*   **Role:** The User Interface.
+*   **Responsibility:** Displays contacts, dashboards, and chat logs. It contains **no business logic**.
+*   **Communication:** It talks *only* to the FastAPI Backend. It never touches the Database or WhatsApp directly.
+
+#### 2. The Brain (FastAPI - Python)
+*   **Role:** The Central Orchestrator.
+*   **Why Python?** Python is the native language of AI. Using FastAPI allows us to eventually integrate advanced frameworks like **LangChain** or **LlamaIndex** for smarter context retention.
+*   **Responsibility:** 
+    *   Validates user requests.
+    *   Generates AI content using Google Gemini.
+    *   Saves data to Supabase.
+    *   Decides when to send a message via the Node Bridge.
+
+#### 3. The Hands (Node.js - Venom Bridge)
+*   **Role:** The WhatsApp Actuator.
+*   **Why Node.js?** The library `venom-bot` is built on Node.js and Puppeteer. It is the most stable open-source solution for WhatsApp automation. Python alternatives (like Selenium) are often slower and more brittle for this specific task.
+*   **Responsibility:** It runs a small Express server (port 3001) that listens for commands like `{"phone": "123", "message": "hello"}` and executes them in a headless Chrome browser.
 
 ---
 
-## 🚀 Complete Setup Guide
+## 🛠 Tech Stack
 
-> **⚡ New to this?** Follow our [15-Minute Quick Start Guide](QUICKSTART.md) for step-by-step instructions with screenshots!
-
-### Prerequisites
-
-- **Node.js 18+** - [Download here](https://nodejs.org/)
-- **Python 3.11+** - [Download here](https://www.python.org/)
-- **Supabase Account** - [Sign up free](https://supabase.com/)
-- **WhatsApp Number** - For WPPConnect bridge
-- **Google Gemini API Key** - [Get free key](https://aistudio.google.com/)
+*   **Frontend**: React 19 (Hooks, Context API)
+*   **Styling**: Tailwind CSS (Responsive, Clean UI)
+*   **State Management**: React State + LocalStorage (Persistence)
+*   **AI Integration**: `@google/genai` SDK + Standard REST `fetch` for OpenAI/Groq compatibility.
+*   **Utilities**: `xlsx` (Excel processing), `recharts` (Analytics), `lucide-react` (Icons).
 
 ---
 
-### Step 1: Database Setup (Supabase)
+## 🚀 How to Run
 
-#### **1.1 Create Supabase Project**
+### Option A: Standard Frontend (Client-side only)
+1.  Clone the repository.
+2.  Open terminal and run:
+    ```bash
+    npm run dev
+    ```
+3.  Go to **Settings** -> **AI Provider Configuration**.
+4.  Enter your API Key (Get a free one from [Google AI Studio](https://aistudio.google.com/) or [Groq](https://console.groq.com/)).
+5.  Start adding contacts!
 
-1. Go to [supabase.com](https://supabase.com/) and sign in
-2. Click "New Project"
-3. Choose organization, project name, database password
-4. Select region closest to you
-5. Click "Create new project" (takes ~2 minutes)
+### Option B: Full Hybrid Stack (Recommended)
+You need **3 separate terminals** running simultaneously.
 
-#### **1.2 Run Database Migration**
-
-1. Once project is ready, go to **SQL Editor** in left sidebar
-2. Click **New Query**
-3. Copy the entire contents of `Agent File/backend/schema.sql`
-4. Paste into the editor
-5. Click **Run** or press `Ctrl+Enter`
-6. ✅ You should see success messages for all tables
-
-#### **1.3 Get Connection Details**
-
-1. Go to **Project Settings** → **Database**
-2. Copy these values (you'll need them next):
-   - **Connection String** (URI mode)
-   - Project URL
-   - Anon/Public key
-
----
-
-### Step 2: Backend Setup (FastAPI)
-
-#### **2.1 Install Python Dependencies**
-
+#### Terminal 1: The Bridge (Node.js)
 ```bash
-cd "Agent File/backend"
+node server/venom-bridge.js
+# Runs on http://localhost:3001
+```
 
-# Create virtual environment
+#### Terminal 2: The Backend (Python)
+```bash
+cd backend
 python -m venv venv
-
-# Activate it
-# Windows:
-venv\Scripts\activate
-# Mac/Linux:
-source venv/bin/activate
-
-# Install dependencies
+source venv/bin/activate  # or venv\Scripts\activate on Windows
 pip install -r requirements.txt
+uvicorn main:app --reload --port 8000
+# Runs on http://localhost:8000
 ```
 
-#### **2.2 Configure Environment Variables**
-
-Create `.env` file in `Agent File/backend/`:
-
+#### Terminal 3: The Frontend (React)
 ```bash
-# Copy the example file
-copy .env.example .env   # Windows
-cp .env.example .env     # Mac/Linux
-```
-
-Edit `.env` and fill in your values:
-
-```env
-# Database (from Supabase Step 1.3)
-DATABASE_URL=postgresql://postgres:[YOUR-PASSWORD]@db.[PROJECT-ID].supabase.co:5432/postgres
-SUPABASE_URL=https://[PROJECT-ID].supabase.co
-SUPABASE_KEY=your_supabase_anon_key_here
-
-# Authentication (generate a random secret)
-SECRET_KEY=your-random-secret-key-change-this
-ALGORITHM=HS256
-ACCESS_TOKEN_EXPIRE_MINUTES=30
-
-# AI (get free key from https://aistudio.google.com/)
-GEMINI_API_KEY=AIzaSy...your_gemini_key_here
-
-# App
-ENVIRONMENT=development
-FRONTEND_URL=http://localhost:5173
-```
-
-**Generate a secure SECRET_KEY:**
-```bash
-# Windows PowerShell:
--join ((65..90) + (97..122) + (48..57) | Get-Random -Count 32 | % {[char]$_})
-
-# Mac/Linux:
-openssl rand -hex 32
-```
-
-#### **2.3 Start Backend Server**
-
-```bash
-# Make sure you're in Agent File/backend with venv activated
-uvicorn app.main:app --reload --port 8000
-```
-
-**Expected output:**
-```
-INFO:     Uvicorn running on http://0.0.0.0:8000
-INFO:     Application startup complete.
-```
-
-**Test it:**
-- Open http://localhost:8000/health (should return `{"status":"healthy"}`)
-- Open http://localhost:8000/api/docs (interactive API documentation)
-
----
-
-### Step 3: WhatsApp Bridge Setup (WPPConnect)
-
-```bash
-cd wppconnect-bridge
-npm install
-node bridge.js
-```
-
-**What happens:**
-1. Chrome browser window opens automatically
-2. WhatsApp Web loads
-3. QR code appears in terminal AND browser
-4. Scan QR code with your phone:
-   - Open WhatsApp on phone
-   - Tap Menu (⋮) → **Linked Devices**
-   - Tap **Link a Device**
-   - Scan the QR code
-
-**Expected output:**
-```
-✅ WPPConnect Bot connected!
-🔓 Bridge Status: CONNECTED
-📡 REST: http://localhost:3001
-🔌 WebSocket: ws://localhost:3002
-```
-
-**Test it:**
-```bash
-curl http://localhost:3001/api/status
-# Should return: {"status":"connected","wsPort":3002}
-```
-
----
-
-### Step 4: Frontend Setup (React)
-
-```bash
-cd "Agent File"
-npm install
 npm run dev
+# Runs on http://localhost:5173
 ```
-
-**Expected output:**
-```
-VITE ready in 500 ms
-➜  Local:   http://localhost:5173/
-```
-
-**Open http://localhost:5173**
-
----
-
-### Step 5: First Login
-
-1. **Open http://localhost:5173**
-2. Click **"Create Account"**
-3. Fill in:
-   - **Name:** Your name
-   - **Email:** your.email@example.com
-   - **Password:** Choose a password
-   - **Church Name:** Your organization
-4. Click **Register**
-5. ✅ You're now logged in!
-
----
-
-### Final Checklist
-
-Verify all services are running:
-
-```
-✅ Frontend:  http://localhost:5173
-✅ Backend:   http://localhost:8000
-✅ Bridge:    http://localhost:3001
-✅ Supabase:  Database connected
-```
-
-**Test the integration:**
-1. Add a contact in the app
-2. Go to Live Chats
-3. Send a test WhatsApp message
-4. Check Supabase → Messages table → Should see the logged message ✅
-
----
-
-### Troubleshooting
-
-**Backend won't start:**
-- Check `.env` file exists and has DATABASE_URL
-- Verify Supabase database is running
-- Check if port 8000 is free: `netstat -ano | findstr :8000`
-
-**Bridge won't connect:**
-- Make sure WhatsApp Web works in your browser first
-- Check if port 3001 is free
-- Try deleting `tokens/` folder and re-scan QR
-
-**Frontend can't connect:**
-- Verify backend is running on port 8000
-- Check browser console for errors
-- Clear browser cache
-
----
-
-## 🌐 Production Deployment
-
-### **Current Deployment Status:**
-
-✅ **Frontend:** Deployed on Vercel  
-✅ **Backend:** Deployed on Render  
-✅ **Database:** Supabase PostgreSQL  
-✅ **Cost:** $0/month (100% free tier)
-
-### **Deployment Resources:**
-
-- 📖 [Deployment Guide](docs/DEPLOYMENT_GUIDE.md) - Production deployment walkthrough
-- 🛠️ [Render Troubleshooting Guide](RENDER_TROUBLESHOOTING_GUIDE.md) - Complete issue resolution documentation
-- 🗺️ [Implementation Roadmap](docs/IMPLEMENTATION_ROADMAP.md) - Features and development phases
-- 📊 [Codebase Analysis](docs/CODEBASE_ANALYSIS.md) - Technical architecture deep-dive
-
-### **Live URLs:**
-
-- 🌐 **Frontend:** https://shepherd-ai.vercel.app
-- 🔗 **Backend API:** https://shepherd-ai-backend.onrender.com
-- 📖 **API Docs:** https://shepherd-ai-backend.onrender.com/api/docs
-
----
-
-## 📚 Documentation
-
-| Document | Description |
-|----------|-------------|
-| [📊 Codebase Analysis](docs/CODEBASE_ANALYSIS.md) | Complete technical deep-dive (600+ lines) |
-| [🚀 Deployment Guide](docs/DEPLOYMENT_GUIDE.md) | Production deployment walkthrough |
-| [🛠️ Render Troubleshooting](RENDER_TROUBLESHOOTING_GUIDE.md) | **NEW:** Complete deployment debugging guide |
-| [🗺️ Implementation Roadmap](docs/IMPLEMENTATION_ROADMAP.md) | Development phases and priorities |
-| [🗄️ Supabase Setup](docs/SUPABASE_CONNECTION_GUIDE.md) | Database configuration |
-| [🖥️ Desktop App](shepherd-bridge-app/README.md) | Electron bridge app guide |
-
----
-
-## 🛠️ Tech Stack
-
-### **Frontend**
-- **Framework:** React 19 + TypeScript
-- **Build Tool:** Vite
-- **Routing:** React Router v7
-- **UI:** Tailwind CSS + Lucide Icons
-- **Charts:** Recharts
-- **State:** React Context + Hooks
-
-### **Backend**
-- **Framework:** FastAPI (Python)
-- **Database:** PostgreSQL + pgvector
-- **ORM:** SQLAlchemy
-- **Auth:** JWT (python-jose)
-- **AI:** Google Gemini SDK
-- **Scheduler:** APScheduler
-
-### **WhatsApp**
-- **WPPConnect:** Puppeteer-based automation (free)
-- **Meta Cloud API:** Official WhatsApp Business API
-
-### **Desktop App**
-- **Framework:** Electron 27
-- **Packaging:** electron-builder
-
----
-
-## 🗄️ Database Schema
-
-**Core Tables:**
-- `organizations` - Multi-tenant isolation
-- `users` - Authentication & roles
-- `contacts` - CRM (with `whatsapp_id` for @lid support)
-- `messages` - Message logs + scheduling
-- `knowledge_resources` - Books, sermons, manuals
-- `knowledge_embeddings` - Vector embeddings for RAG (pgvector)
-- `workflow_steps` - 30-day discipleship plans
-- `ai_configs` - Per-org AI provider settings
-
----
-
-## 🤖 AI Integration
-
-### **Multi-Provider Support**
-
-Switch between AI providers per organization:
-
-```typescript
-// Frontend: services/geminiService.ts
-const providers = {
-  gemini: 'Google Gemini (Free tier)',
-  openai: 'OpenAI GPT-4',
-  deepseek: 'DeepSeek (Low cost)',
-  groq: 'Groq (Fast inference)',
-  custom: 'OpenAI-compatible endpoint'
-}
-```
-
-### **RAG (Retrieval Augmented Generation)**
-
-Upload church-specific content → AI generates contextually relevant messages:
-
-```python
-# Backend: services/rag_service.py
-# 1. Chunk documents
-# 2. Generate embeddings (Google embedding-001)
-# 3. Store in pgvector
-# 4. Similarity search on message generation
-```
-
----
-
-## 📅 Workflow Automation
-
-**Example: 30-Day New Convert Journey**
-
-| Day | Action | Method |
-|-----|--------|--------|
-| 1 | Welcome + Assurance | Personal voice note |
-| 3 | Prayer check-in | Text message |
-| 7 | Sunday service invite | WhatsApp |
-| 10 | Evangelism observation | Group invite |
-| 14 | First discipleship class | Calendar event |
-| 20 | Baptism preparation | Phone call |
-| 24 | House fellowship join | Introduction |
-| 30 | Ministry involvement | Assessment |
-
-**Auto-Scheduler** runs every 5 minutes, checks contacts' join dates, and generates appropriate messages.
-
----
-
-## 📱 WhatsApp Integration
-
-### **Dual Delivery Methods**
-
-#### **Option 1: WPPConnect (Free)**
-- Uses Puppeteer + WhatsApp Web
-- No API costs
-- Supports `@lid` privacy-first contacts
-- Risk: Unofficial (potential ban)
-
-#### **Option 2: Meta Cloud API (Official)**
-- Official WhatsApp Business API
-- Pay-per-conversation
-- Enterprise features (templates, buttons)
-- No ban risk
-
-**Switch per organization** via Settings → WhatsApp Config
-
----
-
-## 🔐 Security
-
-- ✅ **JWT Authentication** - 30-minute token expiry
-- ✅ **Organization Isolation** - Multi-tenant data separation
-- ✅ **Password Hashing** - bcrypt
-- ✅ **SQL Injection Prevention** - SQLAlchemy ORM
-- ✅ **CORS Protection** - Configured per environment
-
----
-
-## 🎯 Use Cases
-
-### **For Churches**
-- Automate new convert follow-up
-- Track first-timers' spiritual journey
-- Send personalized encouragement
-- Bulk messaging for events
-- Knowledge base for workers
-
-### **For Ministries**
-- Discipleship programs
-- Bible study groups
-- Prayer request tracking
-- Volunteer coordination
-
----
-
-## 📈 Roadmap
-
-### **Phase 1: Core Platform** ✅
-- [x] Multi-user authentication
-- [x] Contact management
-- [x] WhatsApp messaging
-- [x] AI generation
-- [x] Knowledge base RAG
-- [x] 30-day workflows
-
-### **Phase 2: Enhancements** 🚧
-- [ ] Message templates library
-- [ ] Advanced analytics
-- [ ] SMS delivery (Twilio)
-- [ ] Mobile app (React Native)
-- [ ] Email follow-up
-
-### **Phase 3: Enterprise** 🔮
-- [ ] Voice note generation
-- [ ] WhatsApp chatbot
-- [ ] Calendar integration
-- [ ] Donation tracking
-- [ ] White-label option
-
----
-
-## 🤝 Contributing
-
-Contributions welcome! Please:
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit changes (`git commit -m 'Add AmazingFeature'`)
-4. Push to branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
----
-
-## 📄 License
-
-This project is licensed under the **MIT License** - see [LICENSE](LICENSE) file for details.
-
----
-
-## 👨‍💻 Author
-Abomide Oluwaseye
-Frontend Engineer | Product Architect| AI Agents & Automation
-AWS Certified Cloud Practitioner | AI-Accelerated Development
-Email: abosey23@gmail.com
-LinkedIn: www.linkedin.com/in/abomide-oluwaseye
-Portfolio/GitHub: https://github.com/Teleiosite?tab=repositories
-
-
-**Built with AI pair programming** 🤖  
-*Proving what's possible when human creativity meets AI assistance*
-
----
-
-## 🙏 Acknowledgments
-
-- [WPPConnect Team](https://github.com/wppconnect-team/wppconnect) - WhatsApp automation
-- [FastAPI](https://fastapi.tiangolo.com/) - Backend framework
-- [Supabase](https://supabase.com/) - Database infrastructure
-- [Google Gemini](https://ai.google.dev/) - AI generation
-- All churches testing this platform
-
----
-
-## 📞 Support
-
-- 📖 [Documentation](docs/CODEBASE_ANALYSIS.md)
-- 🐛 [Report Bug](https://github.com/yourusername/shepherd-ai/issues)
-- 💡 [Request Feature](https://github.com/yourusername/shepherd-ai/issues)
-
----
-
-**⭐ If this project helps your church, please star it on GitHub!**
-
-Made with ❤️ for the Kingdom
