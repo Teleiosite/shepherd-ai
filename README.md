@@ -8,6 +8,22 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.109-green?logo=fastapi)](https://fastapi.tiangolo.com/)
 [![Python](https://img.shields.io/badge/Python-3.11+-blue?logo=python)](https://www.python.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8-blue?logo=typescript)](https://www.typescriptlang.org/)
+[![Live Demo](https://img.shields.io/badge/Demo-Live-success?logo=vercel)](https://shepherd-ai.vercel.app)
+
+---
+
+## 🌐 Live Demo
+
+**Try it now:** [shepherd-ai.vercel.app](https://shepherd-ai.vercel.app)
+
+| Component | Platform | URL | Status |
+|-----------|----------|-----|--------|
+| **Frontend** | Vercel | [shepherd-ai.vercel.app](https://shepherd-ai.vercel.app) | 🟢 Live |
+| **Backend API** | Render | [shepherd-ai-backend.onrender.com](https://shepherd-ai-backend.onrender.com) | 🟢 Live |
+| **Database** | Supabase | PostgreSQL with pgvector | 🟢 Connected |
+| **Cost** | - | - | **$0/month** |
+
+**Note:** Backend uses free tier - first request may take 30-60 seconds (cold start).
 
 ---
 
@@ -48,28 +64,32 @@ Shepherd AI is a **multi-tenant SaaS platform** that helps churches nurture new 
 
 ## 🏗️ Architecture
 
+### **Production Stack:**
+
 ```
-┌─────────────────────┐
-│  React Frontend     │  TypeScript + Vite
-│  (Port 5173)        │  
-└──────────┬──────────┘
-           │ REST API + JWT
-           ▼
-┌─────────────────────┐
-│  FastAPI Backend    │  Python + PostgreSQL
-│  (Port 8000)        │  Multi-tenant + RAG
-└──────────┬──────────┘
-           │
-      ┌────┴────┐
-      ▼         ▼
-┌──────────┐  ┌────────────┐
-│ Supabase │  │ WPPConnect │
-│ Database │  │ Bridge     │
-└──────────┘  │ (Port 3001)│
-              └─────┬──────┘
-                    ▼
-              📱 WhatsApp
+┌──────────────────────────────┐
+│  React Frontend (Vercel)     │  https://shepherd-ai.vercel.app
+│  TypeScript + Vite           │  
+└──────────────┬───────────────┘
+               │ REST API + JWT
+               ▼
+┌──────────────────────────────┐
+│  FastAPI Backend (Render)    │  https://shepherd-ai-backend.onrender.com
+│  Python 3.11 + PostgreSQL    │  Multi-tenant + RAG
+└──────────────┬───────────────┘
+               │
+          ┌────┴────┐
+          ▼         ▼
+┌──────────────┐  ┌─────────────────┐
+│ Supabase     │  │ WPPConnect      │
+│ PostgreSQL   │  │ Bridge (Local)  │
+│ + pgvector   │  │ (Port 3001)     │
+└──────────────┘  └─────┬───────────┘
+                        ▼
+                  📱 WhatsApp
 ```
+
+**Deployment:** 100% free tier (Vercel + Render + Supabase)
 
 ---
 
@@ -299,11 +319,27 @@ Verify all services are running:
 
 ---
 
-### What's Next?
+## 🌐 Production Deployment
 
-- 📖 Read [DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md) for production deployment
-- 🗺️ See [IMPLEMENTATION_ROADMAP.md](docs/IMPLEMENTATION_ROADMAP.md) for features
-- 📊 Review [CODEBASE_ANALYSIS.md](docs/CODEBASE_ANALYSIS.md) for architecture
+### **Current Deployment Status:**
+
+✅ **Frontend:** Deployed on Vercel  
+✅ **Backend:** Deployed on Render  
+✅ **Database:** Supabase PostgreSQL  
+✅ **Cost:** $0/month (100% free tier)
+
+### **Deployment Resources:**
+
+- 📖 [Deployment Guide](docs/DEPLOYMENT_GUIDE.md) - Production deployment walkthrough
+- 🛠️ [Render Troubleshooting Guide](RENDER_TROUBLESHOOTING_GUIDE.md) - Complete issue resolution documentation
+- 🗺️ [Implementation Roadmap](docs/IMPLEMENTATION_ROADMAP.md) - Features and development phases
+- 📊 [Codebase Analysis](docs/CODEBASE_ANALYSIS.md) - Technical architecture deep-dive
+
+### **Live URLs:**
+
+- 🌐 **Frontend:** https://shepherd-ai.vercel.app
+- 🔗 **Backend API:** https://shepherd-ai-backend.onrender.com
+- 📖 **API Docs:** https://shepherd-ai-backend.onrender.com/api/docs
 
 ---
 
@@ -313,6 +349,7 @@ Verify all services are running:
 |----------|-------------|
 | [📊 Codebase Analysis](docs/CODEBASE_ANALYSIS.md) | Complete technical deep-dive (600+ lines) |
 | [🚀 Deployment Guide](docs/DEPLOYMENT_GUIDE.md) | Production deployment walkthrough |
+| [🛠️ Render Troubleshooting](RENDER_TROUBLESHOOTING_GUIDE.md) | **NEW:** Complete deployment debugging guide |
 | [🗺️ Implementation Roadmap](docs/IMPLEMENTATION_ROADMAP.md) | Development phases and priorities |
 | [🗄️ Supabase Setup](docs/SUPABASE_CONNECTION_GUIDE.md) | Database configuration |
 | [🖥️ Desktop App](shepherd-bridge-app/README.md) | Electron bridge app guide |
