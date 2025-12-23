@@ -1,7 +1,0 @@
-{
-    "buildCommand": "cd 'Agent File' && npm run build",
-    "outputDirectory": "Agent File/dist",
-    "installCommand": "cd 'Agent File' && npm install",
-    "framework": null,
-    "devCommand": "cd 'Agent File' && npm run dev"
-}
