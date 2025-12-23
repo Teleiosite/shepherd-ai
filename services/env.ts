@@ -5,6 +5,8 @@
  * Build: 2025-12-23 23:26 UTC
  */
 
+console.log('BUILD CHECK - VITE_BACKEND_URL:', import.meta.env.VITE_BACKEND_URL);
+
 export const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
 
 if (!BACKEND_URL) {
