@@ -407,18 +407,28 @@ const Settings: React.FC<SettingsProps> = ({
                         <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
                             <p className="text-sm text-slate-700 font-medium mb-2">📖 Quick Setup:</p>
                             <ol className="text-sm text-slate-600 space-y-1 ml-4 list-decimal">
-                                <li>Download <strong>Shepherd AI Bridge</strong> desktop app</li>
-                                <li>Enter your connection code above</li>
-                                <li>Scan WhatsApp QR code</li>
-                                <li>Done! Messages will auto-send via your phone</li>
+                                <li>Click <strong>"Download Bridge App"</strong> below</li>
+                                <li>Install and run the desktop app</li>
+                                <li>Copy your connection code above and enter it in the app</li>
+                                <li>Scan WhatsApp QR code in the app</li>
+                                <li>Done! Messages will auto-send via your WhatsApp</li>
                             </ol>
-                            <button
-                                className="mt-3 text-sm text-purple-600 hover:text-purple-700 font-medium flex items-center gap-1"
-                                onClick={() => window.open('https://github.com/your-repo/releases', '_blank')}
-                            >
-                                <Download size={16} />
-                                Download Bridge App
-                            </button>
+                            <div className="mt-4 flex flex-col sm:flex-row gap-2">
+                                <button
+                                    className="flex-1 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white px-4 py-3 rounded-full font-bold flex items-center justify-center gap-2 transition-all shadow-lg hover:shadow-xl"
+                                    onClick={() => window.open('https://github.com/Teleiosite/shepherd-ai/releases/latest/download/Shepherd-AI-Bridge-Setup.exe', '_blank')}
+                                >
+                                    <Download size={20} />
+                                    Download Bridge App (Windows)
+                                </button>
+                                <button
+                                    className="bg-white border-2 border-purple-500 text-purple-600 px-4 py-3 rounded-full font-medium flex items-center justify-center gap-2 hover:bg-purple-50 transition-all"
+                                    onClick={() => window.open('https://github.com/Teleiosite/shepherd-ai/releases', '_blank')}
+                                >
+                                    <HelpCircle size={18} />
+                                    All Releases
+                                </button>
+                            </div>
                         </div>
                     </div>
 

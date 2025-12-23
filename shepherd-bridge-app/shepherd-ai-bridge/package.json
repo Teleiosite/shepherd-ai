@@ -14,17 +14,19 @@
   "build": {
     "appId": "com.teleiosite.shepherd-bridge",
     "productName": "Shepherd AI Bridge",
+    "forceCodeSigning": false,
     "win": {
-      "target": ["nsis", "portable"],
-      "icon": "build/icon.ico"
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "build/icon.png"
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
-      "createStartMenuShortcut": true,
-      "installerIcon": "build/icon.ico",
-      "uninstallerIcon": "build/icon.ico"
+      "createStartMenuShortcut": true
     },
     "files": [
       "**/*",
@@ -42,12 +44,14 @@
   },
   "dependencies": {
     "@wppconnect-team/wppconnect": "^1.28.0",
+    "cors": "^2.8.5",
     "express": "^4.18.2",
-    "ws": "^8.14.2",
-    "cors": "^2.8.5"
+    "ws": "^8.14.2"
   },
   "devDependencies": {
     "electron": "^27.0.0",
-    "electron-builder": "^24.6.4"
+    "electron-builder": "^24.6.4",
+    "png-to-ico": "^3.0.1",
+    "sharp": "^0.34.5"
   }
 }

@@ -196,14 +196,15 @@ const ContactsManager: React.FC<ContactsManagerProps> = ({ contacts, setContacts
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <h2 className="text-3xl font-bold text-slate-800">Contacts</h2>
+      <div className="flex justify-between items-center gap-4">
+        <h2 className="text-2xl md:text-3xl font-bold text-slate-800">Contacts</h2>
         <button
           onClick={() => setShowAddModal(true)}
-          className="bg-teal-500 hover:bg-teal-600 text-white px-6 py-3 rounded-full flex items-center gap-2 transition-all duration-200 text-base font-medium shadow-sm hover:shadow-md"
+          className="bg-teal-500 hover:bg-teal-600 text-white px-6 py-3 rounded-full flex items-center gap-2 transition-all duration-200 text-base font-medium shadow-sm hover:shadow-md shrink-0"
         >
           <Plus size={20} />
-          Add Contacts
+          <span className="hidden sm:inline">Add Contacts</span>
+          <span className="sm:hidden">Add</span>
         </button>
       </div>
 
@@ -228,7 +229,8 @@ const ContactsManager: React.FC<ContactsManagerProps> = ({ contacts, setContacts
         </select>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+      {/* Desktop Table View */}
+      <div className="hidden md:block bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
         <table className="w-full text-left">
           <thead className="bg-slate-50 border-b border-slate-100">
             <tr>
@@ -268,29 +270,79 @@ const ContactsManager: React.FC<ContactsManagerProps> = ({ contacts, setContacts
                     ) : (
                       <div className="flex items-center gap-2 text-green-600">
                         <CheckCircle size={16} />
-                        <span className="text-sm font-medium">Journey Completed</span>
+                        <span className="text-sm font-medium">Complete</span>
                       </div>
                     )}
                   </td>
-                  <td className="px-6 py-5">
+                  <td className="px-6 py-5 text-sm text-slate-600">
                     {nextStepInfo ? (
-                      <div className="flex items-center gap-2 text-slate-600">
-                        <Calendar size={16} className="text-blue-500" />
-                        <span className="text-sm font-medium">{getRelativeTime(nextStepInfo.dueDate)}</span>
+                      <div className="flex items-center gap-2">
+                        <Calendar size={14} />
+                        {new Date(nextStepInfo.dueDate).toLocaleDateString()}
                       </div>
-                    ) : (
-                      <span className="text-slate-400 text-sm">-</span>
-                    )}
+                    ) : '-'}
                   </td>
                   <td className="px-6 py-5 text-right">
-                    <button onClick={() => handleEdit(contact)} className="text-slate-400 hover:text-primary-600 mr-3"><Edit2 size={18} /></button>
-                    <button onClick={() => handleDelete(contact.id)} className="text-slate-400 hover:text-red-600"><Trash2 size={18} /></button>
+                    <button onClick={() => setEditingContact(contact)} className="text-slate-400 hover:text-slate-600 mr-4">
+                      <Edit2 size={18} />
+                    </button>
+                    <button onClick={() => handleDelete(contact.id)} className="text-slate-400 hover:text-red-600">
+                      <Trash2 size={18} />
+                    </button>
                   </td>
                 </tr>
               );
             })}
           </tbody>
         </table>
+      </div>
+
+      {/* Mobile Card View */}
+      <div className="md:hidden space-y-3">
+        {filteredContacts.map(contact => {
+          const nextStepInfo = getNextWorkflowStep(contact.joinDate, contact.category);
+
+          return (
+            <div key={contact.id} className="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
+              <div className="flex items-start gap-3 mb-3">
+                <div className="w-12 h-12 rounded-full bg-primary-100 text-primary-600 flex items-center justify-center font-bold text-lg shrink-0">
+                  {contact.name.charAt(0)}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h3 className="font-semibold text-slate-800 text-base">{contact.name}</h3>
+                  <p className="text-sm text-slate-500">{contact.phone}</p>
+                  <span className="inline-block mt-1 px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-700">
+                    {contact.category}
+                  </span>
+                </div>
+                <div className="flex gap-2 shrink-0">
+                  <button onClick={() => setEditingContact(contact)} className="text-slate-400 hover:text-slate-600 p-1">
+                    <Edit2 size={18} />
+                  </button>
+                  <button onClick={() => handleDelete(contact.id)} className="text-slate-400 hover:text-red-600 p-1">
+                    <Trash2 size={18} />
+                  </button>
+                </div>
+              </div>
+
+              {nextStepInfo ? (
+                <div className="bg-slate-50 p-3 rounded-lg">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="bg-orange-100 text-orange-700 text-xs font-bold px-2 py-0.5 rounded">Day {nextStepInfo.step.day}</span>
+                    <Calendar size={14} className="text-slate-500" />
+                    <span className="text-xs text-slate-600">{new Date(nextStepInfo.dueDate).toLocaleDateString()}</span>
+                  </div>
+                  <p className="text-sm text-slate-700 font-medium">{nextStepInfo.step.title}</p>
+                </div>
+              ) : (
+                <div className="bg-green-50 p-3 rounded-lg flex items-center gap-2 text-green-600">
+                  <CheckCircle size={16} />
+                  <span className="text-sm font-medium">Workflow Complete</span>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
 
       {showAddModal && (

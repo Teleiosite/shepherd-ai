@@ -134,26 +134,26 @@ const initialResources: KnowledgeResource[] = [
 const MobileBottomNav = () => {
   const location = useLocation();
   return (
-    <nav className="md:hidden fixed bottom-0 left-0 right-0 z-30 h-16 flex items-center justify-around px-4 shadow-lg" style={{ backgroundColor: 'var(--forest-500)', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
-      <Link to="/" className={`flex flex-col items-center justify-center w-16 h-12 rounded-lg transition-all ${location.pathname === '/' ? 'bg-teal-500' : ''}`}>
-        <LayoutDashboard size={20} className={location.pathname === '/' ? 'text-white' : 'text-teal-100'} />
-        <span className={`text-[10px] mt-0.5 ${location.pathname === '/' ? 'text-white font-medium' : 'text-teal-100'}`}>Dashboard</span>
+    <nav className="md:hidden fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-gray-200 h-16 flex items-center justify-around px-4 shadow-lg">
+      <Link to="/" className={`flex flex-col items-center justify-center w-16 h-12 rounded-lg transition-all`}>
+        <LayoutDashboard size={20} className={location.pathname === '/' ? 'text-teal-500' : 'text-gray-500'} />
+        <span className={`text-[10px] mt-0.5 font-medium ${location.pathname === '/' ? 'text-teal-500' : 'text-gray-600'}`}>Dashboard</span>
       </Link>
-      <Link to="/contacts" className={`flex flex-col items-center justify-center w-16 h-12 rounded-lg transition-all ${location.pathname === '/contacts' ? 'bg-teal-500' : ''}`}>
-        <Users size={20} className={location.pathname === '/contacts' ? 'text-white' : 'text-teal-100'} />
-        <span className={`text-[10px] mt-0.5 ${location.pathname === '/contacts' ? 'text-white font-medium' : 'text-teal-100'}`}>Contacts</span>
+      <Link to="/contacts" className={`flex flex-col items-center justify-center w-16 h-12 rounded-lg transition-all`}>
+        <Users size={20} className={location.pathname === '/contacts' ? 'text-teal-500' : 'text-gray-500'} />
+        <span className={`text-[10px] mt-0.5 font-medium ${location.pathname === '/contacts' ? 'text-teal-500' : 'text-gray-600'}`}>Contacts</span>
       </Link>
-      <Link to="/chats" className={`flex flex-col items-center justify-center w-16 h-12 rounded-lg transition-all ${location.pathname === '/chats' ? 'bg-teal-500' : ''}`}>
-        <MessageCircle size={20} className={location.pathname === '/chats' ? 'text-white' : 'text-teal-100'} />
-        <span className={`text-[10px] mt-0.5 ${location.pathname === '/chats' ? 'text-white font-medium' : 'text-teal-100'}`}>Chats</span>
+      <Link to="/campaigns" className={`flex flex-col items-center justify-center w-16 h-12 rounded-lg transition-all`}>
+        <Send size={20} className={location.pathname === '/campaigns' ? 'text-teal-500' : 'text-gray-500'} />
+        <span className={`text-[10px] mt-0.5 font-medium ${location.pathname === '/campaigns' ? 'text-teal-500' : 'text-gray-600'}`}>Send</span>
       </Link>
-      <Link to="/campaigns" className={`flex flex-col items-center justify-center w-16 h-12 rounded-lg transition-all ${location.pathname === '/campaigns' ? 'bg-teal-500' : ''}`}>
-        <Send size={20} className={location.pathname === '/campaigns' ? 'text-white' : 'text-teal-100'} />
-        <span className={`text-[10px] mt-0.5 ${location.pathname === '/campaigns' ? 'text-white font-medium' : 'text-teal-100'}`}>Send</span>
+      <Link to="/chats" className={`flex flex-col items-center justify-center w-16 h-12 rounded-lg transition-all`}>
+        <MessageCircle size={20} className={location.pathname === '/chats' ? 'text-teal-500' : 'text-gray-500'} />
+        <span className={`text-[10px] mt-0.5 font-medium ${location.pathname === '/chats' ? 'text-teal-500' : 'text-gray-600'}`}>Chats</span>
       </Link>
-      <Link to="/settings" className={`flex flex-col items-center justify-center w-16 h-12 rounded-lg transition-all ${location.pathname === '/settings' ? 'bg-teal-500' : ''}`}>
-        <SettingsIcon size={20} className={location.pathname === '/settings' ? 'text-white' : 'text-teal-100'} />
-        <span className={`text-[10px] mt-0.5 ${location.pathname === '/settings' ? 'text-white font-medium' : 'text-teal-100'}`}>Settings</span>
+      <Link to="/settings" className={`flex flex-col items-center justify-center w-16 h-12 rounded-lg transition-all`}>
+        <SettingsIcon size={20} className={location.pathname === '/settings' ? 'text-teal-500' : 'text-gray-500'} />
+        <span className={`text-[10px] mt-0.5 font-medium ${location.pathname === '/settings' ? 'text-teal-500' : 'text-gray-600'}`}>Settings</span>
       </Link>
     </nav>
   );
@@ -796,23 +796,23 @@ function App() {
 
         {/* Main Content */}
         <main className="flex-1 overflow-auto relative">
-          <header className="h-16 md:h-20 bg-white flex items-center px-4 md:px-8 justify-between sticky top-0 z-10" style={{ borderBottom: '1px solid var(--gray-200)' }}>
+          <header className="h-16 md:h-20 flex items-center px-4 md:px-8 justify-between sticky top-0 z-10" style={{ backgroundColor: 'var(--forest-500)', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
             <div className="flex items-center gap-3">
               {/* Mobile Menu Button */}
               <button
                 onClick={() => setSidebarOpen(true)}
-                className="md:hidden p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                className="md:hidden p-2 hover:bg-white/10 rounded-lg transition-colors"
               >
-                <Menu size={24} className="text-gray-700" />
+                <Menu size={24} className="text-white" />
               </button>
-              <h2 className="text-lg md:text-xl font-semibold text-slate-700 truncate">{organizationName} Follow-up System</h2>
+              <h2 className="text-lg md:text-xl font-semibold text-white truncate">Shepherd AI</h2>
             </div>
             <div className="flex items-center gap-4">
               <div className="hidden md:flex flex-col items-end mr-2">
-                <span className="text-sm font-bold text-slate-800">{user?.name || 'User'}</span>
-                <span className="text-xs text-slate-500">{user?.email || ''}</span>
+                <span className="text-sm font-bold text-white">{user?.name || 'User'}</span>
+                <span className="text-xs text-teal-100">{user?.email || ''}</span>
               </div>
-              <div className="bg-primary-100 text-primary-700 px-4 py-1.5 rounded-full text-base font-medium">
+              <div className="bg-teal-400 text-forest-900 px-4 py-1.5 rounded-full text-sm md:text-base font-medium">
                 {contacts.length} Souls
               </div>
               <div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center text-slate-600 font-bold text-lg">{(user?.name || 'U').charAt(0).toUpperCase()}</div>

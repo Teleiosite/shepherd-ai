@@ -247,18 +247,23 @@ const CampaignScheduler: React.FC<CampaignSchedulerProps> = ({ contacts, resourc
     const today = new Date().toISOString().split('T')[0];
 
     return (
-        <div className="flex flex-col h-[calc(100vh-140px)] relative">
+        <div className="flex flex-col min-h-screen md:h-[calc(100vh-140px)] relative">
             {/* Top Bar */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 shrink-0 bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
-                <div className="flex bg-slate-100 p-1.5 rounded-lg w-fit">
-                    <button onClick={() => setActiveTab('smart')} className={`px-5 py-2.5 rounded-md text-base font-medium transition-colors flex items-center gap-2 ${activeTab === 'smart' ? 'bg-white text-primary-700 shadow-sm' : 'text-slate-600 hover:text-slate-800'}`}>
-                        <Zap size={18} /> Smart Workflows
+                <div className="flex bg-slate-100 p-1 rounded-lg w-full md:w-fit overflow-x-auto">
+                    <button onClick={() => setActiveTab('smart')} className={`px-3 md:px-5 py-2 md:py-2.5 rounded-md text-sm md:text-base font-medium transition-colors flex items-center gap-1 md:gap-2 whitespace-nowrap ${activeTab === 'smart' ? 'bg-white text-primary-700 shadow-sm' : 'text-slate-600 hover:text-slate-800'}`}>
+                        <Zap size={16} className="md:w-[18px] md:h-[18px]" />
+                        <span className="hidden sm:inline">Smart Workflows</span>
+                        <span className="sm:hidden">Smart</span>
                     </button>
-                    <button onClick={() => setActiveTab('create')} className={`px-5 py-2.5 rounded-md text-base font-medium transition-colors ${activeTab === 'create' ? 'bg-white text-primary-700 shadow-sm' : 'text-slate-600 hover:text-slate-800'}`}>
-                        Manual Draft
+                    <button onClick={() => setActiveTab('create')} className={`px-3 md:px-5 py-2 md:py-2.5 rounded-md text-sm md:text-base font-medium transition-colors whitespace-nowrap ${activeTab === 'create' ? 'bg-white text-primary-700 shadow-sm' : 'text-slate-600 hover:text-slate-800'}`}>
+                        <span className="hidden sm:inline">Manual Draft</span>
+                        <span className="sm:hidden">Draft</span>
                     </button>
-                    <button onClick={() => setActiveTab('scheduled')} className={`px-5 py-2.5 rounded-md text-base font-medium transition-colors flex items-center gap-2 ${activeTab === 'scheduled' ? 'bg-white text-primary-700 shadow-sm' : 'text-slate-600 hover:text-slate-800'}`}>
-                        Scheduled <span className="bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full text-sm">{scheduledMessages.length}</span>
+                    <button onClick={() => setActiveTab('scheduled')} className={`px-3 md:px-5 py-2 md:py-2.5 rounded-md text-sm md:text-base font-medium transition-colors flex items-center gap-1 md:gap-2 whitespace-nowrap ${activeTab === 'scheduled' ? 'bg-white text-primary-700 shadow-sm' : 'text-slate-600 hover:text-slate-800'}`}>
+                        <span className="hidden sm:inline">Scheduled</span>
+                        <span className="sm:hidden">Sched</span>
+                        <span className="bg-slate-200 text-slate-600 px-1.5 md:px-2 py-0.5 rounded-full text-xs md:text-sm">{scheduledMessages.length}</span>
                     </button>
                 </div>
                 {activeTab === 'create' && selectedContactIds.size > 0 && (
@@ -303,10 +308,10 @@ const CampaignScheduler: React.FC<CampaignSchedulerProps> = ({ contacts, resourc
                                         </div>
                                         <div>
                                             <h3 className="font-bold text-lg text-slate-800">{contact.name}</h3>
-                                            <div className="flex items-center gap-2 text-base">
+                                            <div className="flex flex-wrap items-center gap-2 text-sm md:text-base">
                                                 <span className="text-slate-500">{contact.category}</span>
                                                 <span className="text-slate-300">•</span>
-                                                <span className="text-orange-600 font-medium whitespace-nowrap">Day {step.day}: {step.title}</span>
+                                                <span className="text-orange-600 font-medium">{`Day ${step.day}: ${step.title}`}</span>
                                             </div>
                                         </div>
                                     </div>
@@ -315,8 +320,8 @@ const CampaignScheduler: React.FC<CampaignSchedulerProps> = ({ contacts, resourc
                                         {generatedDrafts[contact.id] ? (
                                             <div className="relative group">
                                                 <textarea
-                                                    className="w-full text-base bg-white border border-slate-300 rounded-lg p-3 focus:ring-1 focus:ring-primary-500"
-                                                    rows={3}
+                                                    className="w-full text-sm md:text-base bg-white border-2 border-teal-400 rounded-2xl p-4 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all"
+                                                    rows={6}
                                                     value={generatedDrafts[contact.id]}
                                                     onChange={(e) => setGeneratedDrafts({ ...generatedDrafts, [contact.id]: e.target.value })}
                                                 />
@@ -338,9 +343,9 @@ const CampaignScheduler: React.FC<CampaignSchedulerProps> = ({ contacts, resourc
                                                 </div>
                                             </div>
                                         ) : (
-                                            <p className="text-sm text-slate-400 italic bg-slate-100 p-4 rounded-lg text-center md:text-left border border-slate-200">
+                                            <div className="text-sm md:text-base text-slate-400 italic bg-slate-50 p-6 md:p-8 rounded-2xl text-center border-2 border-dashed border-slate-300 min-h-[150px] flex items-center justify-center">
                                                 Waiting for generation...
-                                            </p>
+                                            </div>
                                         )}
                                     </div>
 
@@ -361,23 +366,25 @@ const CampaignScheduler: React.FC<CampaignSchedulerProps> = ({ contacts, resourc
 
             {/* Manual Draft Tab */}
             {activeTab === 'create' && (
-                <div className="grid grid-cols-4 gap-6 flex-1 overflow-hidden min-h-0">
-                    <div className="col-span-1 bg-white rounded-xl shadow-sm border border-slate-100 flex flex-col overflow-hidden h-full">
+                <div className="flex flex-col md:grid md:grid-cols-4 gap-4 md:gap-6 flex-1 md:overflow-hidden md:min-h-0">
+                    <div className="md:col-span-1 bg-white rounded-xl shadow-sm border border-slate-100 flex flex-col overflow-hidden h-full max-h-[60vh] md:max-h-full">
                         <div className="p-4 border-b border-slate-100 bg-slate-50 shrink-0">
-                            <h3 className="font-semibold text-slate-800 mb-2 text-base">Select Recipients</h3>
+                            <h3 className="font-semibold text-slate-800 mb-3 text-sm md:text-base">Select Recipients</h3>
                             <select
-                                className="w-full text-sm border border-slate-300 rounded-lg p-2 mb-3"
+                                className="w-full text-sm border-2 border-teal-400 rounded-3xl px-4 py-2.5 mb-3 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all bg-white"
                                 value={filterCategory}
                                 onChange={(e) => setFilterCategory(e.target.value)}
                             >
                                 <option value="All">All Categories</option>
                                 {categories.map(c => <option key={c} value={c}>{c}</option>)}
                             </select>
-                            <div className="flex items-center gap-2 justify-between">
-                                <button onClick={toggleAll} className="text-sm font-medium text-primary-600 hover:underline">
+                            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:justify-between">
+                                <button onClick={toggleAll} className="text-sm font-semibold text-teal-600 hover:text-teal-700">
                                     {selectedContactIds.size === filteredContacts.length ? 'Deselect All' : 'Select All'}
                                 </button>
-                                <span className="text-sm text-slate-500">{selectedContactIds.size} selected</span>
+                                <span className="text-xs sm:text-sm text-slate-600 font-medium">
+                                    {selectedContactIds.size} of {filteredContacts.length} selected
+                                </span>
                             </div>
                         </div>
                         <div className="overflow-y-auto flex-1 p-3 space-y-2">
@@ -389,8 +396,8 @@ const CampaignScheduler: React.FC<CampaignSchedulerProps> = ({ contacts, resourc
                                             {isSelected ? <CheckSquare size={20} /> : <Square size={20} />}
                                         </div>
                                         <div className="flex-1 min-w-0">
-                                            <p className={`font-medium text-base truncate ${isSelected ? 'text-primary-800' : 'text-slate-800'}`}>{contact.name}</p>
-                                            <p className="text-sm text-slate-500 truncate">{contact.category}</p>
+                                            <p className={`font-medium text-sm md:text-base ${isSelected ? 'text-primary-800' : 'text-slate-800'}`}>{contact.name}</p>
+                                            <p className="text-xs md:text-sm text-slate-500">{contact.category}</p>
                                         </div>
                                         {generatedDrafts[contact.id] && <div className="w-2.5 h-2.5 rounded-full bg-green-500" title="Draft generated"></div>}
                                     </div>
@@ -400,13 +407,13 @@ const CampaignScheduler: React.FC<CampaignSchedulerProps> = ({ contacts, resourc
                         </div>
                     </div>
 
-                    <div className="col-span-3 flex flex-col gap-4 overflow-hidden h-full">
+                    <div className="md:col-span-3 flex flex-col gap-4 overflow-hidden h-full">
                         {selectedContactIds.size > 0 ? (
                             <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 shrink-0">
-                                <div className="flex gap-4 items-center">
-                                    <div className="flex-1 flex items-center gap-3">
-                                        <label className="text-sm font-bold text-slate-500 uppercase whitespace-nowrap">Goal:</label>
-                                        <select className="flex-1 border border-slate-300 rounded-lg px-4 h-11 text-base focus:ring-1 focus:ring-primary-500" value={promptGoal} onChange={(e) => setPromptGoal(e.target.value)}>
+                                <div className="flex flex-col md:flex-row gap-3 md:gap-4 md:items-center">
+                                    <div className="flex-1 flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3">
+                                        <label className="text-xs md:text-sm font-bold text-slate-500 uppercase whitespace-nowrap">Goal:</label>
+                                        <select className="w-full sm:flex-1 border-2 border-teal-400 rounded-3xl px-4 py-2.5 text-sm md:text-base focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all" value={promptGoal} onChange={(e) => setPromptGoal(e.target.value)}>
                                             <option value="Day 1 Welcome Message">Day 1: Welcome & Assurance</option>
                                             <option value="Day 3 Check-in">Day 3: How is it going? (Check-in)</option>
                                             <option value="Week 1 Invitation">Week 1: Invite to Next Steps/Class</option>
@@ -415,7 +422,7 @@ const CampaignScheduler: React.FC<CampaignSchedulerProps> = ({ contacts, resourc
                                             <option value="General Encouragement">General Encouragement</option>
                                         </select>
                                     </div>
-                                    <button onClick={() => handleGenerate(contacts.filter(c => selectedContactIds.has(c.id)))} disabled={isGenerating} className="h-11 px-6 bg-slate-800 hover:bg-slate-900 text-white rounded-lg flex items-center justify-center gap-2 transition-colors disabled:opacity-50 text-base font-medium whitespace-nowrap min-w-[140px]">
+                                    <button onClick={() => handleGenerate(contacts.filter(c => selectedContactIds.has(c.id)))} disabled={isGenerating} className="w-full md:w-auto h-11 px-6 bg-slate-800 hover:bg-slate-900 text-white rounded-full flex items-center justify-center gap-2 transition-colors disabled:opacity-50 text-sm md:text-base font-medium whitespace-nowrap">
                                         {isGenerating ? <RefreshCw className="animate-spin" size={18} /> : <RefreshCw size={18} />}
                                         {isGenerating ? 'Thinking...' : `Generate`}
                                     </button>
@@ -460,13 +467,15 @@ const CampaignScheduler: React.FC<CampaignSchedulerProps> = ({ contacts, resourc
                                     })}
                                 </div>
                                 <div className="p-4 bg-white border-t border-slate-200 shadow-lg z-10 space-y-3 shrink-0">
-                                    <div className="flex gap-4">
-                                        <button onClick={() => openScheduleModal('bulk')} disabled={Object.keys(generatedDrafts).length === 0} className="flex-1 bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 px-6 py-3 rounded-lg flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm transition-colors text-base font-medium">
-                                            <Calendar size={20} /> Schedule All
+                                    <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
+                                        <button onClick={() => openScheduleModal('bulk')} disabled={Object.keys(generatedDrafts).length === 0} className="flex-1 bg-white border-2 border-slate-300 text-slate-700 hover:bg-slate-50 px-6 py-3 rounded-full flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm transition-colors text-sm md:text-base font-medium">
+                                            <Calendar size={18} className="md:w-5 md:h-5" />
+                                            <span className="hidden sm:inline">Schedule All</span>
+                                            <span className="sm:hidden">Schedule</span>
                                         </button>
-                                        <button onClick={handleBulkSendNow} disabled={Object.keys(generatedDrafts).length === 0 || isSending} className="flex-1 bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm transition-colors text-base font-bold">
-                                            {isSending ? <Loader2 className="animate-spin" size={20} /> : <Send size={20} />}
-                                            {isSending ? 'Sending via WhatsApp...' : 'Send All Now'}
+                                        <button onClick={handleBulkSendNow} disabled={Object.keys(generatedDrafts).length === 0 || isSending} className="flex-1 bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-full flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm transition-colors text-sm md:text-base font-bold">
+                                            {isSending ? <Loader2 className="animate-spin" size={18} /> : <Send size={18} className="md:w-5 md:h-5" />}
+                                            {isSending ? 'Sending...' : 'Send All Now'}
                                         </button>
                                     </div>
                                 </div>

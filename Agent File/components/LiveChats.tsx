@@ -416,7 +416,7 @@ const LiveChats: React.FC<LiveChatsProps> = ({ contacts, logs, setLogs }) => {
                   return (
                     <div key={msg.id} className={`flex ${isOutbound ? 'justify-end' : 'justify-start'} group`}>
                       <div className={`relative max-w-[85%] md:max-w-[60%] px-4 py-2 shadow-sm text-sm md:text-base ${isOutbound
-                        ? 'bg-primary-600 text-white rounded-l-2xl rounded-tr-2xl rounded-br-none'
+                        ? 'bg-teal-500 text-white rounded-l-2xl rounded-tr-2xl rounded-br-none'
                         : 'bg-white text-slate-800 border border-slate-100 rounded-r-2xl rounded-tl-2xl rounded-bl-none'
                         }`}>
 
