@@ -1,0 +1,45 @@
+# Vercel ignores
+node_modules
+.env.local
+.env*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build outputs
+dist
+.next
+out
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Large directories
+Agent File/node_modules
+Page Component/node_modules
+shepherd-bridge-app/node_modules
+wppconnect-bridge/node_modules
+server/node_modules
+
+# Backend (deployed separately)
+Agent File/backend
+backend
+
+# Electron app (not for web deployment)
+shepherd-bridge-app/dist
+shepherd-bridge-app/node_modules
+
+# Documentation
+*.md
+docs
+
+# Git
+.git
+.gitignore

@@ -26,3 +26,12 @@ dist-ssr
 # Token files (browser sessions)
 tokens/
 */tokens/
+
+# Environment variables (never commit these!)
+.env
+.env.local
+.env.production
+.env.*.local
+!.env.example
+
+.vercel
