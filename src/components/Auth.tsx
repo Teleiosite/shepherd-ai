@@ -70,7 +70,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
       <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-72 h-72 bg-green-500/10 rounded-full blur-3xl"></div>
 
       {/* Main Card */}
-      <div className="relative w-full max-w-5xl md:h-[700px] bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col md:flex-row">
+      <div className="relative w-full max-w-5xl md:h-[580px] max-h-[90vh] bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col md:flex-row">
 
 
         {/* Top/Left Side - Logo Showcase */}
