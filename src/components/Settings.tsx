@@ -418,7 +418,9 @@ const Settings: React.FC<SettingsProps> = ({
                             <div className="mt-4 flex flex-col sm:flex-row gap-2">
                                 <button
                                     className="flex-1 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white px-4 py-3 rounded-full font-bold flex items-center justify-center gap-2 transition-all shadow-lg hover:shadow-xl"
-                                    onClick={() => window.open('https://github.com/Teleiosite/shepherd-ai/releases/tag/v1.0.0', '_blank')}
+                                    onClick={() => {
+                                        window.location.href = 'https://github.com/Teleiosite/shepherd-ai/releases/download/v1.0.0/Shepherd-AI-Bridge-Setup.exe';
+                                    }}
                                 >
                                     <Download size={20} />
                                     Download Bridge App (Windows)

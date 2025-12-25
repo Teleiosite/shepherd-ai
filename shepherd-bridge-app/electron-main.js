@@ -5,7 +5,7 @@ const axios = require('axios');
 let mainWindow;
 let tray;
 let bridgeServer;
-const BACKEND_URL = 'http://127.0.0.1:8000'; // Local development backend (IPv4)
+const BACKEND_URL = 'https://shepherd-ai-backend.onrender.com'; // Production backend
 
 function createWindow() {
     mainWindow = new BrowserWindow({
