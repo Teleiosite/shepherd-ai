@@ -1,0 +1,75 @@
+name: Build and Release Bridge App
+
+on:
+  push:
+    tags:
+      - 'v*' # Trigger on version tags like v1.0.0
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        working-directory: ./shepherd-bridge-app
+        run: npm ci
+
+      - name: Build Windows App
+        working-directory: ./shepherd-bridge-app
+        run: npm run build:win
+
+      - name: Get version from package.json
+        id: package-version
+        working-directory: ./shepherd-bridge-app
+        run: |
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          echo "VERSION=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ steps.package-version.outputs.VERSION }}
+          release_name: Shepherd AI Bridge v${{ steps.package-version.outputs.VERSION }}
+          draft: false
+          prerelease: false
+          body: |
+            ## Shepherd AI WhatsApp Bridge v${{ steps.package-version.outputs.VERSION }}
+            
+            ### Installation
+            1. Download `Shepherd-AI-Bridge-Setup.exe` below
+            2. Run the installer
+            3. Launch Shepherd AI Bridge
+            4. Enter your connection code from the web dashboard
+            5. Scan WhatsApp QR code
+            
+            ### What's New
+            - Official release of Shepherd AI Bridge
+            - WhatsApp integration via WPPConnect
+            - Real-time message synchronization
+            - Desktop notifications
+            
+            ### System Requirements
+            - Windows 10/11 (64-bit)
+            - Active WhatsApp account
+
+      - name: Upload Release Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./shepherd-bridge-app/dist/Shepherd AI Bridge Setup ${{ steps.package-version.outputs.VERSION }}.exe
+          asset_name: Shepherd-AI-Bridge-Setup.exe
+          asset_content_type: application/octet-stream
