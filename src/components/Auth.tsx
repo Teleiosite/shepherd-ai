@@ -2,9 +2,9 @@
 import React, { useState } from 'react';
 import { authService } from '../services/authService';
 import { User, Lock, Mail, ArrowRight, Building2, AlertCircle, CheckCircle, ArrowLeft } from 'lucide-react';
-import logoImage from './logo.png';
-import illustrationImage from './illustration.png';
-import shepherdSheepImage from './shepherd-sheep.png';
+import logoImage from '../logo.png';
+import illustrationImage from '../illustration.png';
+import shepherdSheepImage from '../shepherd-sheep.png';
 
 interface AuthProps {
   onLogin: () => void;
@@ -70,7 +70,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
       <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-72 h-72 bg-green-500/10 rounded-full blur-3xl"></div>
 
       {/* Main Card */}
-      <div className="relative w-full max-w-5xl md:h-[650px] bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col md:flex-row">
+      <div className="relative w-full max-w-5xl md:h-[700px] bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col md:flex-row">
 
 
         {/* Top/Left Side - Logo Showcase */}
@@ -97,12 +97,12 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         <div className="w-full md:w-1/2 bg-emerald-900 p-6 md:p-12 flex items-center justify-center relative">
           <div className="w-full max-w-sm">
             {/* Header */}
-            <h2 className="text-3xl font-bold text-white mb-2">
+            <h2 className="text-2xl font-bold text-white mb-1">
               {view === 'login' && 'Welcome Back'}
               {view === 'register' && 'Create Account'}
               {view === 'forgot-password' && 'Reset Password'}
             </h2>
-            <p className="text-emerald-200 text-sm mb-6">
+            <p className="text-emerald-200 text-xs mb-5">
               {view === 'login' && 'Sign in to access your dashboard'}
               {view === 'register' && 'Start your journey with us'}
               {view === 'forgot-password' && 'Enter your email to reset password'}
@@ -130,7 +130,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                     required
                     type="text"
                     placeholder="Full Name"
-                    className="w-full px-6 py-4 bg-emerald-800/50 border border-emerald-700/50 text-white placeholder-emerald-300/50 rounded-full focus:outline-none focus:ring-2 focus:ring-teal-400"
+                    className="w-full px-6 py-3 bg-emerald-800/50 border border-emerald-700/50 text-white placeholder-emerald-300/50 rounded-full focus:outline-none focus:ring-2 focus:ring-teal-400"
                     value={formData.name}
                     onChange={e => setFormData({ ...formData, name: e.target.value })}
                   />
@@ -138,7 +138,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                     required
                     type="text"
                     placeholder="Church / Ministry Name"
-                    className="w-full px-6 py-4 bg-emerald-800/50 border border-emerald-700/50 text-white placeholder-emerald-300/50 rounded-full focus:outline-none focus:ring-2 focus:ring-teal-400"
+                    className="w-full px-6 py-3 bg-emerald-800/50 border border-emerald-700/50 text-white placeholder-emerald-300/50 rounded-full focus:outline-none focus:ring-2 focus:ring-teal-400"
                     value={formData.churchName}
                     onChange={e => setFormData({ ...formData, churchName: e.target.value })}
                   />
@@ -149,7 +149,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                 required
                 type="email"
                 placeholder="Enter your email"
-                className="w-full px-6 py-4 bg-emerald-800/50 border border-emerald-700/50 text-white placeholder-emerald-300/50 rounded-full focus:outline-none focus:ring-2 focus:ring-teal-400"
+                className="w-full px-6 py-3 bg-emerald-800/50 border border-emerald-700/50 text-white placeholder-emerald-300/50 rounded-full focus:outline-none focus:ring-2 focus:ring-teal-400"
                 value={formData.email}
                 onChange={e => setFormData({ ...formData, email: e.target.value })}
               />
@@ -160,7 +160,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                     required
                     type="password"
                     placeholder="Enter your password"
-                    className="w-full px-6 py-4 bg-emerald-800/50 border border-emerald-700/50 text-white placeholder-emerald-300/50 rounded-full focus:outline-none focus:ring-2 focus:ring-teal-400"
+                    className="w-full px-6 py-3 bg-emerald-800/50 border border-emerald-700/50 text-white placeholder-emerald-300/50 rounded-full focus:outline-none focus:ring-2 focus:ring-teal-400"
                     value={formData.password}
                     onChange={e => setFormData({ ...formData, password: e.target.value })}
                   />
@@ -186,7 +186,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
               <button
                 disabled={loading}
                 type="submit"
-                className="w-full bg-teal-500 hover:bg-teal-400 text-white font-bold py-4 rounded-full transition-all transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
+                className="w-full bg-teal-500 hover:bg-teal-400 text-white font-bold py-3 rounded-full transition-all transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
               >
                 {loading ? 'Processing...' : (
                   <>

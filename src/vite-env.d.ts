@@ -1,6 +1,5 @@
 /// <reference types="vite/client" />
 
-// Declare image modules
 declare module '*.png' {
     const value: string;
     export default value;
@@ -22,11 +21,6 @@ declare module '*.svg' {
 }
 
 declare module '*.gif' {
-    const value: string;
-    export default value;
-}
-
-declare module '*.webp' {
     const value: string;
     export default value;
 }
