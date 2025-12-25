@@ -415,20 +415,27 @@ const Settings: React.FC<SettingsProps> = ({
                                 <li>Scan WhatsApp QR code in the app</li>
                                 <li>Done! Messages will auto-send via your WhatsApp</li>
                             </ol>
-                            <div className="mt-4 flex flex-col gap-3">
-                                <div className="bg-amber-50 border-2 border-amber-200 rounded-xl p-4">
-                                    <p className="text-sm font-bold text-amber-800 mb-1">🚧 Bridge App Coming Soon</p>
-                                    <p className="text-xs text-amber-700">
-                                        The desktop bridge app is currently under development.
-                                        For now, please use the <strong>Meta Cloud API</strong> option below for WhatsApp integration.
-                                    </p>
-                                </div>
+                            <div className="mt-4 flex flex-col sm:flex-row gap-2">
                                 <button
-                                    className="bg-gray-100 border-2 border-gray-300 text-gray-500 px-4 py-3 rounded-full font-medium cursor-not-allowed flex items-center justify-center gap-2"
-                                    disabled
+                                    className="flex-1 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white px-4 py-3 rounded-full font-bold flex items-center justify-center gap-2 transition-all shadow-lg hover:shadow-xl"
+                                    onClick={() => {
+                                        const link = document.createElement('a');
+                                        link.href = 'https://github.com/Teleiosite/shepherd-ai/releases/latest/download/Shepherd-AI-Bridge-Setup.exe';
+                                        link.download = 'Shepherd-AI-Bridge-Setup.exe';
+                                        document.body.appendChild(link);
+                                        link.click();
+                                        document.body.removeChild(link);
+                                    }}
                                 >
-                                    <Download size={18} />
-                                    Bridge App (In Development)
+                                    <Download size={20} />
+                                    Download Bridge App (Windows)
+                                </button>
+                                <button
+                                    className="bg-white border-2 border-purple-500 text-purple-600 px-4 py-3 rounded-full font-medium flex items-center justify-center gap-2 hover:bg-purple-50 transition-all"
+                                    onClick={() => window.open('https://github.com/Teleiosite/shepherd-ai/releases', '_blank')}
+                                >
+                                    <HelpCircle size={18} />
+                                    All Releases
                                 </button>
                             </div>
                         </div>
