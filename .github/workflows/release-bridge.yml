@@ -3,8 +3,8 @@ name: Build and Release Bridge App
 on:
   push:
     tags:
-      - 'v*' # Trigger on version tags like v1.0.0
-  workflow_dispatch: # Allow manual trigger
+      - 'v*'
+  workflow_dispatch:
 
 jobs:
   release:
@@ -19,16 +19,37 @@ jobs:
         with:
           node-version: '18'
 
+      - name: Setup Python (for native modules)
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
       - name: Install dependencies
         working-directory: ./shepherd-bridge-app
-        run: npm ci
+        run: |
+          npm install --legacy-peer-deps
+        continue-on-error: false
 
       - name: Build Windows App
         working-directory: ./shepherd-bridge-app
         run: npm run build:win
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Get version from package.json
-        id: package-version
+      - name: List dist folder
+        working-directory: ./shepherd-bridge-app
+        run: dir dist
+
+      - name: Find .exe file
+        id: find-exe
+        working-directory: ./shepherd-bridge-app/dist
+        run: |
+          $exeFile = Get-ChildItem -Filter "*.exe" | Select-Object -First 1
+          echo "EXE_NAME=$($exeFile.Name)" >> $env:GITHUB_OUTPUT
+          echo "Found: $($exeFile.Name)"
+
+      - name: Get version
+        id: version
         working-directory: ./shepherd-bridge-app
         run: |
           $version = (Get-Content package.json | ConvertFrom-Json).version
@@ -36,40 +57,32 @@ jobs:
 
       - name: Create Release
         id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: softprops/action-gh-release@v1
         with:
-          tag_name: v${{ steps.package-version.outputs.VERSION }}
-          release_name: Shepherd AI Bridge v${{ steps.package-version.outputs.VERSION }}
+          tag_name: ${{ github.ref_name }}
+          name: Shepherd AI Bridge v${{ steps.version.outputs.VERSION }}
           draft: false
           prerelease: false
           body: |
-            ## Shepherd AI WhatsApp Bridge v${{ steps.package-version.outputs.VERSION }}
+            ## Shepherd AI WhatsApp Bridge v${{ steps.version.outputs.VERSION }}
             
             ### Installation
-            1. Download `Shepherd-AI-Bridge-Setup.exe` below
+            1. Download `Shepherd-AI-Bridge-Setup.exe`
             2. Run the installer
-            3. Launch Shepherd AI Bridge
-            4. Enter your connection code from the web dashboard
-            5. Scan WhatsApp QR code
+            3. Launch the app and enter your connection code
+            4. Scan WhatsApp QR code
             
-            ### What's New
-            - Official release of Shepherd AI Bridge
+            ### Features
             - WhatsApp integration via WPPConnect
-            - Real-time message synchronization
+            - Real-time message sync
             - Desktop notifications
-            
-            ### System Requirements
-            - Windows 10/11 (64-bit)
-            - Active WhatsApp account
-
-      - name: Upload Release Asset
-        uses: actions/upload-release-asset@v1
+          files: |
+            ./shepherd-bridge-app/dist/${{ steps.find-exe.outputs.EXE_NAME }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./shepherd-bridge-app/dist/Shepherd AI Bridge Setup ${{ steps.package-version.outputs.VERSION }}.exe
-          asset_name: Shepherd-AI-Bridge-Setup.exe
-          asset_content_type: application/octet-stream
+
+      - name: Rename asset
+        if: success()
+        run: |
+          echo "Release created successfully!"
+          echo "Download will be available as the .exe file uploaded"
