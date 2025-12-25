@@ -13,13 +13,10 @@
         "appId": "com.shepherdai.bridge",
         "productName": "Shepherd AI Bridge",
         "win": {
-            "target": "nsis",
-            "icon": "assets/icon.ico",
-            "sign": null
+            "target": "nsis"
         },
         "mac": {
-            "target": "dmg",
-            "icon": "assets/icon.icns"
+            "target": "dmg"
         },
         "files": [
             "electron-main.js",
