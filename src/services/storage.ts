@@ -54,8 +54,8 @@ export const storage = {
     if (!token) return [];
 
     try {
-      const response = await fetch(`${BACKEND_URL} /api/contacts`, {
-        headers: { 'Authorization': `Bearer ${token} ` }
+      const response = await fetch(`${BACKEND_URL}/api/contacts`, {
+        headers: { 'Authorization': `Bearer ${token}` }
       });
 
       if (!response.ok) {
@@ -99,10 +99,10 @@ export const storage = {
     }
 
     try {
-      const response = await fetch(`${BACKEND_URL} /api/contacts`, {
+      const response = await fetch(`${BACKEND_URL}/api/contacts`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${token} `,
+          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
@@ -136,10 +136,10 @@ export const storage = {
     if (!token) return false;
 
     try {
-      const response = await fetch(`${BACKEND_URL} /api/contacts / ${contact.id} `, {
+      const response = await fetch(`${BACKEND_URL}/api/contacts/${contact.id}`, {
         method: 'PUT',
         headers: {
-          'Authorization': `Bearer ${token} `,
+          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
@@ -170,9 +170,9 @@ export const storage = {
     if (!token) return false;
 
     try {
-      const response = await fetch(`${BACKEND_URL} /api/contacts / ${contactId} `, {
+      const response = await fetch(`${BACKEND_URL}/api/contacts/${contactId}`, {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token} ` }
+        headers: { 'Authorization': `Bearer ${token}` }
       });
 
       if (!response.ok) {
@@ -194,8 +194,8 @@ export const storage = {
     if (!token) return [];
 
     try {
-      const response = await fetch(`${BACKEND_URL} /api/knowledge`, {
-        headers: { 'Authorization': `Bearer ${token} ` }
+      const response = await fetch(`${BACKEND_URL}/api/knowledge`, {
+        headers: { 'Authorization': `Bearer ${token}` }
       });
 
       if (!response.ok) return [];
@@ -214,10 +214,10 @@ export const storage = {
     if (!token) return false;
 
     try {
-      const response = await fetch(`${BACKEND_URL} /api/knowledge`, {
+      const response = await fetch(`${BACKEND_URL}/api/knowledge`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${token} `,
+          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
@@ -243,9 +243,9 @@ export const storage = {
     if (!token) return false;
 
     try {
-      const response = await fetch(`${BACKEND_URL} /api/knowledge / ${resourceId} `, {
+      const response = await fetch(`${BACKEND_URL}/api/knowledge/${resourceId}`, {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token} ` }
+        headers: { 'Authorization': `Bearer ${token}` }
       });
 
       if (!response.ok) return false;
@@ -265,8 +265,8 @@ export const storage = {
     if (!token) return [];
 
     try {
-      const response = await fetch(`${BACKEND_URL} /api/messages`, {
-        headers: { 'Authorization': `Bearer ${token} ` }
+      const response = await fetch(`${BACKEND_URL}/api/messages`, {
+        headers: { 'Authorization': `Bearer ${token}` }
       });
 
       if (!response.ok) return [];
