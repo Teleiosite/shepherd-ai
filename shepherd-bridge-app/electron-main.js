@@ -78,11 +78,16 @@ function createTray() {
 
 ipcMain.handle('connect-bridge', async (event, connectionCode) => {
     try {
+        console.log('🔗 Attempting to connect to:', BACKEND_URL);
+        console.log('📝 Connection code:', connectionCode);
+
         // Register with backend
         const response = await axios.post(`${BACKEND_URL}/api/bridge/register`, {
             code: connectionCode,
             bridge_url: 'http://localhost:3001'
         });
+
+        console.log('✅ Backend response:', response.data);
 
         if (response.data.success) {
             // Start the bridge server
@@ -99,10 +104,14 @@ ipcMain.handle('connect-bridge', async (event, connectionCode) => {
             };
         }
     } catch (error) {
-        console.error('Connection error:', error);
+        console.error('❌ Connection error FULL:', error);
+        console.error('❌ Error message:', error.message);
+        console.error('❌ Error response:', error.response?.data);
+        console.error('❌ Error status:', error.response?.status);
+
         return {
             success: false,
-            message: error.response?.data?.detail || 'Failed to connect to backend'
+            message: `Connection failed: ${error.message}. Check console for details.`
         };
     }
 });
