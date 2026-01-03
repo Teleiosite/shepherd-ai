@@ -141,8 +141,8 @@ ipcMain.handle('stop-bridge', async () => {
 
 function startBridgeServer() {
     // Import and start the bridge server
-    const bridgeCore = require('./bridge-core');
-    bridgeServer = bridgeCore.start();
+    // bridge-core.js starts automatically when required
+    require('./bridge-core');
 
     // Send status updates to UI
     mainWindow.webContents.send('bridge-status', { status: 'starting' });
