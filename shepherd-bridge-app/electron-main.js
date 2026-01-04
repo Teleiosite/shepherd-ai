@@ -93,6 +93,13 @@ ipcMain.handle('connect-bridge', async (event, connectionCode) => {
             // Start the bridge server
             startBridgeServer();
 
+            // Start message polling
+            const polling = require('./bridge-polling');
+            setTimeout(() =\u003e {
+                polling.startPolling(connectionCode);
+                console.log('🔄 Message polling started');
+            }, 3000); // Wait 3 seconds for WhatsApp to connect
+
             return {
                 success: true,
                 message: 'Connected successfully! Scan QR code with WhatsApp.'

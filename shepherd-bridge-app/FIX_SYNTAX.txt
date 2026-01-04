@@ -1,0 +1,10 @@
+// QUICK FIX for electron-main.js line 98
+// The setTimeout arrow function got escaped during edit
+// 
+// FIND this line (around line 98):
+//     setTimeout(() =\\u003e {
+//
+// REPLACE with:
+//     setTimeout(() => {
+//
+// That's it! Just fix the arrow function syntax.
