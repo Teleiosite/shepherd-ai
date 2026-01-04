@@ -34,7 +34,6 @@ class PendingMessage(BaseModel):
     created_at: str
     # Contact details for sending
     phone: str
-    whatsapp_id: Optional[str] = None
 
 
 @router.get("/pending-messages")
@@ -83,8 +82,7 @@ async def get_pending_messages(
             attachment_url=msg.attachment_url,
             attachment_type=msg.attachment_type,
             created_at=msg.created_at.isoformat(),
-            phone=contact.phone,
-            whatsapp_id=contact.whatsapp_id
+            phone=contact.phone
         ))
     
     return {
