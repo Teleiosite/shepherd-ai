@@ -95,7 +95,7 @@ ipcMain.handle('connect-bridge', async (event, connectionCode) => {
 
             // Start message polling
             const polling = require('./bridge-polling');
-            setTimeout(() =\u003e {
+            setTimeout(function () {
                 polling.startPolling(connectionCode);
                 console.log('🔄 Message polling started');
             }, 3000); // Wait 3 seconds for WhatsApp to connect
