@@ -64,6 +64,10 @@ wppconnect.create({
     console.log('🔓 Bridge Status: CONNECTED');
     broadcastToClients({ type: 'status', status: 'connected' });
 
+    // Initialize polling with client session
+    polling.initPolling(client, () => bridgeStatus);
+    console.log('✅ Polling initialized with client session');
+
     // Incoming messages
     client.onMessage(async (message) => {
       if (!message.isGroupMsg && !message.from.includes('status@broadcast')) {

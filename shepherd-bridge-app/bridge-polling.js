@@ -30,15 +30,19 @@ function startMessagePolling(code) {
 
 async function pollPendingMessages() {
     if (!connectionCode || !clientSessionRef) {
+        console.log('⏸️ Polling skipped - not ready');
         return;
     }
 
     try {
+        console.log('🔍 Polling for pending messages...');
         // Fetch pending messages from backend
         const response = await axios.get(`${BACKEND_URL}/api/bridge/pending-messages`, {
             params: { code: connectionCode },
             timeout: 10000
         });
+
+        console.log(`📊 Poll result: ${response.data.count} pending message(s)`);
 
         if (response.data.success && response.data.count > 0) {
             console.log(`📬 Found ${response.data.count} pending message(s)`);
@@ -62,7 +66,7 @@ async function sendPendingMessage(msg) {
         if (msg.whatsapp_id && msg.whatsapp_id.includes('@')) {
             chatId = msg.whatsapp_id;
         } else {
-            let cleanPhone = msg.phone.replace(/\\D/g, '');
+            let cleanPhone = msg.phone.replace(/\D/g, '');  // Fixed: single backslash
             if (cleanPhone.startsWith('0')) {
                 cleanPhone = '234' + cleanPhone.substring(1);
             }
