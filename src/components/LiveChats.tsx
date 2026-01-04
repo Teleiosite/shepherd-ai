@@ -127,14 +127,16 @@ const LiveChats: React.FC<LiveChatsProps> = ({ contacts, logs, setLogs }) => {
             attachmentToSend.url,
             messageToSend || undefined,
             attachmentToSend.name,
-            (selectedContact as any).whatsappId
+            (selectedContact as any).whatsappId,
+            selectedContactId  // Add contact ID for queuing
           );
         } else {
           console.log('💬 Sending TEXT message:', messageToSend);
           result = await whatsappService.sendMessage(
             selectedContact.phone,
             messageToSend,
-            (selectedContact as any).whatsappId
+            (selectedContact as any).whatsappId,
+            selectedContactId  // Add contact ID for queuing
           );
         }
 
