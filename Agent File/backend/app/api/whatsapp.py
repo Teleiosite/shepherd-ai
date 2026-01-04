@@ -175,6 +175,14 @@ async def send_whatsapp_message(
         # WPPConnect: Queue message for bridge to poll and send
         logger.info(f"Queuing message for bridge polling")
         
+        # Validate contact_id is provided
+        if not message.contact_id:
+            return {
+                "success": False,
+                "error": "contact_id is required for queuing messages",
+                "provider": "wppconnect"
+            }
+        
         # Create pending message in database
         msg_log = Message(
             organization_id=current_user.organization_id,
