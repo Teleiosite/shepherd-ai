@@ -148,37 +148,52 @@ async def send_whatsapp_message(
             to_phone=message.phone,
             message=message.message
         )
+        
+        # Log to database if contact_id provided
+        if message.contact_id:
+            try:
+                msg_log = Message(
+                    organization_id=current_user.organization_id,
+                    contact_id=message.contact_id,
+                    content=message.message,
+                    type="Outbound",
+                    status="Sent" if result.get("success") else "Failed",
+                    sent_at=datetime.now() if result.get("success") else None,
+                    whatsapp_message_id=result.get("messageId"),
+                    created_by=current_user.id
+                )
+                db.add(msg_log)
+                db.commit()
+                logger.info(f"Message logged to database: {msg_log.id}")
+            except Exception as e:
+                logger.error(f"Error logging message to database: {str(e)}")
+                db.rollback()
+        
+        return result
+        
     else:
-        logger.info(f"Using WPPConnect bridge for org {current_user.organization_id}: {config['bridge_url']}")
-        wpp_service = get_whatsapp_service(config["bridge_url"])
-        result = await wpp_service.send_message(
-            phone=message.phone,
-            message=message.message,
-            whatsapp_id=message.whatsapp_id
+        # WPPConnect: Queue message for bridge to poll and send
+        logger.info(f"Queuing message for bridge polling")
+        
+        # Create pending message in database
+        msg_log = Message(
+            organization_id=current_user.organization_id,
+            contact_id=message.contact_id,
+            content=message.message,
+            type="Outbound",
+            status="Pending",  # Bridge will poll and send this
+            created_by=current_user.id
         )
-        result["provider"] = "wppconnect"
-    
-    # Log to database if contact_id provided
-    if message.contact_id:
-        try:
-            msg_log = Message(
-                organization_id=current_user.organization_id,
-                contact_id=message.contact_id,
-                content=message.message,
-                type="Outbound",
-                status="Sent" if result.get("success") else "Failed",
-                sent_at=datetime.now() if result.get("success") else None,
-                whatsapp_message_id=result.get("messageId"),
-                created_by=current_user.id
-            )
-            db.add(msg_log)
-            db.commit()
-            logger.info(f"Message logged to database: {msg_log.id}")
-        except Exception as e:
-            logger.error(f"Error logging message to database: {str(e)}")
-            db.rollback()
-    
-    return result
+        db.add(msg_log)
+        db.commit()
+        logger.info(f"Message queued: {msg_log.id}")
+        
+        return {
+            "success": True,
+            "messageId": str(msg_log.id),
+            "status": "queued",
+            "provider": "wppconnect"
+        }
 
 
 @router.post("/send-media")
