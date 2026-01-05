@@ -253,7 +253,6 @@ async def send_whatsapp_media(
                     status="Sent" if result.get("success") else "Failed",
                     attachment_type=media.media_type,
                     attachment_url=media_reference,
-                    attachment_name=media.filename,
                     sent_at=datetime.now() if result.get("success") else None,
                     whatsapp_message_id=result.get("messageId"),
                     created_by=current_user.id
@@ -288,7 +287,6 @@ async def send_whatsapp_media(
             status="Pending",  # Bridge will poll and send this
             attachment_type=media.media_type,
             attachment_url=media.media_data,  # Full data URL for bridge to send
-            attachment_name=media.filename,
             created_by=current_user.id
         )
         db.add(msg_log)
