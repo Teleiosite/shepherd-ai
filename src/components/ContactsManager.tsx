@@ -283,7 +283,7 @@ const ContactsManager: React.FC<ContactsManagerProps> = ({ contacts, setContacts
                     ) : '-'}
                   </td>
                   <td className="px-6 py-5 text-right">
-                    <button onClick={() => setEditingContact(contact)} className="text-slate-400 hover:text-slate-600 mr-4">
+                    <button onClick={() => handleEdit(contact)} className="text-slate-400 hover:text-slate-600 mr-4">
                       <Edit2 size={18} />
                     </button>
                     <button onClick={() => handleDelete(contact.id)} className="text-slate-400 hover:text-red-600">
@@ -316,7 +316,7 @@ const ContactsManager: React.FC<ContactsManagerProps> = ({ contacts, setContacts
                   </span>
                 </div>
                 <div className="flex gap-2 shrink-0">
-                  <button onClick={() => setEditingContact(contact)} className="text-slate-400 hover:text-slate-600 p-1">
+                  <button onClick={() => handleEdit(contact)} className="text-slate-400 hover:text-slate-600 p-1">
                     <Edit2 size={18} />
                   </button>
                   <button onClick={() => handleDelete(contact.id)} className="text-slate-400 hover:text-red-600 p-1">
