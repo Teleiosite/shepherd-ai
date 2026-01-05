@@ -75,8 +75,25 @@ async function sendPendingMessage(msg) {
 
         console.log(`📤 Sending queued message to ${chatId}...`);
 
-        // Send via WPPConnect
-        const result = await clientSessionRef.sendText(chatId, msg.content);
+        let result;
+
+        // Check if message has media attachment
+        if (msg.attachment_url && msg.attachment_type) {
+            console.log(`📸 Sending ${msg.attachment_type} with caption...`);
+
+            // Send media file
+            result = await clientSessionRef.sendFile(
+                chatId,
+                msg.attachment_url,
+                {
+                    caption: msg.content || '',
+                    filename: `attachment.${msg.attachment_type.split('/')[1] || 'jpg'}`
+                }
+            );
+        } else {
+            // Send text only
+            result = await clientSessionRef.sendText(chatId, msg.content);
+        }
 
         console.log('✅ Message sent successfully!', result?.id);
 
