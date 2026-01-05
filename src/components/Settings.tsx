@@ -408,24 +408,24 @@ const Settings: React.FC<SettingsProps> = ({
 
                         <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
                             <p className="text-sm text-slate-700 font-medium mb-2">📖 Quick Setup:</p>
-                            <ol className="text-sm text-slate-600 space-y-1.5 ml-4 list-decimal">
-                                <li>Click <strong>"Download Bridge App"</strong> below</li>
-                                <li>Extract the ZIP file to a folder on your computer</li>
-                                <li>Open the extracted folder and run <strong>"Shepherd AI Bridge.exe"</strong></li>
-                                <li>Copy your connection code above (click the Copy button)</li>
-                                <li>Paste the code into the bridge app and click Connect</li>
-                                <li>Scan the WhatsApp QR code with your phone</li>
-                                <li>Done! Messages will now send and receive via your WhatsApp</li>
+                            <ol className="text-sm text-slate-600 space-y-1.5 ml-4 list-decimal leading-relaxed">
+                                <li className="break-words">Click <strong>"Download Bridge App"</strong> below</li>
+                                <li className="break-words">Extract the ZIP file to a folder</li>
+                                <li className="break-words">Run <strong>"Shepherd AI Bridge.exe"</strong></li>
+                                <li className="break-words">Copy your code above (click Copy button)</li>
+                                <li className="break-words">Paste code in bridge app and click Connect</li>
+                                <li className="break-words">Scan WhatsApp QR code with your phone</li>
+                                <li className="break-words">Done! Messages auto-send via WhatsApp</li>
                             </ol>
                             <div className="mt-4">
                                 <button
-                                    className="w-full bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white px-4 py-3 rounded-full font-bold flex items-center justify-center gap-2 transition-all shadow-lg hover:shadow-xl"
+                                    className="w-full bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white px-4 py-3 rounded-full font-bold flex items-center justify-center gap-2 transition-all shadow-lg hover:shadow-xl text-sm sm:text-base"
                                     onClick={() => {
                                         window.location.href = 'https://github.com/Teleiosite/shepherd-ai/releases/download/v1.0.1/Shepherd-AI-Bridge.zip';
                                     }}
                                 >
                                     <Download size={20} />
-                                    Download Bridge App (Windows)
+                                    <span className="truncate">Download Bridge App (Windows)</span>
                                 </button>
                             </div>
                         </div>
