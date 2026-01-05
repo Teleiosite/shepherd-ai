@@ -446,7 +446,7 @@ const Settings: React.FC<SettingsProps> = ({
                                     onClick={() => setWaConfig({ ...waConfig, provider: 'venom' })}
                                     className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${waConfig.provider === 'venom' ? 'bg-white shadow text-slate-800' : 'text-slate-500'}`}
                                 >
-                                    Venom Bot (Local)
+                                    WPPConnect Bridge
                                 </button>
                             </div>
                         </div>
@@ -484,10 +484,10 @@ const Settings: React.FC<SettingsProps> = ({
                             <div className="bg-slate-50 p-6 rounded-xl border border-slate-200 space-y-4 animate-fade-in">
                                 <div className="flex items-start gap-2 mb-2 text-sm text-slate-600">
                                     <Server size={16} className="mt-0.5 text-purple-500 shrink-0" />
-                                    <p>Uses <strong>Venom Bot</strong> running on your local machine. No template restrictions. <br />Ensure <code>node server/venom-bridge.js</code> is running.</p>
+                                    <p>Uses <strong>WPPConnect Bridge</strong> running on your local machine. No template restrictions. <br />Download and run the bridge app from the WhatsApp Bridge Connection section above.</p>
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-slate-700 mb-1">Bridge Server URL</label>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">Bridge Server URL (Advanced)</label>
                                     <div className="flex gap-2">
                                         <input
                                             type="text"
