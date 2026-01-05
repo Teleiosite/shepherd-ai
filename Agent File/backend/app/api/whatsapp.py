@@ -239,46 +239,68 @@ async def send_whatsapp_media(
             caption=media.caption,
             filename=media.filename
         )
+        
+        # Log to database if contact_id provided
+        if media.contact_id:
+            try:
+                media_reference = media.media_data[:100] + "..." if len(media.media_data) > 100 else media.media_data
+                
+                msg_log = Message(
+                    organization_id=current_user.organization_id,
+                    contact_id=media.contact_id,
+                    content=media.caption or f"[{media.media_type}]",
+                    type="Outbound",
+                    status="Sent" if result.get("success") else "Failed",
+                    attachment_type=media.media_type,
+                    attachment_url=media_reference,
+                    attachment_name=media.filename,
+                    sent_at=datetime.now() if result.get("success") else None,
+                    whatsapp_message_id=result.get("messageId"),
+                    created_by=current_user.id
+                )
+                db.add(msg_log)
+                db.commit()
+                logger.info(f"Media message logged to database: {msg_log.id}")
+            except Exception as e:
+                logger.error(f"Error logging media message to database: {str(e)}")
+                db.rollback()
+        
+        return result
+        
     else:
-        logger.info(f"Using WPPConnect bridge for media send: {config['bridge_url']}")
-        wpp_service = get_whatsapp_service(config["bridge_url"])
-        result = await wpp_service.send_media(
-            phone=media.phone,
-            media_type=media.media_type,
-            media_data=media.media_data,
-            caption=media.caption,
-            filename=media.filename,
-            whatsapp_id=media.whatsapp_id
+        # WPPConnect: Queue media message for bridge to poll and send
+        logger.info(f"Queuing media message for bridge polling")
+        
+        # Validate contact_id is provided
+        if not media.contact_id:
+            return {
+                "success": False,
+                "error": "contact_id is required for queuing messages",
+                "provider": "wppconnect"
+            }
+        
+        # Create pending media message in database
+        msg_log = Message(
+            organization_id=current_user.organization_id,
+            contact_id=media.contact_id,
+            content=media.caption or f"[{media.media_type}]",
+            type="Outbound",
+            status="Pending",  # Bridge will poll and send this
+            attachment_type=media.media_type,
+            attachment_url=media.media_data,  # Full data URL for bridge to send
+            attachment_name=media.filename,
+            created_by=current_user.id
         )
-        result["provider"] = "wppconnect"
-    
-    # Log to database if contact_id provided
-    if media.contact_id:
-        try:
-            # Truncate media_data for storage (just store reference, not full base64)
-            media_reference = media.media_data[:100] + "..." if len(media.media_data) > 100 else media.media_data
-            
-            msg_log = Message(
-                organization_id=current_user.organization_id,
-                contact_id=media.contact_id,
-                content=media.caption or f"[{media.media_type}]",
-                type="Outbound",
-                status="Sent" if result.get("success") else "Failed",
-                attachment_type=media.media_type,
-                attachment_url=media_reference,  # Truncated reference
-                attachment_name=media.filename,
-                sent_at=datetime.now() if result.get("success") else None,
-                whatsapp_message_id=result.get("messageId"),
-                created_by=current_user.id
-            )
-            db.add(msg_log)
-            db.commit()
-            logger.info(f"Media message logged to database: {msg_log.id}")
-        except Exception as e:
-            logger.error(f"Error logging media message to database: {str(e)}")
-            db.rollback()
-    
-    return result
+        db.add(msg_log)
+        db.commit()
+        logger.info(f"Media message queued: {msg_log.id}")
+        
+        return {
+            "success": True,
+            "messageId": str(msg_log.id),
+            "status": "queued",
+            "provider": "wppconnect"
+        }
 
 
 @router.post("/webhook")
