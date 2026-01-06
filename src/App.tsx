@@ -9,6 +9,7 @@ import CampaignScheduler from './components/CampaignScheduler';
 import LiveChats from './components/LiveChats';
 import Settings from './components/Settings';
 import Auth from './components/Auth';
+import WorkflowsManager from './components/WorkflowsManager';
 import { Contact, KnowledgeResource, MessageLog, ContactCategory, MessageStatus, DEFAULT_CATEGORIES, WorkflowStep, User } from './types';
 import { v4 as uuidv4 } from 'uuid';
 import { generateMessage } from './services/geminiService';
@@ -782,6 +783,7 @@ function App() {
             <NavItem to="/contacts" icon={Users} label="Contacts" />
             <NavItem to="/chats" icon={MessageCircle} label="Live Chats" />
             <NavItem to="/knowledge" icon={BookOpen} label="Knowledge Base" />
+            <NavItem to="/workflows" icon={Zap} label="Workflows" />
             <NavItem to="/campaigns" icon={Send} label="Generate & Send" />
             <NavItem to="/settings" icon={SettingsIcon} label="Settings" />
           </nav>
@@ -825,6 +827,7 @@ function App() {
               <Route path="/contacts" element={<ContactsManager contacts={contacts} setContacts={setContacts} onAddContact={handleContactAdded} categories={categories} onAddCategory={handleAddCategory} />} />
               <Route path="/chats" element={<LiveChats contacts={contacts} logs={logs} setLogs={setLogs} />} />
               <Route path="/knowledge" element={<KnowledgeBase resources={resources} setResources={setResources} />} />
+              <Route path="/workflows" element={<WorkflowsManager />} />
               <Route path="/campaigns" element={<CampaignScheduler contacts={contacts} resources={resources} logs={logs} setLogs={setLogs} aiName={aiName} organizationName={organizationName} categories={categories} />} />
               <Route path="/settings" element={<Settings
                 aiName={aiName}

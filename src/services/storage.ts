@@ -318,5 +318,44 @@ export const storage = {
   factoryReset: () => {
     localStorage.clear();
     window.location.reload();
+  },
+
+  getWorkflowSteps: async (): Promise<any[]> => {
+    const token = getAuthToken();
+    if (!token) throw new Error('Not authenticated');
+    const response = await fetch(`${BACKEND_URL}/api/workflows/`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!response.ok) throw new Error('Failed to fetch workflow steps');
+    return response.json();
+  },
+
+  uploadWorkflowExcel: async (category: string, formData: FormData, replaceExisting: boolean = false): Promise<any> => {
+    const token = getAuthToken();
+    if (!token) throw new Error('Not authenticated');
+    const response = await fetch(`${BACKEND_URL}/api/workflows/upload-excel?category=${encodeURIComponent(category)}&replace_existing=${replaceExisting}`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` },
+      body: formData
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw { response: { data: error } };
+    }
+    return response.json();
+  },
+
+  deleteWorkflowCategory: async (category: string): Promise<void> => {
+    const token = getAuthToken();
+    if (!token) throw new Error('Not authenticated');
+    const steps = await storage.getWorkflowSteps();
+    const categorySteps = steps.filter((s: any) => s.category === category);
+    for (const step of categorySteps) {
+      const response = await fetch(`${BACKEND_URL}/api/workflows/${step.id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!response.ok) throw new Error('Failed to delete workflow step');
+    }
   }
 };
