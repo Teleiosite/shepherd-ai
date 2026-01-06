@@ -1,6 +1,6 @@
-# 🐑 Shepherd AI - Advanced Church Discipleship System
+# 🐑 Shepherd AI - Advanced Multi-Industry Engagement & Automation Platform
 
-> **A comprehensive, privacy-first CRM and automation tool designed for church follow-up. Acts as a digital pastoral assistant, tracking the spiritual journey of new converts and automating personal communication via WhatsApp.**
+> **A comprehensive, privacy-first CRM and automation tool for churches, businesses, and organizations. Acts as a digital assistant, tracking customer journeys and automating personalized communication via WhatsApp.**
 
 [![Live Demo](https://img.shields.io/badge/Live-Demo-blue?style=for-the-badge)](https://shepherd-ai.vercel.app)
 [![Backend](https://img.shields.io/badge/Backend-Online-green?style=for-the-badge)](https://shepherd-ai-backend.onrender.com)
@@ -19,36 +19,50 @@
 
 ### 📋 Advanced Contact Management
 - Bulk import via Excel (`.xlsx`) or CSV
-- Dynamic categorization (New Convert, First Timer, Born Again, + Custom)
+- Dynamic categorization (New Convert, Customer, Lead, + Custom)
 - Instant search and filtering
 - Join date tracking for automated workflows
 - Full contact history and notes
+- Auto-creation from incoming WhatsApp messages
 
 ### 💬 Live WhatsApp Messaging
 - ✅ **Send messages** directly to WhatsApp
 - ✅ **Receive messages** in real-time
 - ✅ **Bi-directional communication** with polling architecture
-- Rich media support (images, attachments)
+- Rich media support (images, attachments with captions)
 - Message scheduling and queuing
 - Chat history tracking
+- **Two connection methods:**
+  - **WPPConnect Bridge** (Free, desktop-based)
+  - **WhatsApp Business Cloud API** (Official, cloud-based, mobile-friendly)
 
 ### 🧠 Context-Aware AI (RAG)
-- Upload sermon notes, books, and manuals
+- Upload sermon notes, books, manuals, product guides
 - AI references your specific Knowledge Base
-- Understands spiritual journey stages
+- Understands customer journey stages
 - Contextual, personalized responses
+- Multi-format support (PDF, DOCX, TXT)
 
-### ⚡ Smart Workflow Automation
-- 30-Day Discipleship Track
-- Automatic message scheduling based on join date
-- Distinct tracks for New Converts vs. First Timers
+### ⚡ **Custom Workflow Automation** ✨ NEW!
+- **Upload custom workflows** via Excel/CSV
+- Create unlimited engagement tracks
+- **Multi-industry support:**
+  - ⛪ Church: 30-Day Discipleship Track
+  - 🛍️ E-commerce: Order follow-up sequences
+  - 🏘️ Real Estate: Lead nurturing campaigns
+  - 💪 Fitness: Member onboarding journeys
+  - 📚 Education: Student engagement tracks
+  - 💼 Consulting: Client onboarding workflows
+- Assign different workflows to different categories
+- Day-based automation (Day 0, 1, 3, 7, etc.)
 - Bulk message generation and queuing
 
 ### 📊 Analytics Dashboard
 - Contact distribution charts
 - Message activity tracking
 - Knowledge base statistics
-- Ministry health metrics
+- Engagement metrics
+- Workflow completion rates
 
 ---
 
@@ -135,12 +149,29 @@ Visit: [https://shepherd-ai.vercel.app](https://shepherd-ai.vercel.app)
 - Scan WhatsApp QR code
 - Done! Messages now send via your WhatsApp
 
-#### 5. **Add Contacts**
+#### 5. **Create Custom Workflows** ⚡ NEW!
+- Navigate to **Workflows** in the sidebar
+- Download the template or create your own Excel file with columns: `Day`, `Title`, `Goal`
+- Enter a category name (e.g., "Customer Journey", "New Member Track")
+- Upload your Excel file
+- Assign contacts to that category - they'll automatically follow your custom workflow!
+
+**Example workflow:**
+```
+Day | Title                 | Goal
+0   | Welcome Message       | Send warm welcome
+1   | First Check-in        | Ask how they're doing
+3   | Share Resource        | Send helpful link
+7   | Weekly Update         | Share what's happening
+14  | Two-Week Milestone    | Celebrate progress
+```
+
+#### 6. **Add Contacts**
 - Navigate to Contacts
 - Bulk import via Excel or add manually
 - Set categories and join dates
 
-#### 6. **Start Messaging!**
+#### 7. **Start Messaging!**
 - Use Live Chats for 1-on-1 conversations
 - Use Generate & Send for bulk messaging
 - Schedule messages for future delivery
@@ -368,11 +399,16 @@ MIT License - see [LICENSE](LICENSE) file for details
 - **Discussions**: [GitHub Discussions](https://github.com/Teleiosite/shepherd-ai/discussions)
 - **Documentation**: [Wiki](https://github.com/Teleiosite/shepherd-ai/wiki)
 
+### 📚 Additional Guides
+
+- **[WhatsApp Business Cloud API Setup](./WHATSAPP_BUSINESS_API_SETUP.md)** - Mobile-friendly WhatsApp integration
+- **[Custom Workflows Implementation](./CUSTOM_WORKFLOWS_IMPLEMENTATION.md)** - Technical implementation details
+
 ---
 
 <div align="center">
 
-**Built with ❤️ for pastoral care and discipleship**
+**Built with ❤️ for churches, businesses, and organizations worldwide**
 
 ⭐ Star this repo if it blessed your ministry!
 
