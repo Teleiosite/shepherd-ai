@@ -62,6 +62,7 @@ async function initializeWhatsApp() {
             ],
             puppeteerOptions: {
                 headless: 'new',
+                executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || process.env.CHROME_PATH || '/usr/bin/chromium' || '/usr/bin/chromium-browser',
                 args: ['--no-sandbox', '--disable-setuid-sandbox']
             },
             statusFind: (statusSession, session) => {
