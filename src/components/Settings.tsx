@@ -4,6 +4,7 @@ import { Bot, Building2, Database, Download, Upload, AlertTriangle, Check, Key, 
 import { storage } from '../services/storage';
 import { AIConfig } from '../types';
 import { whatsappService, WhatsAppConfig } from '../services/whatsappService';
+import BridgeOptionsModal from './BridgeOptionsModal';
 
 interface SettingsProps {
     aiName: string;
@@ -28,6 +29,7 @@ const Settings: React.FC<SettingsProps> = ({
 }) => {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [restoreStatus, setRestoreStatus] = useState<'idle' | 'success' | 'error'>('idle');
+    const [showBridgeModal, setShowBridgeModal] = useState(false);
 
     // API & Integration State
     const [aiConfig, setAiConfig] = useState<AIConfig>({
