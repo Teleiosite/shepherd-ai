@@ -5,7 +5,6 @@ services:
   - type: web
     name: shepherd-whatsapp-bridge
     env: node
-    region: oregon
     plan: free
     rootDir: shepherd-cloud-bridge
     buildCommand: npm install

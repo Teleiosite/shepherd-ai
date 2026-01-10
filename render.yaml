@@ -3,7 +3,6 @@ services:
   - type: web
     name: shepherd-ai-backend
     env: python
-    region: oregon
     plan: free
     buildCommand: chmod +x build.sh && ./build.sh
     startCommand: cd Agent\ File/backend && gunicorn app.main:app --workers 2 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT
@@ -26,4 +25,3 @@ databases:
     databaseName: shepherd_ai
     user: shepherd_ai_user
     plan: free
-    region: oregon
