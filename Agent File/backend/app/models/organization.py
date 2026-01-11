@@ -26,3 +26,4 @@ class Organization(Base):
     knowledge_resources = relationship("KnowledgeResource", back_populates="organization", cascade="all, delete-orphan")
     categories = relationship("Category", back_populates="organization", cascade="all, delete-orphan")
     workflow_steps = relationship("WorkflowStep", back_populates="organization", cascade="all, delete-orphan")
+    groups = relationship("Group", back_populates="organization", cascade="all, delete-orphan")

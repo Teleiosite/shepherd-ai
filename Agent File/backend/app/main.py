@@ -51,7 +51,7 @@ async def health_check():
     return {"status": "healthy"}
 
 
-from app.api import auth, contacts, messages, knowledge, workflows, whatsapp, settings, bridge, bridge_polling
+from app.api import auth, contacts, messages, knowledge, workflows, whatsapp, settings, bridge, bridge_polling, groups
 app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
 app.include_router(contacts.router, prefix="/api/contacts", tags=["Contacts"])
 app.include_router(messages.router, prefix="/api/messages", tags=["Messages"])
@@ -61,6 +61,7 @@ app.include_router(whatsapp.router, prefix="/api/whatsapp", tags=["WhatsApp"])
 app.include_router(settings.router, tags=["Settings"])
 app.include_router(bridge.router, prefix="/api/bridge", tags=["Bridge Connection"])
 app.include_router(bridge_polling.router, prefix="/api/bridge", tags=["Bridge Polling"])
+app.include_router(groups.router, prefix="/api/groups", tags=["Groups"])
 
 
 @app.on_event("startup")
