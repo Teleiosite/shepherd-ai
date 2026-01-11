@@ -47,13 +47,6 @@ export const WORKFLOWS: Record<string, WorkflowStep[]> = {
   ]
 };
 
-// Generic fallback for custom categories
-export const GENERIC_WORKFLOW: WorkflowStep[] = [
-  { day: 1, title: 'Welcome', prompt: 'Day 1: Warm welcome and appreciation for connecting.' },
-  { day: 7, title: 'Follow-up', prompt: 'Day 7: Checking in to see how they are doing and offering assistance.' },
-  { day: 30, title: 'Monthly Check-in', prompt: 'Day 30: A friendly monthly check-in to maintain the relationship.' }
-];
-
 const getDaysSinceJoin = (joinDateStr: string): number => {
   const joinDate = new Date(joinDateStr);
   const now = new Date();
@@ -70,7 +63,12 @@ const getDaysSinceJoin = (joinDateStr: string): number => {
 
 export const getRecommendedWorkflowStep = (joinDateStr: string, category: string): WorkflowStep | null => {
   const diffDays = getDaysSinceJoin(joinDateStr);
-  const steps = WORKFLOWS[category] || GENERIC_WORKFLOW;
+
+  // Only use workflows if they exist for this specific category
+  const steps = WORKFLOWS[category];
+
+  // If no workflow exists for this category, return null (don't use fallback)
+  if (!steps) return null;
 
   // "Grace Period" Logic:
   // We check if there is a step for Today (diffDays)
@@ -96,7 +94,12 @@ export const getRecommendedWorkflowStep = (joinDateStr: string, category: string
 // New function to predict the FUTURE
 export const getNextWorkflowStep = (joinDateStr: string, category: string): { step: WorkflowStep, dueDate: Date } | null => {
   const diffDays = getDaysSinceJoin(joinDateStr);
-  const steps = WORKFLOWS[category] || GENERIC_WORKFLOW;
+
+  // Only use workflows if they exist for this specific category
+  const steps = WORKFLOWS[category];
+
+  // If no workflow exists for this category, return null
+  if (!steps) return null;
 
   // Find the first step that is AFTER current days
   // This ensures we show the next upcoming task, not the current day's task

@@ -1,6 +1,7 @@
 """Workflow Service for automated follow-ups."""
 from datetime import datetime
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from app.models.contact import Contact
 from app.models.workflow import WorkflowStep
 from app.models.message import Message
@@ -22,10 +23,10 @@ async def process_daily_workflows(db: Session):
         # Calculate days since join
         days_since_join = (datetime.now(contact.join_date.tzinfo) - contact.join_date).days
         
-        # 2. Find matching workflow step
+        # 2. Find matching workflow step (case-insensitive category matching)
         step = db.query(WorkflowStep).filter(
             WorkflowStep.organization_id == contact.organization_id,
-            WorkflowStep.category == contact.category,
+            func.lower(WorkflowStep.category) == func.lower(contact.category),
             WorkflowStep.day == days_since_join
         ).first()
         
