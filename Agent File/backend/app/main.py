@@ -6,7 +6,7 @@ from app.config import settings
 app = FastAPI(
     title="Shepherd AI API",
     description="Backend API for Shepherd AI - Church Follow-up System",
-    version="1.0.0",
+    version="1.1.0",  # Groups feature added
     docs_url="/api/docs",
     redoc_url="/api/redoc",
 )
