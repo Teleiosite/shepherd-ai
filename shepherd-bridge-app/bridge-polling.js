@@ -3,11 +3,14 @@
 // Append this to the end of bridge-core.js OR require it separately
 
 const axios = require('axios');
+const groupManager = require('./group-manager');
+
 const BACKEND_URL = 'https://shepherd-ai-backend.onrender.com';
 let connectionCode = null;
 let pollingInterval = null;
 let clientSessionRef = null;
 let bridgeStatusRef = null;
+let groupManagerInitialized = false;
 
 // Initialize with references from bridge-core
 function initPolling(session, statusGetter) {
@@ -19,6 +22,14 @@ function initPolling(session, statusGetter) {
 function startMessagePolling(code) {
     connectionCode = code;
     console.log('🔄 Starting message polling with code:', code);
+
+    // Initialize group manager if not already done
+    if (clientSessionRef && !groupManagerInitialized) {
+        console.log('👥 Initializing Group Manager...');
+        groupManager.initialize(clientSessionRef, BACKEND_URL, connectionCode);
+        groupManager.startPolling(10000); // Poll every 10 seconds
+        groupManagerInitialized = true;
+    }
 
     // Poll immediately
     setTimeout(() => pollPendingMessages(), 2000);

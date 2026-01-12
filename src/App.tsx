@@ -10,6 +10,7 @@ import LiveChats from './components/LiveChats';
 import Settings from './components/Settings';
 import Auth from './components/Auth';
 import WorkflowsManager from './components/WorkflowsManager';
+import Groups from './pages/Groups';
 import { Contact, KnowledgeResource, MessageLog, ContactCategory, MessageStatus, DEFAULT_CATEGORIES, WorkflowStep, User } from './types';
 import { v4 as uuidv4 } from 'uuid';
 import { generateMessage } from './services/geminiService';
