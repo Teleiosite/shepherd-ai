@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { X, Send, Calendar, Clock } from 'lucide-react';
-import { storage } from '../services/storage';
+import { BACKEND_URL } from '../services/env';
 
 interface Group {
     id: string;
@@ -28,7 +28,7 @@ export default function SendGroupMessageModal({ group, onClose }: Props) {
 
         try {
             setSending(true);
-            const config = storage.getAIConfig();
+            const token = localStorage.getItem('authToken');
 
             let scheduledFor = null;
             if (scheduleType === 'scheduled' && scheduledDate && scheduledTime) {
@@ -36,11 +36,11 @@ export default function SendGroupMessageModal({ group, onClose }: Props) {
             }
 
             const response = await fetch(
-                `${config.apiUrl}/api/groups/${group.id}/messages`,
+                `${BACKEND_URL}/api/groups/${group.id}/messages`,
                 {
                     method: 'POST',
                     headers: {
-                        'Authorization': `Bearer ${storage.getToken()}`,
+                        'Authorization': `Bearer ${token}`,
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({

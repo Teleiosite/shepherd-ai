@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Users, Settings as SettingsIcon, Send, RefreshCw, Plus, MessageCircle, UserPlus } from 'lucide-react';
-import { storage } from '../services/storage';
+import { BACKEND_URL } from '../services/env';
 import GroupDetailsModal from '../components/GroupDetailsModal';
 import SendGroupMessageModal from '../components/SendGroupMessageModal';
 
@@ -38,10 +38,10 @@ export default function Groups() {
             setLoading(true);
             setError('');
 
-            const config = storage.getAIConfig();
-            const response = await fetch(`${config.apiUrl}/api/groups/`, {
+            const token = localStorage.getItem('authToken');
+            const response = await fetch(`${BACKEND_URL}/api/groups/`, {
                 headers: {
-                    'Authorization': `Bearer ${storage.getToken()}`,
+                    'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json'
                 }
             });

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Users, Settings, UserPlus, MessageCircle, Calendar } from 'lucide-react';
-import { storage } from '../services/storage';
+import { BACKEND_URL } from '../services/env';
 
 interface Group {
     id: string;
@@ -50,12 +50,12 @@ export default function GroupDetailsModal({ group, onClose }: Props) {
     const loadMembers = async () => {
         try {
             setLoadingMembers(true);
-            const config = storage.getAIConfig();
+            const token = localStorage.getItem('authToken');
             const response = await fetch(
-                `${config.apiUrl}/api/groups/${group.id}/members`,
+                `${BACKEND_URL}/api/groups/${group.id}/members`,
                 {
                     headers: {
-                        'Authorization': `Bearer ${storage.getToken()}`,
+                        'Authorization': `Bearer ${token}`,
                         'Content-Type': 'application/json'
                     }
                 }
@@ -75,12 +75,12 @@ export default function GroupDetailsModal({ group, onClose }: Props) {
     const handleSaveSettings = async () => {
         try {
             setSaving(true);
-            const config = storage.getAIConfig();
+            const token = localStorage.getItem('authToken');
 
-            const response = await fetch(`${config.apiUrl}/api/groups/${group.id}`, {
+            const response = await fetch(`${BACKEND_URL}/api/groups/${group.id}`, {
                 method: 'PUT',
                 headers: {
-                    'Authorization': `Bearer ${storage.getToken()}`,
+                    'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify(settings)
@@ -125,8 +125,8 @@ export default function GroupDetailsModal({ group, onClose }: Props) {
                     <button
                         onClick={() => setActiveTab('settings')}
                         className={`flex-1 px-6 py-3 font-medium transition ${activeTab === 'settings'
-                                ? 'text-blue-600 border-b-2 border-blue-600'
-                                : 'text-gray-600 hover:text-gray-900'
+                            ? 'text-blue-600 border-b-2 border-blue-600'
+                            : 'text-gray-600 hover:text-gray-900'
                             }`}
                     >
                         <Settings className="w-5 h-5 inline mr-2" />
@@ -135,8 +135,8 @@ export default function GroupDetailsModal({ group, onClose }: Props) {
                     <button
                         onClick={() => setActiveTab('members')}
                         className={`flex-1 px-6 py-3 font-medium transition ${activeTab === 'members'
-                                ? 'text-blue-600 border-b-2 border-blue-600'
-                                : 'text-gray-600 hover:text-gray-900'
+                            ? 'text-blue-600 border-b-2 border-blue-600'
+                            : 'text-gray-600 hover:text-gray-900'
                             }`}
                     >
                         <Users className="w-5 h-5 inline mr-2" />
