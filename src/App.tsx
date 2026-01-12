@@ -785,6 +785,7 @@ function App() {
             <NavItem to="/chats" icon={MessageCircle} label="Live Chats" />
             <NavItem to="/knowledge" icon={BookOpen} label="Knowledge Base" />
             <NavItem to="/workflows" icon={Zap} label="Workflows" />
+            <NavItem to="/groups" icon={Users} label="Groups" />
             <NavItem to="/campaigns" icon={Send} label="Generate & Send" />
             <NavItem to="/settings" icon={SettingsIcon} label="Settings" />
           </nav>
@@ -829,6 +830,7 @@ function App() {
               <Route path="/chats" element={<LiveChats contacts={contacts} logs={logs} setLogs={setLogs} />} />
               <Route path="/knowledge" element={<KnowledgeBase resources={resources} setResources={setResources} />} />
               <Route path="/workflows" element={<WorkflowsManager />} />
+              <Route path="/groups" element={<Groups />} />
               <Route path="/campaigns" element={<CampaignScheduler contacts={contacts} resources={resources} logs={logs} setLogs={setLogs} aiName={aiName} organizationName={organizationName} categories={categories} />} />
               <Route path="/settings" element={<Settings
                 aiName={aiName}
