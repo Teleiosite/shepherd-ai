@@ -12,6 +12,10 @@ let clientSessionRef = null;
 let bridgeStatusRef = null;
 let groupManagerInitialized = false;
 
+// Track recently sent messages to prevent duplicates
+const sentMessageIds = new Set();
+const SENT_MESSAGE_TTL = 60000; // Keep in cache for 1 minute
+
 // Initialize with references from bridge-core
 function initPolling(session, statusGetter) {
     clientSessionRef = session;
@@ -72,12 +76,22 @@ async function pollPendingMessages() {
 
 async function sendPendingMessage(msg) {
     try {
+        // Check if we already sent this message recently (prevents duplicates)
+        if (sentMessageIds.has(msg.id)) {
+            console.log(`⏭️ Skipping duplicate message ${msg.id}`);
+            return;
+        }
+
+        // Add to sent cache
+        sentMessageIds.add(msg.id);
+        setTimeout(() => sentMessageIds.delete(msg.id), SENT_MESSAGE_TTL);
+
         // Determine chat ID
         let chatId;
         if (msg.whatsapp_id && msg.whatsapp_id.includes('@')) {
             chatId = msg.whatsapp_id;
         } else {
-            let cleanPhone = msg.phone.replace(/\D/g, '');  // Fixed: single backslash
+            let cleanPhone = msg.phone.replace(/\D/g, '');  // Remove non-digits
             if (cleanPhone.startsWith('0')) {
                 cleanPhone = '234' + cleanPhone.substring(1);
             }
