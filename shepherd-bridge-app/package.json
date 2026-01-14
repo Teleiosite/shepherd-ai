@@ -22,6 +22,7 @@
             "electron-main.js",
             "bridge-core.js",
             "bridge-polling.js",
+            "group-manager.js",
             "preload.js",
             "ui/**/*",
             "node_modules/**/*",
