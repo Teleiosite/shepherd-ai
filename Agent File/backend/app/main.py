@@ -6,16 +6,16 @@ from app.config import settings
 app = FastAPI(
     title="Shepherd AI API",
     description="Backend API for Shepherd AI - Church Follow-up System",
-    version="1.1.0",  # Groups feature added
+    version="1.1.0",
     docs_url="/api/docs",
     redoc_url="/api/redoc",
 )
 
-# Configure CORS - Allow frontend origins
+# Configure CORS - Allow all origins
 app.add_middleware(
     CORSMiddleware,
-   allow_origin_regex=r"https://.*\.vercel\.app|http://localhost:\d+|http://127\.0\.0\.1:\d+",
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["*"],
