@@ -15,7 +15,7 @@ from app.schemas.group import (
     GroupMessageCreate, GroupMessageResponse, GroupMessageUpdate,
     GroupSyncRequest, GroupSyncResponse, WelcomeQueueItem
 )
-from app.dependencies import get_current_active_user
+from app.dependencies import get_current_active_user, get_current_user_optional
 
 router = APIRouter()
 
@@ -42,7 +42,7 @@ def get_user_by_connection_code(code: str, db: Session) -> User:
 async def list_groups(
     code: Optional[str] = Query(None, description="Bridge connection code"),
     db: Session = Depends(get_db),
-    current_user: Optional[User] = Depends(get_current_active_user)
+    current_user: Optional[User] = Depends(get_current_user_optional)
 ):
     """List all groups for the current user's organization."""
     # Use connection code if provided, otherwise use JWT
@@ -64,7 +64,7 @@ async def get_group(
     group_id: str,
     code: Optional[str] = Query(None, description="Bridge connection code"),
     db: Session = Depends(get_db),
-    current_user: Optional[User] = Depends(get_current_active_user)
+    current_user: Optional[User] = Depends(get_current_user_optional)
 ):
     """Get detailed information about a specific group."""
     # Use connection code if provided, otherwise use JWT
@@ -122,7 +122,7 @@ async def sync_groups(
     sync_request: GroupSyncRequest,
     code: Optional[str] = Query(None, description="Bridge connection code"),
     db: Session = Depends(get_db),
-    current_user: Optional[User] = Depends(get_current_active_user)
+    current_user: Optional[User] = Depends(get_current_user_optional)
 ):
     """Sync groups from WhatsApp bridge."""
     # Use connection code if provided, otherwise use JWT
@@ -225,7 +225,7 @@ async def member_joined(
     event: MemberJoinedEvent,
     code: Optional[str] = Query(None, description="Bridge connection code"),
     db: Session = Depends(get_db),
-    current_user: Optional[User] = Depends(get_current_active_user)
+    current_user: Optional[User] = Depends(get_current_user_optional)
 ):
     """Handle a new member joining a group."""
     # Use connection code if provided, otherwise use JWT
