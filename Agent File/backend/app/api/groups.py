@@ -2,7 +2,7 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import func, and_
+from sqlalchemy import func, and_, cast, String
 from datetime import datetime, timedelta
 
 from app.database import get_db
@@ -20,16 +20,39 @@ from app.dependencies import get_current_active_user
 router = APIRouter()
 
 
+# Helper function for bridge authentication using connection code
+def get_user_by_connection_code(code: str, db: Session) -> User:
+    """Authenticate using bridge connection code."""
+    user = db.query(User).filter(
+        cast(User.id, String).like(f"{code.lower()}%")
+    ).first()
+    
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid connection code"
+        )
+    
+    return user
+
+
 # ==================== GROUPS ====================
 
 @router.get("/", response_model=List[GroupResponse])
 async def list_groups(
+    code: Optional[str] = Query(None, description="Bridge connection code"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: Optional[User] = Depends(get_current_active_user)
 ):
     """List all groups for the current user's organization."""
+    # Use connection code if provided, otherwise use JWT
+    if code:
+        user = get_user_by_connection_code(code, db)
+    else:
+        user = current_user
+    
     groups = db.query(Group).filter(
-        Group.organization_id == current_user.organization_id,
+        Group.organization_id == user.organization_id,
         Group.is_active == True
     ).all()
     
@@ -39,13 +62,20 @@ async def list_groups(
 @router.get("/{group_id}", response_model=GroupResponse)
 async def get_group(
     group_id: str,
+    code: Optional[str] = Query(None, description="Bridge connection code"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: Optional[User] = Depends(get_current_active_user)
 ):
     """Get detailed information about a specific group."""
+    # Use connection code if provided, otherwise use JWT
+    if code:
+        user = get_user_by_connection_code(code, db)
+    else:
+        user = current_user
+        
     group = db.query(Group).filter(
         Group.id == group_id,
-        Group.organization_id == current_user.organization_id
+        Group.organization_id == user.organization_id
     ).first()
     
     if not group:
@@ -90,17 +120,24 @@ async def update_group(
 @router.post("/sync", response_model=GroupSyncResponse)
 async def sync_groups(
     sync_request: GroupSyncRequest,
+    code: Optional[str] = Query(None, description="Bridge connection code"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: Optional[User] = Depends(get_current_active_user)
 ):
     """Sync groups from WhatsApp bridge."""
+    # Use connection code if provided, otherwise use JWT
+    if code:
+        user = get_user_by_connection_code(code, db)
+    else:
+        user = current_user
+        
     new_count = 0
     updated_count = 0
     
     for group_data in sync_request.groups:
         # Check if group already exists
         existing_group = db.query(Group).filter(
-            Group.organization_id == current_user.organization_id,
+            Group.organization_id == user.organization_id,
             Group.whatsapp_group_id == group_data.whatsapp_group_id
         ).first()
         
@@ -115,7 +152,7 @@ async def sync_groups(
         else:
             # Create new group
             new_group = Group(
-                organization_id=current_user.organization_id,
+                organization_id=user.organization_id,
                 whatsapp_group_id=group_data.whatsapp_group_id,
                 name=group_data.name,
                 description=group_data.description,
@@ -186,14 +223,21 @@ async def list_group_members(
 async def member_joined(
     group_id: str,
     event: MemberJoinedEvent,
+    code: Optional[str] = Query(None, description="Bridge connection code"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: Optional[User] = Depends(get_current_active_user)
 ):
     """Handle a new member joining a group."""
+    # Use connection code if provided, otherwise use JWT
+    if code:
+        user = get_user_by_connection_code(code, db)
+    else:
+        user = current_user
+        
     # Get group
     group = db.query(Group).filter(
-        Group.id == group_id,
-        Group.organization_id == current_user.organization_id
+        Group.whatsapp_group_id == group_id,
+        Group.organization_id == user.organization_id
     ).first()
     
     if not group:
@@ -204,7 +248,7 @@ async def member_joined(
     
     # Check if member already exists
     existing_member = db.query(GroupMember).filter(
-        GroupMember.group_id == group_id,
+        GroupMember.group_id == group.id,
         GroupMember.whatsapp_id == event.whatsapp_id
     ).first()
     
@@ -216,7 +260,7 @@ async def member_joined(
     else:
         # Create new member
         member = GroupMember(
-            group_id=group_id,
+            group_id=group.id,
             whatsapp_id=event.whatsapp_id,
             name=event.name,
             joined_at=event.joined_at
@@ -234,20 +278,20 @@ async def member_joined(
     if group.auto_add_as_contact:
         # Check if contact already exists
         existing_contact = db.query(Contact).filter(
-            Contact.organization_id == current_user.organization_id,
+            Contact.organization_id == user.organization_id,
             Contact.phone == event.phone
         ).first()
         
         if not existing_contact:
             # Create new contact
             contact = Contact(
-                organization_id=current_user.organization_id,
+                organization_id=user.organization_id,
                 name=event.name or "Unknown",
                 phone=event.phone,
                 category=group.default_contact_category or "Group Member",
                 join_date=event.joined_at,
                 notes=f"Added from WhatsApp group: {group.name}",
-                created_by=current_user.id
+                created_by=user.id
             )
             db.add(contact)
             db.commit()
@@ -304,15 +348,28 @@ async def send_group_message(
 
 @router.get("/messages/pending", response_model=List[GroupMessageResponse])
 async def get_pending_group_messages(
+    code: Optional[str] = Query(None, description="Bridge connection code"),
     db: Session = Depends(get_db)
 ):
     """Get pending group messages for the bridge to send."""
     now = datetime.now()
     
-    messages = db.query(GroupMessage).filter(
-        GroupMessage.status == 'pending',
-        GroupMessage.scheduled_for <= now
-    ).all()
+    # If connection code provided, filter by organization
+    if code:
+        user = get_user_by_connection_code(code, db)
+        messages = db.query(GroupMessage).join(
+            Group, GroupMessage.group_id == Group.id
+        ).filter(
+            GroupMessage.status == 'pending',
+            GroupMessage.scheduled_for <= now,
+            Group.organization_id == user.organization_id
+        ).all()
+    else:
+        # No filtering (global - for backward compatibility)
+        messages = db.query(GroupMessage).filter(
+            GroupMessage.status == 'pending',
+            GroupMessage.scheduled_for <= now
+        ).all()
     
     return [GroupMessageResponse.model_validate(m) for m in messages]
 
@@ -321,6 +378,7 @@ async def get_pending_group_messages(
 async def update_message_status(
     message_id: str,
     status_update: GroupMessageUpdate,
+    code: Optional[str] = Query(None, description="Bridge connection code"),
     db: Session = Depends(get_db)
 ):
     """Update message status after sending."""
@@ -345,20 +403,28 @@ async def update_message_status(
 
 @router.get("/welcome-queue", response_model=List[WelcomeQueueItem])
 async def get_welcome_queue(
+    code: Optional[str] = Query(None, description="Bridge connection code"),
     db: Session = Depends(get_db)
 ):
     """Get pending welcome messages for new group members."""
     # Find new members (joined in last 5 minutes, no contact yet or no welcome sent)
     five_min_ago = datetime.now() - timedelta(minutes=5)
     
-    # This is a simplified version - in production you'd track welcome status separately
-    new_members = db.query(GroupMember, Group).join(
+    # Build query
+    query = db.query(GroupMember, Group).join(
         Group, GroupMember.group_id == Group.id
     ).filter(
         GroupMember.joined_at >= five_min_ago,
         GroupMember.left_at.is_(None),
         Group.auto_welcome_enabled == True
-    ).all()
+    )
+    
+    # Filter by organization if connection code provided
+    if code:
+        user = get_user_by_connection_code(code, db)
+        query = query.filter(Group.organization_id == user.organization_id)
+    
+    new_members = query.all()
     
     welcome_items = []
     for member, group in new_members:
@@ -383,6 +449,7 @@ async def get_welcome_queue(
 @router.post("/welcome-queue/{member_id}/sent")
 async def mark_welcome_sent(
     member_id: str,
+    code: Optional[str] = Query(None, description="Bridge connection code"),
     db: Session = Depends(get_db)
 ):
     """Mark a welcome message as sent."""

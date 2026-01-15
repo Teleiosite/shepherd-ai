@@ -47,9 +47,8 @@ async function syncGroups() {
         }));
 
         const response = await axios.post(
-            `${BACKEND_URL}/api/groups/sync`,
-            { groups: groupData },
-            { headers: { 'X-Connection-Code': CONNECTION_CODE } }
+            `${BACKEND_URL}/api/groups/sync?code=${CONNECTION_CODE}`,
+            { groups: groupData }
         );
 
         console.log(`✅ Synced ${response.data.synced} groups (${response.data.new} new, ${response.data.updated} updated)`);
@@ -102,14 +101,13 @@ async function handleMemberJoined(groupId, memberId) {
 
         // Notify backend
         const response = await axios.post(
-            `${BACKEND_URL}/api/groups/${groupId}/members/joined`,
+            `${BACKEND_URL}/api/groups/${groupId}/members/joined?code=${CONNECTION_CODE}`,
             {
                 whatsapp_id: memberId,
                 name: contact.pushname || contact.name || 'Unknown',
                 phone: phone,
                 joined_at: new Date().toISOString()
-            },
-            { headers: { 'X-Connection-Code': CONNECTION_CODE } }
+            }
         );
 
         console.log(`✅ Backend notified: ${response.data.contact_created ? 'Contact created' : 'Existing contact'}`);
@@ -125,8 +123,7 @@ async function handleMemberJoined(groupId, memberId) {
 async function processWelcomeQueue() {
     try {
         const { data: welcomes } = await axios.get(
-            `${BACKEND_URL}/api/groups/welcome-queue`,
-            { headers: { 'X-Connection-Code': CONNECTION_CODE } }
+            `${BACKEND_URL}/api/groups/welcome-queue?code=${CONNECTION_CODE}`
         );
 
         if (welcomes.length === 0) return;
@@ -145,9 +142,7 @@ async function processWelcomeQueue() {
 
                 // Mark as sent
                 await axios.post(
-                    `${BACKEND_URL}/api/groups/welcome-queue/${welcome.id}/sent`,
-                    {},
-                    { headers: { 'X-Connection-Code': CONNECTION_CODE } }
+                    `${BACKEND_URL}/api/groups/welcome-queue/${welcome.id}/sent?code=${CONNECTION_CODE}`
                 );
 
                 // Delay to avoid rate limits
@@ -170,8 +165,7 @@ async function processWelcomeQueue() {
 async function processGroupMessages() {
     try {
         const { data: messages } = await axios.get(
-            `${BACKEND_URL}/api/groups/messages/pending`,
-            { headers: { 'X-Connection-Code': CONNECTION_CODE } }
+            `${BACKEND_URL}/api/groups/messages/pending?code=${CONNECTION_CODE}`
         );
 
         if (messages.length === 0) return;
@@ -187,12 +181,11 @@ async function processGroupMessages() {
 
                 // Update status
                 await axios.post(
-                    `${BACKEND_URL}/api/groups/messages/${msg.id}/status`,
+                    `${BACKEND_URL}/api/groups/messages/${msg.id}/status?code=${CONNECTION_CODE}`,
                     {
                         status: 'sent',
                         sent_at: new Date().toISOString()
-                    },
-                    { headers: { 'X-Connection-Code': CONNECTION_CODE } }
+                    }
                 );
 
                 // Delay to avoid rate limits
@@ -203,12 +196,11 @@ async function processGroupMessages() {
 
                 // Mark as failed
                 await axios.post(
-                    `${BACKEND_URL}/api/groups/messages/${msg.id}/status`,
+                    `${BACKEND_URL}/api/groups/messages/${msg.id}/status?code=${CONNECTION_CODE}`,
                     {
                         status: 'failed',
                         error_message: error.message
-                    },
-                    { headers: { 'X-Connection-Code': CONNECTION_CODE } }
+                    }
                 );
             }
         }
