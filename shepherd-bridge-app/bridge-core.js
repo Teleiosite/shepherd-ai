@@ -67,6 +67,7 @@ wppconnect.create({
     // Initialize polling with client session
     polling.initPolling(client, () => bridgeStatus);
     console.log('✅ Polling initialized with client session');
+    polling.startPolling('1DCFEA1A');
 
     // Incoming messages
     client.onMessage(async (message) => {
