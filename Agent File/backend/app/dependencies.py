@@ -54,3 +54,28 @@ async def get_current_active_user(
     """Get the current active user."""
     # Add any additional checks here (e.g., is_active flag)
     return current_user
+
+
+async def get_current_user_optional(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(HTTPBearer(auto_error=False)),
+    db: Session = Depends(get_db)
+) -> Optional[User]:
+    """Get the current user if JWT token is provided, otherwise return None."""
+    if credentials is None:
+        return None
+    
+    token = credentials.credentials
+    
+    # Decode token
+    payload = decode_access_token(token)
+    if payload is None:
+        return None
+    
+    # Get user ID from token
+    user_id: str = payload.get("sub")
+    if user_id is None:
+        return None
+    
+    # Get user from database
+    user = db.query(User).filter(User.id == user_id).first()
+    return user
