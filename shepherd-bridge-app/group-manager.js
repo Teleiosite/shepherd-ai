@@ -9,6 +9,7 @@ const wppconnect = require('@wppconnect-team/wppconnect');
 let client = null;
 let BACKEND_URL = '';
 let CONNECTION_CODE = '';
+let syncRetryCount = 0;
 
 /**
  * Initialize group manager
@@ -23,10 +24,11 @@ function initialize(wppClient, backendUrl, connectionCode) {
     // Set up event listeners
     setupEventListeners();
 
-    // Do initial sync
+    // Do initial sync - wait longer for WhatsApp to fully load
+    console.log('⏳ Waiting 30 seconds for WhatsApp to fully load all chats...');
     setTimeout(() => {
         syncGroups();
-    }, 5000); // Wait 5 seconds after init
+    }, 30000); // Wait 30 seconds for WhatsApp to load
 }
 
 /**
@@ -39,18 +41,45 @@ async function syncGroups() {
         // Use listChats instead of deprecated getAllGroups
         const allChats = await client.listChats();
 
-        // Filter for group chats only
-        const groups = allChats.filter(chat => chat.isGroup);
+        console.log(`📱 Total chats loaded: ${allChats.length}`);
+
+        // Robust group filter - check multiple properties
+        const groups = allChats.filter(chat => {
+            // Check if it's a group by multiple methods
+            const isGroupByFlag = chat.isGroup === true;
+            const isGroupByServer = chat.id && (chat.id.server === 'g.us' || chat.id._serialized?.includes('@g.us'));
+            const isGroupByKind = chat.kind === 'group';
+
+            return isGroupByFlag || isGroupByServer || isGroupByKind;
+        });
 
         console.log(`📊 Found ${groups.length} groups in WhatsApp`);
 
+        // If 0 groups found and we haven't retried, wait and try again
+        if (groups.length === 0 && syncRetryCount < 2) {
+            syncRetryCount++;
+            console.log(`⚠️ No groups found. Retrying in 10 seconds... (Attempt ${syncRetryCount}/2)`);
+            setTimeout(() => syncGroups(), 10000);
+            return null;
+        }
+
+        // Reset retry counter on success
+        if (groups.length > 0) {
+            syncRetryCount = 0;
+        }
+
         const groupData = groups.map(g => ({
             whatsapp_group_id: g.id._serialized || g.id,
-            name: g.name || 'Unnamed Group',
+            name: g.name || g.contact?.name || 'Unnamed Group',
             description: g.description || null,
             avatar_url: g.profilePicUrl || null,
-            member_count: g.participants ? g.participants.length : 0
+            member_count: g.participants ? g.participants.length : (g.groupMetadata?.participants?.length || 0)
         }));
+
+        if (groupData.length === 0) {
+            console.log('📭 No group data to sync');
+            return null;
+        }
 
         const response = await axios.post(
             `${BACKEND_URL}/api/groups/sync?code=${CONNECTION_CODE}`,
@@ -62,6 +91,10 @@ async function syncGroups() {
         return response.data;
     } catch (error) {
         console.error('❌ Error syncing groups:', error.message);
+        if (error.response) {
+            console.error('Response status:', error.response.status);
+            console.error('Response data:', error.response.data);
+        }
         return null;
     }
 }
