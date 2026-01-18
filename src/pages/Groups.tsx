@@ -96,7 +96,7 @@ export default function Groups() {
         return (
             <div className="flex items-center justify-center h-full">
                 <div className="text-center">
-                    <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-2 text-blue-500" />
+                    <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-2 text-teal-500" />
                     <p className="text-gray-600">Loading groups...</p>
                 </div>
             </div>
@@ -114,7 +114,7 @@ export default function Groups() {
                 <button
                     onClick={handleSyncGroups}
                     disabled={syncing}
-                    className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 flex items-center gap-2"
+                    className="px-4 py-2 bg-teal-500 text-white rounded-lg hover:bg-teal-600 disabled:opacity-50 flex items-center gap-2"
                 >
                     <RefreshCw className={`w-5 h-5 ${syncing ? 'animate-spin' : ''}`} />
                     {syncing ? 'Syncing...' : 'Sync Groups'}
@@ -138,7 +138,7 @@ export default function Groups() {
                     </p>
                     <button
                         onClick={handleSyncGroups}
-                        className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 inline-flex items-center gap-2"
+                        className="px-6 py-2 bg-teal-500 text-white rounded-lg hover:bg-teal-600 inline-flex items-center gap-2"
                     >
                         <RefreshCw className="w-5 h-5" />
                         Sync Groups Now
@@ -158,7 +158,7 @@ export default function Groups() {
                             <div className="p-6">
                                 <div className="flex items-start justify-between mb-4">
                                     <div className="flex items-center gap-3">
-                                        <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-bold text-lg">
+                                        <div className="w-12 h-12 bg-gradient-to-br from-teal-500 to-emerald-600 rounded-full flex items-center justify-center text-white font-bold text-lg">
                                             {group.name.charAt(0).toUpperCase()}
                                         </div>
                                         <div>
@@ -183,8 +183,8 @@ export default function Groups() {
                                     <div className="flex items-center justify-between text-sm">
                                         <span className="text-gray-600">Auto-welcome:</span>
                                         <span className={`px-2 py-1 rounded-full text-xs font-medium ${group.auto_welcome_enabled
-                                                ? 'bg-green-100 text-green-700'
-                                                : 'bg-gray-100 text-gray-600'
+                                            ? 'bg-green-100 text-green-700'
+                                            : 'bg-gray-100 text-gray-600'
                                             }`}>
                                             {group.auto_welcome_enabled ? 'ON' : 'OFF'}
                                         </span>
@@ -192,7 +192,7 @@ export default function Groups() {
                                     {group.auto_add_as_contact && (
                                         <div className="flex items-center justify-between text-sm">
                                             <span className="text-gray-600">Auto-add contacts:</span>
-                                            <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
+                                            <span className="px-2 py-1 rounded-full text-xs font-medium bg-teal-100 text-teal-700">
                                                 {group.default_contact_category || 'Group Member'}
                                             </span>
                                         </div>
@@ -210,7 +210,7 @@ export default function Groups() {
                                     </button>
                                     <button
                                         onClick={() => handleSendMessage(group)}
-                                        className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 flex items-center justify-center gap-2 text-sm font-medium"
+                                        className="flex-1 px-4 py-2 bg-teal-500 text-white rounded-lg hover:bg-teal-600 flex items-center justify-center gap-2 text-sm font-medium"
                                     >
                                         <Send className="w-4 h-4" />
                                         Send
