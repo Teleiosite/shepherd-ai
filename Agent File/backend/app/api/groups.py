@@ -48,15 +48,19 @@ async def list_groups(
     # Use connection code if provided, otherwise use JWT
     if code:
         user = get_user_by_connection_code(code, db)
-    else:
+    elif current_user:
         user = current_user
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required"
+        )
     
     groups = db.query(Group).filter(
-        Group.organization_id == user.organization_id,
-        Group.is_active == True
+        Group.organization_id == user.organization_id
     ).all()
     
-    return [GroupResponse.model_validate(g) for g in groups]
+    return groups
 
 
 @router.get("/{group_id}", response_model=GroupResponse)
@@ -70,9 +74,14 @@ async def get_group(
     # Use connection code if provided, otherwise use JWT
     if code:
         user = get_user_by_connection_code(code, db)
-    else:
+    elif current_user:
         user = current_user
-        
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required"
+        )
+    
     group = db.query(Group).filter(
         Group.id == group_id,
         Group.organization_id == user.organization_id
@@ -84,15 +93,15 @@ async def get_group(
             detail="Group not found"
         )
     
-    return GroupResponse.model_validate(group)
+    return group
 
 
 @router.put("/{group_id}", response_model=GroupResponse)
 async def update_group(
     group_id: str,
     group_update: GroupUpdate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
 ):
     """Update group settings."""
     group = db.query(Group).filter(
@@ -107,14 +116,14 @@ async def update_group(
         )
     
     # Update fields
-    update_data = group_update.model_dump(exclude_unset=True)
-    for key, value in update_data.items():
-        setattr(group, key, value)
+    for field, value in group_update.dict(exclude_unset=True).items():
+        setattr(group, field, value)
     
+    group.updated_at = datetime.now()
     db.commit()
     db.refresh(group)
     
-    return GroupResponse.model_validate(group)
+    return group
 
 
 @router.post("/sync", response_model=GroupSyncResponse)
@@ -128,26 +137,32 @@ async def sync_groups(
     # Use connection code if provided, otherwise use JWT
     if code:
         user = get_user_by_connection_code(code, db)
-    else:
+    elif current_user:
         user = current_user
-        
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required"
+        )
+    
+    synced_count = 0
     new_count = 0
     updated_count = 0
     
     for group_data in sync_request.groups:
         # Check if group already exists
         existing_group = db.query(Group).filter(
-            Group.organization_id == user.organization_id,
-            Group.whatsapp_group_id == group_data.whatsapp_group_id
+            Group.whatsapp_group_id == group_data.whatsapp_group_id,
+            Group.organization_id == user.organization_id
         ).first()
         
         if existing_group:
             # Update existing group
             existing_group.name = group_data.name
             existing_group.description = group_data.description
-            existing_group.avatar_url = group_data.avatar_url
             existing_group.member_count = group_data.member_count
-            existing_group.is_active = True
+            existing_group.avatar_url = group_data.avatar_url
+            existing_group.updated_at = datetime.now()
             updated_count += 1
         else:
             # Create new group
@@ -156,16 +171,18 @@ async def sync_groups(
                 whatsapp_group_id=group_data.whatsapp_group_id,
                 name=group_data.name,
                 description=group_data.description,
-                avatar_url=group_data.avatar_url,
-                member_count=group_data.member_count
+                member_count=group_data.member_count,
+                avatar_url=group_data.avatar_url
             )
             db.add(new_group)
             new_count += 1
+        
+        synced_count += 1
     
     db.commit()
     
     return GroupSyncResponse(
-        synced=len(sync_request.groups),
+        synced=synced_count,
         new=new_count,
         updated=updated_count
     )
@@ -176,12 +193,11 @@ async def sync_groups(
 @router.get("/{group_id}/members", response_model=List[GroupMemberWithContact])
 async def list_group_members(
     group_id: str,
-    recent: bool = Query(False, description="Only show members who joined in last 7 days"),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
 ):
-    """List members in a group."""
-    # Verify group belongs to organization
+    """List all members of a group."""
+    # Verify group exists and belongs to user's organization
     group = db.query(Group).filter(
         Group.id == group_id,
         Group.organization_id == current_user.organization_id
@@ -193,30 +209,26 @@ async def list_group_members(
             detail="Group not found"
         )
     
-    # Build query
-    query = db.query(GroupMember, Contact).outerjoin(
+    # Get members with their contact info
+    members = db.query(GroupMember, Contact).outerjoin(
         Contact, GroupMember.contact_id == Contact.id
     ).filter(
         GroupMember.group_id == group_id,
-        GroupMember.left_at.is_(None)  # Only active members
-    )
+        GroupMember.left_at.is_(None)
+    ).all()
     
-    # Filter by recent if requested
-    if recent:
-        seven_days_ago = datetime.now() - timedelta(days=7)
-        query = query.filter(GroupMember.joined_at >= seven_days_ago)
+    result = []
+    for member, contact in members:
+        result.append(GroupMemberWithContact(
+            id=member.id,
+            whatsapp_id=member.whatsapp_id,
+            name=member.name,
+            joined_at=member.joined_at,
+            contact_name=contact.name if contact else None,
+            contact_category=contact.category if contact else None
+        ))
     
-    results = query.all()
-    
-    # Build response with contact info
-    members = []
-    for member, contact in results:
-        member_dict = GroupMemberResponse.model_validate(member).model_dump()
-        member_dict['contact_name'] = contact.name if contact else None
-        member_dict['contact_category'] = contact.category if contact else None
-        members.append(GroupMemberWithContact(**member_dict))
-    
-    return members
+    return result
 
 
 @router.post("/{group_id}/members/joined")
@@ -231,10 +243,15 @@ async def member_joined(
     # Use connection code if provided, otherwise use JWT
     if code:
         user = get_user_by_connection_code(code, db)
-    else:
+    elif current_user:
         user = current_user
-        
-    # Get group
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required"
+        )
+    
+    # Verify group exists
     group = db.query(Group).filter(
         Group.whatsapp_group_id == group_id,
         Group.organization_id == user.organization_id
@@ -253,72 +270,61 @@ async def member_joined(
     ).first()
     
     if existing_member:
-        # Rejoin (if they left before)
-        existing_member.left_at = None
-        existing_member.joined_at = event.joined_at
-        member = existing_member
-    else:
-        # Create new member
-        member = GroupMember(
-            group_id=group.id,
-            whatsapp_id=event.whatsapp_id,
-            name=event.name,
-            joined_at=event.joined_at
-        )
-        db.add(member)
-        
-        # Update group member count
-        group.member_count += 1
+        # Re-mark as joined if they left before
+        if existing_member.left_at:
+            existing_member.left_at = None
+            existing_member.joined_at = event.joined_at
+        return {"message": "Member re-joined", "contact_created": False}
     
-    db.commit()
-    db.refresh(member)
+    # Create new member record
+    new_member = GroupMember(
+        group_id=group.id,
+        whatsapp_id=event.whatsapp_id,
+        name=event.name,
+        joined_at=event.joined_at
+    )
     
-    # Auto-add as contact if enabled
-    contact = None
+    # Auto-create contact if enabled
+    contact_created = False
     if group.auto_add_as_contact:
         # Check if contact already exists
         existing_contact = db.query(Contact).filter(
-            Contact.organization_id == user.organization_id,
-            Contact.phone == event.phone
+            Contact.phone == event.phone,
+            Contact.organization_id == user.organization_id
         ).first()
         
         if not existing_contact:
-            # Create new contact
-            contact = Contact(
+            new_contact = Contact(
                 organization_id=user.organization_id,
-                name=event.name or "Unknown",
+                name=event.name or f"Group Member {event.phone}",
                 phone=event.phone,
                 category=group.default_contact_category or "Group Member",
-                join_date=event.joined_at,
-                notes=f"Added from WhatsApp group: {group.name}",
-                created_by=user.id
+                source="whatsapp_group",
+                last_contacted=datetime.now()
             )
-            db.add(contact)
-            db.commit()
-            db.refresh(contact)
+            db.add(new_contact)
+            db.flush()
             
-            # Link member to contact
-            member.contact_id = contact.id
-            db.commit()
+            new_member.contact_id = new_contact.id
+            contact_created = True
+        else:
+            new_member.contact_id = existing_contact.id
     
-    return {
-        "member_id": str(member.id),
-        "contact_created": contact is not None,
-        "contact_id": str(contact.id) if contact else None
-    }
+    db.add(new_member)
+    db.commit()
+    
+    return {"message": "Member added successfully", "contact_created": contact_created}
 
 
 # ==================== GROUP MESSAGES ====================
 
-@router.post("/{group_id}/messages", response_model=GroupMessageResponse)
-async def send_group_message(
+@router.get("/{group_id}/messages", response_model=List[GroupMessageResponse])
+async def list_group_messages(
     group_id: str,
-    message_data: GroupMessageCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
 ):
-    """Send or schedule a message to a group."""
-    # Verify group
+    """List all messages for a group."""
     group = db.query(Group).filter(
         Group.id == group_id,
         Group.organization_id == current_user.organization_id
@@ -330,48 +336,83 @@ async def send_group_message(
             detail="Group not found"
         )
     
-    # Create message
-    message = GroupMessage(
+    messages = db.query(GroupMessage).filter(
+        GroupMessage.group_id == group_id
+    ).order_by(GroupMessage.created_at.desc()).all()
+    
+    return messages
+
+
+@router.post("/{group_id}/messages", response_model=GroupMessageResponse)
+async def create_group_message(
+    group_id: str,
+    message: GroupMessageCreate,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Create a new group message (broadcast or scheduled)."""
+    group = db.query(Group).filter(
+        Group.id == group_id,
+        Group.organization_id == current_user.organization_id
+    ).first()
+    
+    if not group:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Group not found"
+        )
+    
+    new_message = GroupMessage(
         organization_id=current_user.organization_id,
         group_id=group_id,
-        content=message_data.content,
-        scheduled_for=message_data.scheduled_for or datetime.now(),
+        content=message.content,
+        scheduled_for=message.scheduled_for,
+        status="pending",
         created_by=current_user.id
     )
     
-    db.add(message)
+    db.add(new_message)
     db.commit()
-    db.refresh(message)
+    db.refresh(new_message)
     
-    return GroupMessageResponse.model_validate(message)
+    return new_message
 
 
-@router.get("/messages/pending", response_model=List[GroupMessageResponse])
+@router.get("/messages/pending")
 async def get_pending_group_messages(
     code: Optional[str] = Query(None, description="Bridge connection code"),
     db: Session = Depends(get_db)
 ):
     """Get pending group messages for the bridge to send."""
+    if not code:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Connection code required"
+        )
+    
+    user = get_user_by_connection_code(code, db)
+    
+    # Get pending messages (not sent yet, and scheduled time has passed or no schedule)
     now = datetime.now()
     
-    # If connection code provided, filter by organization
-    if code:
-        user = get_user_by_connection_code(code, db)
-        messages = db.query(GroupMessage).join(
-            Group, GroupMessage.group_id == Group.id
-        ).filter(
-            GroupMessage.status == 'pending',
-            GroupMessage.scheduled_for <= now,
-            Group.organization_id == user.organization_id
-        ).all()
-    else:
-        # No filtering (global - for backward compatibility)
-        messages = db.query(GroupMessage).filter(
-            GroupMessage.status == 'pending',
-            GroupMessage.scheduled_for <= now
-        ).all()
+    messages = db.query(GroupMessage, Group).join(
+        Group, GroupMessage.group_id == Group.id
+    ).filter(
+        GroupMessage.organization_id == user.organization_id,
+        GroupMessage.status == "pending",
+        func.coalesce(GroupMessage.scheduled_for, now) <= now
+    ).all()
     
-    return [GroupMessageResponse.model_validate(m) for m in messages]
+    result = []
+    for msg, group in messages:
+        result.append({
+            "id": str(msg.id),
+            "group_id": group.whatsapp_group_id,  # WhatsApp group ID for sending
+            "content": msg.content,
+            "scheduled_for": msg.scheduled_for.isoformat() if msg.scheduled_for else None
+        })
+    
+    return result
 
 
 @router.post("/messages/{message_id}/status")
@@ -381,8 +422,19 @@ async def update_message_status(
     code: Optional[str] = Query(None, description="Bridge connection code"),
     db: Session = Depends(get_db)
 ):
-    """Update message status after sending."""
-    message = db.query(GroupMessage).filter(GroupMessage.id == message_id).first()
+    """Update message status after bridge processes it."""
+    if not code:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Connection code required"
+        )
+    
+    user = get_user_by_connection_code(code, db)
+    
+    message = db.query(GroupMessage).filter(
+        GroupMessage.id == message_id,
+        GroupMessage.organization_id == user.organization_id
+    ).first()
     
     if not message:
         raise HTTPException(
