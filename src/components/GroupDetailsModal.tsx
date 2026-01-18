@@ -102,11 +102,11 @@ export default function GroupDetailsModal({ group, onClose }: Props) {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] overflow-hidden">
                 {/* Header */}
-                <div className="bg-gradient-to-r from-blue-500 to-purple-600 text-white p-6">
+                <div className="bg-gradient-to-r from-teal-500 to-emerald-600 text-white p-6">
                     <div className="flex justify-between items-start">
                         <div>
                             <h2 className="text-2xl font-bold mb-2">{group.name}</h2>
-                            <p className="text-blue-100 flex items-center gap-2">
+                            <p className="text-teal-100 flex items-center gap-2">
                                 <Users className="w-4 h-4" />
                                 {group.member_count} members
                             </p>
@@ -125,7 +125,7 @@ export default function GroupDetailsModal({ group, onClose }: Props) {
                     <button
                         onClick={() => setActiveTab('settings')}
                         className={`flex-1 px-6 py-3 font-medium transition ${activeTab === 'settings'
-                            ? 'text-blue-600 border-b-2 border-blue-600'
+                            ? 'text-teal-600 border-b-2 border-teal-600'
                             : 'text-gray-600 hover:text-gray-900'
                             }`}
                     >
@@ -135,7 +135,7 @@ export default function GroupDetailsModal({ group, onClose }: Props) {
                     <button
                         onClick={() => setActiveTab('members')}
                         className={`flex-1 px-6 py-3 font-medium transition ${activeTab === 'members'
-                            ? 'text-blue-600 border-b-2 border-blue-600'
+                            ? 'text-teal-600 border-b-2 border-teal-600'
                             : 'text-gray-600 hover:text-gray-900'
                             }`}
                     >
@@ -174,7 +174,7 @@ export default function GroupDetailsModal({ group, onClose }: Props) {
                                         value={settings.welcome_message_template}
                                         onChange={(e) => setSettings({ ...settings, welcome_message_template: e.target.value })}
                                         rows={4}
-                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                                         placeholder="Welcome {{name}} to {{group_name}}!"
                                     />
                                     <p className="text-sm text-gray-600 mt-2">
@@ -210,7 +210,7 @@ export default function GroupDetailsModal({ group, onClose }: Props) {
                                         type="text"
                                         value={settings.default_contact_category}
                                         onChange={(e) => setSettings({ ...settings, default_contact_category: e.target.value })}
-                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                                         placeholder="e.g. Group Member"
                                     />
                                     <p className="text-sm text-gray-600 mt-2">
@@ -225,7 +225,7 @@ export default function GroupDetailsModal({ group, onClose }: Props) {
                         <div>
                             {loadingMembers ? (
                                 <div className="text-center py-12">
-                                    <div className="animate-spin w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full mx-auto mb-4"></div>
+                                    <div className="animate-spin w-8 h-8 border-4 border-teal-500 border-t-transparent rounded-full mx-auto mb-4"></div>
                                     <p className="text-gray-600">Loading members...</p>
                                 </div>
                             ) : members.length === 0 ? (
@@ -276,7 +276,7 @@ export default function GroupDetailsModal({ group, onClose }: Props) {
                         <button
                             onClick={handleSaveSettings}
                             disabled={saving}
-                            className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 font-medium"
+                            className="px-6 py-2 bg-teal-500 text-white rounded-lg hover:bg-teal-600 disabled:opacity-50 font-medium"
                         >
                             {saving ? 'Saving...' : 'Save Settings'}
                         </button>

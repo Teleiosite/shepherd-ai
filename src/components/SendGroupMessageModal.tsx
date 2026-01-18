@@ -66,11 +66,11 @@ export default function SendGroupMessageModal({ group, onClose }: Props) {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full">
                 {/* Header */}
-                <div className="bg-gradient-to-r from-blue-500 to-purple-600 text-white p-6 rounded-t-lg">
+                <div className="bg-gradient-to-r from-teal-500 to-emerald-600 text-white p-6 rounded-t-lg">
                     <div className="flex justify-between items-start">
                         <div>
                             <h2 className="text-2xl font-bold mb-2">Send Message</h2>
-                            <p className="text-blue-100">To: {group.name} ({group.member_count} members)</p>
+                            <p className="text-teal-100">To: {group.name} ({group.member_count} members)</p>
                         </div>
                         <button
                             onClick={onClose}
@@ -92,7 +92,7 @@ export default function SendGroupMessageModal({ group, onClose }: Props) {
                             value={message}
                             onChange={(e) => setMessage(e.target.value)}
                             rows={6}
-                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent resize-none"
                             placeholder="Type your message here..."
                         />
                         <div className="flex justify-between items-center mt-2">
@@ -112,8 +112,8 @@ export default function SendGroupMessageModal({ group, onClose }: Props) {
                         </label>
                         <div className="space-y-3">
                             {/* Send Now */}
-                            <label className="flex items-center p-4 border-2 rounded-lg cursor-pointer transition hover:bg-blue-50"
-                                style={{ borderColor: scheduleType === 'now' ? '#3b82f6' : '#e5e7eb' }}>
+                            <label className="flex items-center p-4 border-2 rounded-lg cursor-pointer transition hover:bg-teal-50"
+                                style={{ borderColor: scheduleType === 'now' ? '#14b8a6' : '#e5e7eb' }}>
                                 <input
                                     type="radio"
                                     name="scheduleType"
@@ -124,7 +124,7 @@ export default function SendGroupMessageModal({ group, onClose }: Props) {
                                 />
                                 <div className="ml-3">
                                     <div className="font-medium text-gray-900 flex items-center gap-2">
-                                        <Send className="w-5 h-5 text-blue-500" />
+                                        <Send className="w-5 h-5 text-teal-500" />
                                         Send Now
                                     </div>
                                     <div className="text-sm text-gray-600">Message will be sent immediately</div>
@@ -132,8 +132,8 @@ export default function SendGroupMessageModal({ group, onClose }: Props) {
                             </label>
 
                             {/* Schedule for Later */}
-                            <label className="flex items-center p-4 border-2 rounded-lg cursor-pointer transition hover:bg-blue-50"
-                                style={{ borderColor: scheduleType === 'scheduled' ? '#3b82f6' : '#e5e7eb' }}>
+                            <label className="flex items-center p-4 border-2 rounded-lg cursor-pointer transition hover:bg-teal-50"
+                                style={{ borderColor: scheduleType === 'scheduled' ? '#14b8a6' : '#e5e7eb' }}>
                                 <input
                                     type="radio"
                                     name="scheduleType"
@@ -144,7 +144,7 @@ export default function SendGroupMessageModal({ group, onClose }: Props) {
                                 />
                                 <div className="ml-3 flex-1">
                                     <div className="font-medium text-gray-900 flex items-center gap-2 mb-3">
-                                        <Calendar className="w-5 h-5 text-blue-500" />
+                                        <Calendar className="w-5 h-5 text-teal-500" />
                                         Schedule for Later
                                     </div>
                                     {scheduleType === 'scheduled' && (
@@ -156,7 +156,7 @@ export default function SendGroupMessageModal({ group, onClose }: Props) {
                                                     value={scheduledDate}
                                                     onChange={(e) => setScheduledDate(e.target.value)}
                                                     min={new Date().toISOString().split('T')[0]}
-                                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                                                 />
                                             </div>
                                             <div className="flex-1">
@@ -165,7 +165,7 @@ export default function SendGroupMessageModal({ group, onClose }: Props) {
                                                     type="time"
                                                     value={scheduledTime}
                                                     onChange={(e) => setScheduledTime(e.target.value)}
-                                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                                                 />
                                             </div>
                                         </div>
@@ -194,7 +194,7 @@ export default function SendGroupMessageModal({ group, onClose }: Props) {
                     <button
                         onClick={handleSend}
                         disabled={sending || !message.trim() || (scheduleType === 'scheduled' && (!scheduledDate || !scheduledTime))}
-                        className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed font-medium flex items-center gap-2"
+                        className="px-6 py-2 bg-teal-500 text-white rounded-lg hover:bg-teal-600 disabled:opacity-50 disabled:cursor-not-allowed font-medium flex items-center gap-2"
                     >
                         {sending ? (
                             <>
