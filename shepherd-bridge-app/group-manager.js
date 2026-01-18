@@ -36,7 +36,13 @@ async function syncGroups() {
     try {
         console.log('🔄 Syncing WhatsApp groups...');
 
-        const groups = await client.getAllGroups();
+        // Use listChats instead of deprecated getAllGroups
+        const allChats = await client.listChats();
+
+        // Filter for group chats only
+        const groups = allChats.filter(chat => chat.isGroup);
+
+        console.log(`📊 Found ${groups.length} groups in WhatsApp`);
 
         const groupData = groups.map(g => ({
             whatsapp_group_id: g.id._serialized || g.id,
