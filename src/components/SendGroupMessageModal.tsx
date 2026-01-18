@@ -64,9 +64,9 @@ export default function SendGroupMessageModal({ group, onClose }: Props) {
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full">
+            <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] flex flex-col">
                 {/* Header */}
-                <div className="bg-gradient-to-r from-teal-500 to-emerald-600 text-white p-6 rounded-t-lg">
+                <div className="bg-gradient-to-r from-teal-500 to-emerald-600 text-white p-6 rounded-t-lg flex-shrink-0">
                     <div className="flex justify-between items-start">
                         <div>
                             <h2 className="text-2xl font-bold mb-2">Send Message</h2>
@@ -82,7 +82,7 @@ export default function SendGroupMessageModal({ group, onClose }: Props) {
                 </div>
 
                 {/* Content */}
-                <div className="p-6 space-y-6">
+                <div className="p-6 space-y-6 overflow-y-auto flex-1">
                     {/* Message Input */}
                     <div>
                         <label className="block font-semibold text-gray-900 mb-2">
@@ -184,7 +184,7 @@ export default function SendGroupMessageModal({ group, onClose }: Props) {
                 </div>
 
                 {/* Footer */}
-                <div className="border-t border-gray-200 p-6 flex justify-end gap-3">
+                <div className="border-t border-gray-200 p-6 flex justify-end gap-3 flex-shrink-0">
                     <button
                         onClick={onClose}
                         className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium"
