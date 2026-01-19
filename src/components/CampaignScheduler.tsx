@@ -115,7 +115,7 @@ const CampaignScheduler: React.FC<CampaignSchedulerProps> = ({ contacts, resourc
 
             try {
                 // Queue message through backend API
-                const response = await fetch(`${BACKEND_URL}/api/messages/queue`, {
+                const response = await fetch(`${BACKEND_URL}/api/messages`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -224,7 +224,7 @@ const CampaignScheduler: React.FC<CampaignSchedulerProps> = ({ contacts, resourc
 
                 try {
                     // Queue message through backend API (no schedule = send now)
-                    const response = await fetch(`${BACKEND_URL}/api/messages/queue`, {
+                    const response = await fetch(`${BACKEND_URL}/api/messages`, {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
