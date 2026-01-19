@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { Contact, KnowledgeResource, MessageLog, MessageStatus, WorkflowStep } from '../types';
 import { generateMessage } from '../services/geminiService';
 import { whatsappService } from '../services/whatsappService';
+import { BACKEND_URL } from '../services/env';
 import { Send, RefreshCw, MessageSquare, AlertCircle, Calendar, Clock, CheckCircle, Users, CheckSquare, Square, Zap, Play, Trash2, X, Check, Loader2 } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { getRecommendedWorkflowStep } from '../utils/workflows';
@@ -103,40 +104,56 @@ const CampaignScheduler: React.FC<CampaignSchedulerProps> = ({ contacts, resourc
 
         if (!isScheduled) setIsSending(true);
 
-        const waConfig = whatsappService.getConfig();
+        const token = localStorage.getItem('authToken');
 
         for (const id of ids) {
             const content = generatedDrafts[id];
             if (!content) continue;
 
             const contact = contacts.find(c => c.id === id);
-            let apiSent = false;
+            if (!contact) continue;
 
-            // Try API Send if "Send Now" and Config Exists
-            if (!isScheduled && waConfig && contact?.phone) {
-                const result = await whatsappService.sendMessage(contact.phone, content);
-                if (result.success) apiSent = true;
+            try {
+                // Queue message through backend API
+                const response = await fetch(`${BACKEND_URL}/api/messages/queue`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        contact_id: contact.id,
+                        content: content,
+                        scheduled_for: scheduledDateTime
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to queue message');
+                }
+
+                newLogs.push({
+                    id: uuidv4(),
+                    contactId: id,
+                    content: content,
+                    timestamp: new Date().toISOString(),
+                    status: isScheduled ? MessageStatus.SCHEDULED : MessageStatus.SENT,
+                    type: 'Outbound',
+                    scheduledFor: scheduledDateTime
+                });
+                successCount++;
+
+                // Rate limit for API safety
+                await new Promise(r => setTimeout(r, 300));
+            } catch (error) {
+                console.error(`Failed to queue message for ${contact.name}:`, error);
             }
-
-            newLogs.push({
-                id: uuidv4(),
-                contactId: id,
-                content: content,
-                timestamp: new Date().toISOString(),
-                status: isScheduled ? MessageStatus.SCHEDULED : MessageStatus.SENT,
-                type: 'Outbound',
-                scheduledFor: scheduledDateTime
-            });
-            successCount++;
-
-            // Rate limit for API safety
-            if (!isScheduled && waConfig) await new Promise(r => setTimeout(r, 300));
         }
 
         if (!isScheduled) setIsSending(false);
 
         if (successCount === 0) {
-            alert("No drafts found for selected contacts.");
+            alert("No messages could be queued. Please try again.");
             return;
         }
 
@@ -157,7 +174,7 @@ const CampaignScheduler: React.FC<CampaignSchedulerProps> = ({ contacts, resourc
             setScheduleDate('');
             setScheduleTime('');
         } else {
-            alert(`${successCount} messages sent successfully!`);
+            alert(`${successCount} messages queued successfully!`);
         }
     };
 
@@ -201,19 +218,40 @@ const CampaignScheduler: React.FC<CampaignSchedulerProps> = ({ contacts, resourc
             const msg = logs.find(l => l.id === id);
             if (msg) {
                 const contact = contacts.find(c => c.id === msg.contactId);
-                const waConfig = whatsappService.getConfig();
+                if (!contact) return;
 
-                // Try Real API Send
-                if (waConfig && contact?.phone) {
-                    await whatsappService.sendMessage(contact.phone, msg.content);
-                }
+                const token = localStorage.getItem('authToken');
 
-                setLogs(prev => prev.map(l => {
-                    if (l.id === id) {
-                        return { ...l, status: MessageStatus.SENT, scheduledFor: undefined, timestamp: new Date().toISOString() };
+                try {
+                    // Queue message through backend API (no schedule = send now)
+                    const response = await fetch(`${BACKEND_URL}/api/messages/queue`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify({
+                            contact_id: contact.id,
+                            content: msg.content
+                            // No scheduled_for = send immediately
+                        })
+                    });
+
+                    if (!response.ok) {
+                        throw new Error('Failed to queue message');
                     }
-                    return l;
-                }));
+
+                    // Update log status
+                    setLogs(prev => prev.map(l => {
+                        if (l.id === id) {
+                            return { ...l, status: MessageStatus.SENT, scheduledFor: undefined, timestamp: new Date().toISOString() };
+                        }
+                        return l;
+                    }));
+                } catch (error) {
+                    console.error('Failed to send scheduled message:', error);
+                    alert('Failed to send message. Please try again.');
+                }
             }
         }
     };
