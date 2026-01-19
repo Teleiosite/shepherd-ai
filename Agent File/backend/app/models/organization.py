@@ -17,6 +17,13 @@ class Organization(Base):
     whatsapp_phone_id = Column(String(255), nullable=True)
     whatsapp_business_account_id = Column(String(255), nullable=True)
     whatsapp_access_token = Column(String, nullable=True)
+    
+    # AI Configuration (per organization)
+    ai_provider = Column(String(50), default="gemini")  # gemini, openai, deepseek, groq, custom
+    ai_api_key = Column(String, nullable=True)
+    ai_model = Column(String(100), default="gemini-2.0-flash")
+    ai_base_url = Column(String, nullable=True)  # For custom providers
+    
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
     # Relationships

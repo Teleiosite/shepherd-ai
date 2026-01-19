@@ -39,35 +39,31 @@ async def get_ai_config(
     Get AI configuration for user's organization
     Returns masked API key for security
     """
-    # Query AI config for organization
+    # Query organization for AI config
     result = db.execute(
         text("""
-            SELECT id, organization_id, provider, api_key, model, base_url, created_at, updated_at
-            FROM ai_configs
-            WHERE organization_id = :org_id
+            SELECT ai_provider, ai_api_key, ai_model, ai_base_url
+            FROM organizations
+            WHERE id = :org_id
         """),
         {"org_id": str(current_user.organization_id)}
     ).fetchone()
     
-    if not result:
+    if not result or not result[1]:  # No API key
         # Return default/empty config
         return {
             "provider": "gemini",
             "api_key_masked": "",
-            "model": "gemini-pro",
+            "model": "gemini-2.0-flash",
             "base_url": None,
             "configured": False
         }
     
     return {
-        "id": result[0],
-        "organization_id": result[1],
-        "provider": result[2],
-        "api_key_masked": mask_api_key(result[3]),
-        "model": result[4],
-        "base_url": result[5],
-        "created_at": result[6],
-        "updated_at": result[7],
+        "provider": result[0] or "gemini",
+        "api_key_masked": mask_api_key(result[1]),
+        "model": result[2] or "gemini-2.0-flash",
+        "base_url": result[3],
         "configured": True
     }
 
@@ -80,53 +76,29 @@ async def update_ai_config(
 ):
     """
     Create or update AI configuration for user's organization
-    Encrypts API key before storing
+    Saves directly to organization table
     """
     logger.info(f"User {current_user.id} updating AI config: provider={config.provider}")
     
-    # Check if config exists
-    existing = db.execute(
-        text("SELECT id FROM ai_configs WHERE organization_id = :org_id"),
-        {"org_id": str(current_user.organization_id)}
-    ).fetchone()
-    
     try:
-        if existing:
-            # Update existing
-            db.execute(
-                text("""
-                    UPDATE ai_configs
-                    SET provider = :provider, api_key = :api_key, model = :model, 
-                        base_url = :base_url, updated_at = NOW()
-                    WHERE organization_id = :org_id
-                """),
-                {
-                    "provider": config.provider,
-                    "api_key": config.api_key,
-                    "model": config.model,
-                    "base_url": config.base_url,
-                    "org_id": str(current_user.organization_id)
-                }
-            )
-            logger.info(f"Updated AI config for org {current_user.organization_id}")
-        else:
-            # Insert new
-            db.execute(
-                text("""
-                    INSERT INTO ai_configs (organization_id, provider, api_key, model, base_url)
-                    VALUES (:org_id, :provider, :api_key, :model, :base_url)
-                """),
-                {
-                    "org_id": str(current_user.organization_id),
-                    "provider": config.provider,
-                    "api_key": config.api_key,
-                    "model": config.model,
-                    "base_url": config.base_url
-                }
-            )
-            logger.info(f"Created new AI config for org {current_user.organization_id}")
-        
+        # Update organization AI config
+        db.execute(
+            text("""
+                UPDATE organizations
+                SET ai_provider = :provider, ai_api_key = :api_key, 
+                    ai_model = :model, ai_base_url = :base_url
+                WHERE id = :org_id
+            """),
+            {
+                "provider": config.provider,
+                "api_key": config.api_key,
+                "model": config.model,
+                "base_url": config.base_url,
+                "org_id": str(current_user.organization_id)
+            }
+        )
         db.commit()
+        logger.info(f"Updated AI config for org {current_user.organization_id}")
         
         return {
             "success": True,
@@ -175,7 +147,11 @@ async def delete_ai_config(
     """Delete AI configuration for user's organization"""
     try:
         db.execute(
-            text("DELETE FROM ai_configs WHERE organization_id = :org_id"),
+            text("""
+                UPDATE organizations
+                SET ai_provider = NULL, ai_api_key = NULL, ai_model = NULL, ai_base_url = NULL
+                WHERE id = :org_id
+            """),
             {"org_id": str(current_user.organization_id)}
         )
         db.commit()

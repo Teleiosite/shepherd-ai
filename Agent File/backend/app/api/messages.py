@@ -169,14 +169,18 @@ async def generate_ai_message(
             
     final_context = (context or "") + rag_context
     
-    # Generate message
+    # Generate message using organization's AI configuration
     message_text = await generate_message(
         contact_name=contact.name,
         contact_category=contact.category,
         context=final_context,
         tone=tone,
         sender_name=current_user.full_name or "Pastor",
-        organization_name=org.name if org else "Church"
+        organization_name=org.name if org else "Church",
+        ai_provider=org.ai_provider if org else "gemini",
+        ai_api_key=org.ai_api_key if org else None,
+        ai_model=org.ai_model if org else "gemini-2.0-flash",
+        ai_base_url=org.ai_base_url if org else None
     )
     
     return {"content": message_text}
