@@ -124,6 +124,7 @@ const CampaignScheduler: React.FC<CampaignSchedulerProps> = ({ contacts, resourc
                     body: JSON.stringify({
                         contact_id: contact.id,
                         content: content,
+                        type: 'outbound',
                         scheduled_for: scheduledDateTime
                     })
                 });
@@ -232,7 +233,8 @@ const CampaignScheduler: React.FC<CampaignSchedulerProps> = ({ contacts, resourc
                         },
                         body: JSON.stringify({
                             contact_id: contact.id,
-                            content: msg.content
+                            content: msg.content,
+                            type: 'outbound'
                             // No scheduled_for = send immediately
                         })
                     });
