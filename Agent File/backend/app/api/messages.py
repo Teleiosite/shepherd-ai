@@ -68,10 +68,10 @@ async def create_message(
     
     # If scheduled, ensure status is pending
     if new_message.scheduled_for and new_message.scheduled_for > datetime.now(new_message.scheduled_for.tzinfo):
-        new_message.status = "pending"
-    elif new_message.status == "pending" and not new_message.scheduled_for:
+        new_message.status = "Pending"  # Capitalized to match bridge query
+    elif new_message.status == "Pending" and not new_message.scheduled_for:
         # If pending but no schedule, assume immediate send (in a real app, this would trigger a background task)
-        new_message.status = "sent"
+        new_message.status = "Sent"  # Capitalized to match bridge query
         new_message.sent_at = datetime.now()
     
     db.add(new_message)
