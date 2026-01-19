@@ -102,7 +102,6 @@ async def register_bridge(
     
     if org:
         org.wppconnect_bridge_url = registration.bridge_url
-        org.updated_at = datetime.utcnow()
         db.commit()
         
         return {
