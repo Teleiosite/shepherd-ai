@@ -3,7 +3,7 @@ from typing import List, Optional
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from sqlalchemy import desc
+from sqlalchemy import desc, text
 from app.database import get_db
 from app.models.message import Message
 from app.models.contact import Contact
@@ -169,7 +169,17 @@ async def generate_ai_message(
             
     final_context = (context or "") + rag_context
     
-    # Generate message using organization's AI configuration
+    # Generate message using organization's AI configuration from ai_configs table
+    # Query ai_configs for this organization
+    ai_config_result = db.execute(
+        text("""
+            SELECT provider, api_key, model, base_url
+            FROM ai_configs
+            WHERE organization_id = :org_id
+        """),
+        {"org_id": str(current_user.organization_id)}
+    ).fetchone()
+    
     message_text = await generate_message(
         contact_name=contact.name,
         contact_category=contact.category,
@@ -177,10 +187,10 @@ async def generate_ai_message(
         tone=tone,
         sender_name=current_user.full_name or "Pastor",
         organization_name=org.name if org else "Church",
-        ai_provider=org.ai_provider if org else "gemini",
-        ai_api_key=org.ai_api_key if org else None,
-        ai_model=org.ai_model if org else "gemini-2.0-flash",
-        ai_base_url=org.ai_base_url if org else None
+        ai_provider=ai_config_result[0] if ai_config_result else "gemini",
+        ai_api_key=ai_config_result[1] if ai_config_result else None,
+        ai_model=ai_config_result[2] if ai_config_result else "gemini-2.0-flash",
+        ai_base_url=ai_config_result[3] if ai_config_result else None
     )
     
     return {"content": message_text}
