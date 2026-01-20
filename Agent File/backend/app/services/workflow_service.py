@@ -53,8 +53,8 @@ async def process_daily_workflows(db: Session):
             organization_id=contact.organization_id,
             contact_id=contact.id,
             content=message_content,
-            type="outbound",
-            status="pending", # Draft
+            type="Outbound",  # Capitalized to match bridge query
+            status="Pending",  # Capitalized to match bridge query
             scheduled_for=datetime.now() # Scheduled for today
         )
         
