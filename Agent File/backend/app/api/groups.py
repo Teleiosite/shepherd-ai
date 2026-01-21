@@ -459,6 +459,8 @@ async def get_welcome_queue(
     db: Session = Depends(get_db)
 ):
     """Get pending welcome messages for new group members."""
+    from sqlalchemy import cast, String
+    
     # Find new members (joined in last 5 minutes, no contact yet or no welcome sent)
     five_min_ago = datetime.now() - timedelta(minutes=5)
     
@@ -471,10 +473,25 @@ async def get_welcome_queue(
         Group.auto_welcome_enabled == True
     )
     
-    # Filter by organization if connection code provided
+    # Filter by organizations using this bridge if connection code provided
     if code:
-        user = get_user_by_connection_code(code, db)
-        query = query.filter(Group.organization_id == user.organization_id)
+        # Find user by connection code
+        user = db.query(User).filter(
+            cast(User.id, String).like(f"{code.lower()}%")
+        ).first()
+        
+        if user:
+            # Get bridge URL
+            org = db.query(Organization).filter(Organization.id == user.organization_id).first()
+            
+            if org and org.wppconnect_bridge_url:
+                # Find ALL organizations using this bridge
+                orgs_using_bridge = db.query(Organization).filter(
+                    Organization.wppconnect_bridge_url == org.wppconnect_bridge_url
+                ).all()
+                
+                org_ids = [o.id for o in orgs_using_bridge]
+                query = query.filter(Group.organization_id.in_(org_ids))
     
     new_members = query.all()
     
