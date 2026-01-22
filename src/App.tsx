@@ -320,7 +320,8 @@ function App() {
             const content = await generateMessage(contact, step.prompt, resources, aiName, organizationName);
 
             if (waConfig && contact.phone) {
-              await whatsappService.sendMessage(contact.phone, content);
+              // Pass contact_id so message gets saved to database for bridge delivery
+              await whatsappService.sendMessage(contact.phone, content, undefined, contact.id);
             }
 
             newLogs.push({
