@@ -33,7 +33,7 @@ async def process_scheduled_messages():
         # Find messages that are pending and scheduled for now or earlier
         now = datetime.now()
         messages = db.query(Message).filter(
-            Message.status == "pending",
+            Message.status == "Pending",  # Capitalized to match workflow/message creation
             Message.scheduled_for <= now
         ).all()
         
@@ -43,8 +43,8 @@ async def process_scheduled_messages():
         print(f"[{now}] Found {len(messages)} scheduled messages to send.")
         
         for message in messages:
-            # Update status to sent (in real app, this would trigger WhatsApp sending)
-            message.status = "sent"
+            # Update status to Sent (bridge will actually send via WhatsApp)
+            message.status = "Sent"
             message.sent_at = now
             
             # TODO: Call WhatsApp service to actually send
