@@ -53,7 +53,7 @@ async def get_pending_messages(
     """
     from sqlalchemy import cast, String
     
-    # Find user by connection code to get bridge URL
+    # Find user by connection code
     user = db.query(User).filter(
         cast(User.id, String).like(f"{code.lower()}%")
     ).first()
@@ -64,29 +64,11 @@ async def get_pending_messages(
             detail="Invalid connection code"
         )
     
-    # Get bridge URL from user's organization
-    org = db.query(Organization).filter(Organization.id == user.organization_id).first()
-    
-    if not org or not org.wppconnect_bridge_url:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Bridge not registered for this organization"
-        )
-    
-    bridge_url = org.wppconnect_bridge_url
-    
-    # Find ALL organizations using this bridge URL
-    orgs_using_bridge = db.query(Organization).filter(
-        Organization.wppconnect_bridge_url == bridge_url
-    ).all()
-    
-    org_ids = [o.id for o in orgs_using_bridge]
-    
-    # Get pending messages for ALL organizations using this bridge
+    # Get pending messages for this organization with contact details
     pending = db.query(Message, Contact).join(
         Contact, Message.contact_id == Contact.id
     ).filter(
-        Message.organization_id.in_(org_ids),
+        Message.organization_id == user.organization_id,
         Message.type == "Outbound",
         Message.status == "Pending"
     ).order_by(Message.created_at).limit(50).all()

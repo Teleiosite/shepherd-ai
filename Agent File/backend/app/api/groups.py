@@ -473,7 +473,7 @@ async def get_welcome_queue(
         Group.auto_welcome_enabled == True
     )
     
-    # Filter by organizations using this bridge if connection code provided
+    # Filter by organization if connection code provided
     if code:
         # Find user by connection code
         user = db.query(User).filter(
@@ -481,17 +481,7 @@ async def get_welcome_queue(
         ).first()
         
         if user:
-            # Get bridge URL
-            org = db.query(Organization).filter(Organization.id == user.organization_id).first()
-            
-            if org and org.wppconnect_bridge_url:
-                # Find ALL organizations using this bridge
-                orgs_using_bridge = db.query(Organization).filter(
-                    Organization.wppconnect_bridge_url == org.wppconnect_bridge_url
-                ).all()
-                
-                org_ids = [o.id for o in orgs_using_bridge]
-                query = query.filter(Group.organization_id.in_(org_ids))
+            query = query.filter(Group.organization_id == user.organization_id)
     
     new_members = query.all()
     
