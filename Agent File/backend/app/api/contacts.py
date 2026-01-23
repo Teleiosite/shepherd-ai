@@ -72,8 +72,11 @@ async def create_contact(
         from sqlalchemy import func
         from app.models.workflow import WorkflowStep
         from app.models.message import Message
+        from app.models.organization import Organization
         from app.services.ai_service import generate_message
         from datetime import datetime
+        
+        print(f"🔍 Checking for Day 0 workflow for contact: {contact_data.name}, category: {contact_data.category}")
         
         # Find Day 0 workflow for this category
         day_0_step = db.query(WorkflowStep).filter(
@@ -82,7 +85,17 @@ async def create_contact(
             WorkflowStep.day == 0
         ).first()
         
-        if day_0_step:
+        if not day_0_step:
+            print(f"ℹ️ No Day 0 workflow found for category: {contact_data.category}")
+        else:
+            print(f"✅ Found Day 0 workflow: {day_0_step.title}")
+            
+            # Get organization name
+            org = db.query(Organization).filter(Organization.id == current_user.organization_id).first()
+            org_name = org.name if org else "Church"
+            
+            print(f"🤖 Generating AI message for {contact_data.name}...")
+            
             # Generate AI message
             message_content = await generate_message(
                 contact_name=contact_data.name,
@@ -90,8 +103,10 @@ async def create_contact(
                 context=f"Workflow Step: {day_0_step.title}\\nPrompt: {day_0_step.prompt}",
                 tone="encouraging",
                 sender_name="Pastor",
-                organization_name=current_user.organization.name if current_user.organization else "Church"
+                organization_name=org_name
             )
+            
+            print(f"📝 Generated message: {message_content[:50]}...")
             
             # Create message with Pending status for bridge to deliver
             welcome_message = Message(
@@ -105,10 +120,12 @@ async def create_contact(
             
             db.add(welcome_message)
             db.commit()
-            print(f"✅ Day 0 welcome message queued for {contact_data.name}")
+            print(f"✅ Day 0 welcome message queued for {contact_data.name} (ID: {welcome_message.id})")
     except Exception as e:
         # Don't fail contact creation if welcome message fails
+        import traceback
         print(f"⚠️ Failed to queue Day 0 welcome message: {e}")
+        print(f"📋 Traceback: {traceback.format_exc()}")
     
     return ContactResponse.model_validate(new_contact)
 
