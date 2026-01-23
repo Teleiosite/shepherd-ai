@@ -67,6 +67,49 @@ async def create_contact(
     db.commit()
     db.refresh(new_contact)
     
+    # Auto-send Day 0 welcome message if workflow exists
+    try:
+        from sqlalchemy import func
+        from app.models.workflow import WorkflowStep
+        from app.models.message import Message
+        from app.services.ai_service import generate_message
+        from datetime import datetime
+        
+        # Find Day 0 workflow for this category
+        day_0_step = db.query(WorkflowStep).filter(
+            WorkflowStep.organization_id == current_user.organization_id,
+            func.lower(WorkflowStep.category) == func.lower(contact_data.category),
+            WorkflowStep.day == 0
+        ).first()
+        
+        if day_0_step:
+            # Generate AI message
+            message_content = await generate_message(
+                contact_name=contact_data.name,
+                contact_category=contact_data.category,
+                context=f"Workflow Step: {day_0_step.title}\\nPrompt: {day_0_step.prompt}",
+                tone="encouraging",
+                sender_name="Pastor",
+                organization_name=current_user.organization.name if current_user.organization else "Church"
+            )
+            
+            # Create message with Pending status for bridge to deliver
+            welcome_message = Message(
+                organization_id=current_user.organization_id,
+                contact_id=new_contact.id,
+                content=message_content,
+                type="Outbound",
+                status="Pending",
+                scheduled_for=datetime.now()  # Send immediately
+            )
+            
+            db.add(welcome_message)
+            db.commit()
+            print(f"✅ Day 0 welcome message queued for {contact_data.name}")
+    except Exception as e:
+        # Don't fail contact creation if welcome message fails
+        print(f"⚠️ Failed to queue Day 0 welcome message: {e}")
+    
     return ContactResponse.model_validate(new_contact)
 
 
