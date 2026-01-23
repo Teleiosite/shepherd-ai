@@ -663,6 +663,8 @@ function App() {
 
   const handleContactAdded = async (contact: Contact, autoGenerate: boolean) => {
     // Save to backend first
+    // The backend will automatically create the Day 0 welcome message if autoGenerate is true
+    // and a Day 0 workflow exists for this category
     const success = await storage.saveContact(contact);
 
     if (!success) {
@@ -675,30 +677,26 @@ function App() {
     setContacts(updatedContacts);
 
     if (autoGenerate) {
+      // The backend creates the Day 0 message with status "Pending"
+      // The bridge will pick it up and send it via WhatsApp
+      // Refresh logs to show the pending message in Live Chat
       try {
-        // Find the newly created contact (match by phone since ID might change)
         const savedContact = updatedContacts.find(c => c.phone === contact.phone) || contact;
 
-        const prompt = "Day 0: Send immediate welcome message";
-        const content = await generateMessage(savedContact, prompt, resources, aiName, organizationName);
-        const waConfig = whatsappService.getConfig();
-        if (waConfig && savedContact.phone) {
-          await whatsappService.sendMessage(savedContact.phone, content);
-        }
-        const newLog: MessageLog = {
-          id: uuidv4(),
-          contactId: savedContact.id,
-          content: content,
-          timestamp: new Date().toISOString(),
-          status: MessageStatus.SENT,
-          type: 'Outbound'
-        };
-        setLogs(prev => [newLog, ...prev]);
+        // Refresh logs from backend - now returns properly transformed data
+        const backendLogs = await storage.refreshLogs();
 
-        console.log('✅ Welcome message sent to', savedContact.name);
+        // Merge backend logs with local logs (avoiding duplicates)
+        setLogs(prev => {
+          const existingIds = new Set(prev.map(l => l.id));
+          const newLogs = backendLogs.filter((l: MessageLog) => !existingIds.has(l.id));
+          return [...newLogs, ...prev];
+        });
+
+        console.log('✅ Day 0 welcome message queued for', savedContact.name, '(will be delivered by bridge)');
       } catch (err) {
-        console.error("Auto-generation failed", err);
-        alert('Contact saved but failed to send welcome message. You can send it manually from Live Chats.');
+        console.error("Failed to refresh logs after contact creation:", err);
+        // Don't show error to user - the message was likely created successfully
       }
     }
   };

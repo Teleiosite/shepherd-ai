@@ -271,7 +271,24 @@ export const storage = {
 
       if (!response.ok) return [];
 
-      const messages = await response.json();
+      const backendMessages = await response.json();
+
+      // Transform backend snake_case to frontend camelCase
+      const messages = backendMessages.map((m: any) => ({
+        id: m.id,
+        contactId: m.contact_id || m.contactId,
+        content: m.content,
+        timestamp: m.created_at || m.timestamp,
+        scheduledFor: m.scheduled_for || m.scheduledFor,
+        status: m.status,
+        type: m.type,
+        attachment: m.attachment_url ? {
+          type: m.attachment_type?.includes('image') ? 'image' : 'file',
+          url: m.attachment_url,
+          name: 'attachment'
+        } : undefined
+      }));
+
       localStorage.setItem('shepherd_logs_cache', JSON.stringify(messages));
       return messages;
     } catch (error) {

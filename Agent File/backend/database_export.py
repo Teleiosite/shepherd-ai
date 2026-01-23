@@ -58,7 +58,7 @@ def export_database():
         print(f"\n💡 To import this to another PostgreSQL database:")
         print(f"   psql [new-database-url] < {filename}")
         
-return True
+        return True
         
     except subprocess.CalledProcessError as e:
         print(f"\n❌ Export failed: {e}")
