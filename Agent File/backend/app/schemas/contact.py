@@ -11,7 +11,6 @@ class ContactCreate(BaseModel):
     category: str
     join_date: datetime
     notes: Optional[str] = None
-    auto_welcome: Optional[bool] = False
     # whatsapp_id removed - not in database model yet
 
 

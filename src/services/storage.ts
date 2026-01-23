@@ -91,7 +91,7 @@ export const storage = {
     }
   },
 
-  saveContact: async (contact: Contact, autoGenerate: boolean = false): Promise<boolean> => {
+  saveContact: async (contact: Contact): Promise<boolean> => {
     const token = getAuthToken();
     if (!token) {
       console.error('Not authenticated');
@@ -112,8 +112,7 @@ export const storage = {
           category: contact.category,
           join_date: contact.joinDate,
           notes: contact.notes,
-          status: contact.status || 'Active',
-          auto_welcome: autoGenerate
+          status: contact.status || 'Active'
           // whatsapp_id removed - backend doesn't support it yet
         })
       });

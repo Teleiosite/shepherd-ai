@@ -665,7 +665,7 @@ function App() {
     // Save to backend first
     // The backend will automatically create the Day 0 welcome message if autoGenerate is true
     // and a Day 0 workflow exists for this category
-    const success = await storage.saveContact(contact, autoGenerate);
+    const success = await storage.saveContact(contact);
 
     if (!success) {
       alert('Failed to save contact. Please try again.');

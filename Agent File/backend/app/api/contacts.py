@@ -85,22 +85,14 @@ async def create_contact(
             WorkflowStep.day == 0
         ).first()
         
-        if not day_0_step and not contact_data.auto_welcome:
-            print(f"ℹ️ No Day 0 workflow and auto_welcome=False")
+        if not day_0_step:
+            print(f"ℹ️ No Day 0 workflow found for category: {contact_data.category}")
         else:
-            # Determine prompt: custom workflow OR default fallback
-            prompt_context = ""
-            if day_0_step:
-                print(f"✅ Found Day 0 workflow: {day_0_step.title}")
-                prompt_context = f"Workflow Step: {day_0_step.title}\\nPrompt: {day_0_step.prompt}"
-            else:
-                print(f"ℹ️ No Day 0 workflow, using default welcome prompt (auto_welcome=True)")
-                prompt_context = "Task: Write a warm, short welcome message to a new contact. Introduce yourself and say you are glad they are here."
+            print(f"✅ Found Day 0 workflow: {day_0_step.title}")
             
             # Get organization name
             org = db.query(Organization).filter(Organization.id == current_user.organization_id).first()
             org_name = org.name if org else "Church"
-            sender_name = current_user.full_name or "Pastor"
             
             print(f"🤖 Generating AI message for {contact_data.name}...")
             
@@ -108,9 +100,9 @@ async def create_contact(
             message_content = await generate_message(
                 contact_name=contact_data.name,
                 contact_category=contact_data.category,
-                context=prompt_context,
+                context=f"Workflow Step: {day_0_step.title}\\nPrompt: {day_0_step.prompt}",
                 tone="encouraging",
-                sender_name=sender_name,
+                sender_name="Pastor",
                 organization_name=org_name
             )
             
