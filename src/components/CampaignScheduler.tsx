@@ -489,11 +489,47 @@ const CampaignScheduler: React.FC<CampaignSchedulerProps> = ({ contacts, resourc
                                             </select>
                                         )}
                                     </div>
-                                    <button onClick={() => handleGenerate(contacts.filter(c => selectedContactIds.has(c.id)))} disabled={isGenerating} className="w-full md:w-auto h-11 px-6 bg-slate-800 hover:bg-slate-900 text-white rounded-full flex items-center justify-center gap-2 transition-colors disabled:opacity-50 text-sm md:text-base font-medium whitespace-nowrap">
-                                        {isGenerating ? <RefreshCw className="animate-spin" size={18} /> : <RefreshCw size={18} />}
-                                        {isGenerating ? 'Thinking...' : `Generate`}
-                                    </button>
+                                    <div className="flex gap-2">
+                                        <button onClick={() => handleGenerate(contacts.filter(c => selectedContactIds.has(c.id)))} disabled={isGenerating} className="h-11 px-4 md:px-6 bg-slate-800 hover:bg-slate-900 text-white rounded-full flex items-center justify-center gap-2 transition-colors disabled:opacity-50 text-sm md:text-base font-medium whitespace-nowrap" title="Generate AI messages for all selected contacts">
+                                            {isGenerating ? <RefreshCw className="animate-spin" size={18} /> : <RefreshCw size={18} />}
+                                            <span className="hidden sm:inline">{isGenerating ? 'Generating...' : 'Generate All'}</span>
+                                        </button>
+                                    </div>
                                 </div>
+
+                                {/* Token-saving tip and Apply to All */}
+                                <div className="mt-3 flex flex-col sm:flex-row items-start sm:items-center gap-3 justify-between">
+                                    <p className="text-xs text-slate-400 flex items-center gap-1">
+                                        <span className="text-amber-500">💡</span>
+                                        Tip: Type your message manually OR generate once and use "Apply to All" to save AI tokens
+                                    </p>
+                                    {Object.keys(generatedDrafts).length > 0 && selectedContactIds.size > 1 && (
+                                        <button
+                                            onClick={() => {
+                                                // Get first available draft
+                                                const firstDraftId = Object.keys(generatedDrafts)[0];
+                                                const firstDraft = generatedDrafts[firstDraftId];
+                                                if (firstDraft) {
+                                                    // Apply to all selected contacts
+                                                    const newDrafts: Record<string, string> = {};
+                                                    selectedContactIds.forEach(id => {
+                                                        const contact = contacts.find(c => c.id === id);
+                                                        if (contact) {
+                                                            // Replace [Name] placeholder with actual name
+                                                            newDrafts[id] = firstDraft.replace(/\[Name\]/gi, contact.name);
+                                                        }
+                                                    });
+                                                    setGeneratedDrafts(newDrafts);
+                                                }
+                                            }}
+                                            className="px-4 py-2 bg-amber-100 text-amber-700 hover:bg-amber-200 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors whitespace-nowrap"
+                                        >
+                                            <Users size={16} />
+                                            Apply to All ({selectedContactIds.size})
+                                        </button>
+                                    )}
+                                </div>
+
                                 {error && <div className="mt-3 flex items-center gap-2 text-red-600 bg-red-50 p-3 rounded-lg text-sm font-medium"><AlertCircle size={16} />{error}</div>}
                             </div>
                         ) : (
@@ -506,24 +542,45 @@ const CampaignScheduler: React.FC<CampaignSchedulerProps> = ({ contacts, resourc
                         {selectedContactIds.size > 0 && (
                             <div className="bg-white flex-1 rounded-xl shadow-sm border border-slate-100 flex flex-col overflow-hidden relative">
                                 <div className="flex-1 bg-slate-50 p-5 overflow-y-auto space-y-5">
-                                    {Array.from(selectedContactIds).map(id => {
+                                    {Array.from(selectedContactIds).map((id, index) => {
                                         const contact = contacts.find(c => c.id === id);
-                                        const draft = generatedDrafts[id];
+                                        const draft = generatedDrafts[id] || '';
                                         if (!contact) return null;
+                                        const isFirst = index === 0;
                                         return (
-                                            <div key={id} className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm flex flex-col h-full">
+                                            <div key={id} className={`bg-white border rounded-xl p-5 shadow-sm flex flex-col ${isFirst ? 'border-teal-300 ring-2 ring-teal-100' : 'border-slate-200'}`}>
                                                 <div className="flex justify-between items-center mb-3">
                                                     <div className="flex items-center gap-3">
                                                         <div className="w-8 h-8 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center text-sm font-bold">{contact.name.charAt(0)}</div>
-                                                        <span className="font-bold text-slate-800 text-base">{contact.name}</span>
+                                                        <div>
+                                                            <span className="font-bold text-slate-800 text-base">{contact.name}</span>
+                                                            {isFirst && selectedContactIds.size > 1 && (
+                                                                <span className="ml-2 text-xs bg-teal-100 text-teal-700 px-2 py-0.5 rounded-full">Primary</span>
+                                                            )}
+                                                        </div>
                                                     </div>
-                                                    {draft ? <span className="text-xs bg-green-100 text-green-700 px-3 py-1 rounded-full font-medium">Ready</span> : <span className="text-xs text-slate-400">Pending</span>}
+                                                    <div className="flex items-center gap-2">
+                                                        {!draft && (
+                                                            <button
+                                                                onClick={() => handleGenerate([contact])}
+                                                                disabled={isGenerating}
+                                                                className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 py-1.5 rounded-lg font-medium flex items-center gap-1 transition-colors"
+                                                                title="Generate AI message for this contact only"
+                                                            >
+                                                                <Zap size={12} />
+                                                                Generate
+                                                            </button>
+                                                        )}
+                                                        {draft ? <span className="text-xs bg-green-100 text-green-700 px-3 py-1 rounded-full font-medium">Ready</span> : null}
+                                                    </div>
                                                 </div>
-                                                {draft ? (
-                                                    <textarea className="w-full flex-1 min-h-[140px] text-base text-slate-700 bg-slate-50 border border-slate-200 rounded-lg p-4 focus:ring-1 focus:ring-primary-500 outline-none resize-none leading-relaxed" value={draft} onChange={(e) => setGeneratedDrafts({ ...generatedDrafts, [String(id)]: e.target.value })} />
-                                                ) : (
-                                                    <div className="h-36 bg-slate-50 rounded-lg flex items-center justify-center text-slate-400 text-base italic border border-slate-100">{isGenerating ? 'Generating...' : 'Waiting to generate...'}</div>
-                                                )}
+                                                {/* Always show textarea - user can type manually OR generate */}
+                                                <textarea
+                                                    className="w-full flex-1 min-h-[120px] text-base text-slate-700 bg-slate-50 border border-slate-200 rounded-lg p-4 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none resize-none leading-relaxed transition-all"
+                                                    placeholder={isGenerating ? 'Generating...' : 'Type your message here or click Generate...'}
+                                                    value={draft}
+                                                    onChange={(e) => setGeneratedDrafts({ ...generatedDrafts, [String(id)]: e.target.value })}
+                                                />
                                             </div>
                                         );
                                     })}
