@@ -69,7 +69,7 @@ async def create_contact(
     
     # Auto-send Day 0 welcome message if workflow exists
     try:
-        from sqlalchemy import func
+        from sqlalchemy import func, text
         from app.models.workflow import WorkflowStep
         from app.models.message import Message
         from app.models.organization import Organization
@@ -94,16 +94,30 @@ async def create_contact(
             org = db.query(Organization).filter(Organization.id == current_user.organization_id).first()
             org_name = org.name if org else "Church"
             
-            print(f"🤖 Generating AI message for {contact_data.name}...")
+            # Fetch AI config from ai_configs table (like messages.py does)
+            ai_config_result = db.execute(
+                text("""
+                    SELECT provider, api_key, model, base_url
+                    FROM ai_configs
+                    WHERE organization_id = :org_id
+                """),
+                {"org_id": str(current_user.organization_id)}
+            ).fetchone()
             
-            # Generate AI message
+            print(f"🤖 Generating AI message for {contact_data.name} using provider: {ai_config_result[0] if ai_config_result else 'gemini (default)'}...")
+            
+            # Generate AI message with proper AI config
             message_content = await generate_message(
                 contact_name=contact_data.name,
                 contact_category=contact_data.category,
-                context=f"Workflow Step: {day_0_step.title}\\nPrompt: {day_0_step.prompt}",
+                context=f"Workflow Step: {day_0_step.title}\nPrompt: {day_0_step.prompt}",
                 tone="encouraging",
-                sender_name="Pastor",
-                organization_name=org_name
+                sender_name=current_user.full_name or "Pastor",
+                organization_name=org_name,
+                ai_provider=ai_config_result[0] if ai_config_result else "gemini",
+                ai_api_key=ai_config_result[1] if ai_config_result else None,
+                ai_model=ai_config_result[2] if ai_config_result else "gemini-2.0-flash",
+                ai_base_url=ai_config_result[3] if ai_config_result else None
             )
             
             print(f"📝 Generated message: {message_content[:50]}...")
