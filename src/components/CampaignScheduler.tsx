@@ -506,17 +506,26 @@ const CampaignScheduler: React.FC<CampaignSchedulerProps> = ({ contacts, resourc
                                     {Object.keys(generatedDrafts).length > 0 && selectedContactIds.size > 1 && (
                                         <button
                                             onClick={() => {
-                                                // Get first available draft
-                                                const firstDraftId = Object.keys(generatedDrafts)[0];
-                                                const firstDraft = generatedDrafts[firstDraftId];
-                                                if (firstDraft) {
+                                                // Get the first selected contact ID (the "primary" one)
+                                                const selectedIds = Array.from(selectedContactIds);
+                                                const firstId = selectedIds[0];
+                                                const firstDraft = generatedDrafts[firstId];
+                                                const firstContact = contacts.find(c => c.id === firstId);
+
+                                                if (firstDraft && firstContact) {
                                                     // Apply to all selected contacts
                                                     const newDrafts: Record<string, string> = {};
-                                                    selectedContactIds.forEach(id => {
+                                                    selectedIds.forEach(id => {
                                                         const contact = contacts.find(c => c.id === id);
                                                         if (contact) {
-                                                            // Replace [Name] placeholder with actual name
-                                                            newDrafts[id] = firstDraft.replace(/\[Name\]/gi, contact.name);
+                                                            // Replace names: source contact name -> target contact name
+                                                            // Also handle [Name], {Name}, {{Name}} placeholders
+                                                            let personalizedMessage = firstDraft
+                                                                .replace(new RegExp(firstContact.name, 'gi'), contact.name)
+                                                                .replace(/\[Name\]/gi, contact.name)
+                                                                .replace(/\{Name\}/gi, contact.name)
+                                                                .replace(/\{\{Name\}\}/gi, contact.name);
+                                                            newDrafts[String(id)] = personalizedMessage;
                                                         }
                                                     });
                                                     setGeneratedDrafts(newDrafts);
