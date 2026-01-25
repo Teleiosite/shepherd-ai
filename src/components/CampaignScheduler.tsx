@@ -75,6 +75,11 @@ const CampaignScheduler: React.FC<CampaignSchedulerProps> = ({ contacts, resourc
                 // Determine prompt: override (smart flow) or selected manual prompt
                 let finalPrompt = overridePrompt || promptGoal;
 
+                // Strip __CUSTOM__ prefix if present (from custom goal input)
+                if (finalPrompt.startsWith('__CUSTOM__')) {
+                    finalPrompt = finalPrompt.replace('__CUSTOM__', '');
+                }
+
                 // If smart flow override is missing (manual mode), use dropdown
                 if (!overridePrompt && activeTab === 'smart') {
                     const step = getRecommendedWorkflowStep(contact.joinDate, contact.category);
@@ -453,25 +458,42 @@ const CampaignScheduler: React.FC<CampaignSchedulerProps> = ({ contacts, resourc
                                 <div className="flex flex-col md:flex-row gap-3 md:gap-4 md:items-center">
                                     <div className="flex-1 flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3">
                                         <label className="text-xs md:text-sm font-bold text-slate-500 uppercase whitespace-nowrap">Goal:</label>
-                                        <select className="w-full sm:flex-1 border-2 border-teal-400 rounded-3xl px-4 py-2.5 text-sm md:text-base focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all" value={promptGoal} onChange={(e) => setPromptGoal(e.target.value)}>
-                                            <option value="Day 1 Welcome Message">Day 1: Welcome & Assurance</option>
-                                            <option value="Day 3 Check-in">Day 3: How is it going? (Check-in)</option>
-                                            <option value="Week 1 Invitation">Week 1: Invite to Next Steps/Class</option>
-                                            <option value="Answer a specific spiritual question">Answer a specific spiritual question</option>
-                                            <option value="Prayer Request Follow-up">Prayer Request Follow-up</option>
-                                            <option value="General Encouragement">General Encouragement</option>
-                                        </select>
+                                        {promptGoal.startsWith('__CUSTOM__') ? (
+                                            <div className="flex-1 flex items-center gap-2">
+                                                <input
+                                                    type="text"
+                                                    placeholder="Type your custom goal here..."
+                                                    className="flex-1 border-2 border-teal-400 rounded-3xl px-4 py-2.5 text-sm md:text-base focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all"
+                                                    value={promptGoal.replace('__CUSTOM__', '')}
+                                                    onChange={(e) => setPromptGoal(`__CUSTOM__${e.target.value}`)}
+                                                    autoFocus
+                                                />
+                                                <button
+                                                    onClick={() => setPromptGoal('General Encouragement')}
+                                                    className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                                                    title="Back to presets"
+                                                >
+                                                    <X size={18} />
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <select className="w-full sm:flex-1 border-2 border-teal-400 rounded-3xl px-4 py-2.5 text-sm md:text-base focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all" value={promptGoal} onChange={(e) => setPromptGoal(e.target.value)}>
+                                                <option value="Day 1 Welcome Message">Day 1: Welcome & Assurance</option>
+                                                <option value="Day 3 Check-in">Day 3: How is it going? (Check-in)</option>
+                                                <option value="Week 1 Invitation">Week 1: Invite to Next Steps/Class</option>
+                                                <option value="Prayer Request Follow-up">Prayer Request Follow-up</option>
+                                                <option value="General Encouragement">General Encouragement</option>
+                                                <option value="Birthday/Anniversary Wishes">Birthday/Anniversary Wishes</option>
+                                                <option value="Event Reminder">Event/Service Reminder</option>
+                                                <option value="__CUSTOM__">+ Custom Goal...</option>
+                                            </select>
+                                        )}
                                     </div>
                                     <button onClick={() => handleGenerate(contacts.filter(c => selectedContactIds.has(c.id)))} disabled={isGenerating} className="w-full md:w-auto h-11 px-6 bg-slate-800 hover:bg-slate-900 text-white rounded-full flex items-center justify-center gap-2 transition-colors disabled:opacity-50 text-sm md:text-base font-medium whitespace-nowrap">
                                         {isGenerating ? <RefreshCw className="animate-spin" size={18} /> : <RefreshCw size={18} />}
                                         {isGenerating ? 'Thinking...' : `Generate`}
                                     </button>
                                 </div>
-                                {promptGoal === "Answer a specific spiritual question" && (
-                                    <div className="mt-3">
-                                        <input type="text" placeholder="Type the question here..." className="w-full border border-slate-300 rounded-3xl px-6 py-3 text-base focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all" onChange={(e) => setPromptGoal(`Answer this question: ${e.target.value}`)} />
-                                    </div>
-                                )}
                                 {error && <div className="mt-3 flex items-center gap-2 text-red-600 bg-red-50 p-3 rounded-lg text-sm font-medium"><AlertCircle size={16} />{error}</div>}
                             </div>
                         ) : (
