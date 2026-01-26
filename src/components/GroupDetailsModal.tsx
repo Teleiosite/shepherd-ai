@@ -149,24 +149,28 @@ export default function GroupDetailsModal({ group, onClose }: Props) {
                     {activeTab === 'settings' && (
                         <div className="space-y-6">
                             {/* Auto-welcome Toggle */}
-                            <div>
+                            <div className="p-4 bg-gray-50 rounded-xl border border-gray-100">
                                 <label className="flex items-center justify-between cursor-pointer">
                                     <div>
                                         <div className="font-semibold text-gray-900">Auto-welcome New Members</div>
-                                        <div className="text-sm text-gray-600">Send a welcome DM to new members automatically</div>
+                                        <div className="text-sm text-gray-500 mt-0.5">Send a welcome DM to new members automatically</div>
                                     </div>
-                                    <input
-                                        type="checkbox"
-                                        checked={settings.auto_welcome_enabled}
-                                        onChange={(e) => setSettings({ ...settings, auto_welcome_enabled: e.target.checked })}
-                                        className="w-12 h-6 rounded-full appearance-none bg-gray-300 relative cursor-pointer transition checked:bg-green-500"
-                                    />
+                                    {/* Professional Toggle Switch */}
+                                    <div className="relative">
+                                        <input
+                                            type="checkbox"
+                                            checked={settings.auto_welcome_enabled}
+                                            onChange={(e) => setSettings({ ...settings, auto_welcome_enabled: e.target.checked })}
+                                            className="sr-only peer"
+                                        />
+                                        <div className="w-14 h-7 bg-gray-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-teal-100 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all after:shadow-md peer-checked:bg-gradient-to-r peer-checked:from-teal-500 peer-checked:to-emerald-500 transition-all duration-300"></div>
+                                    </div>
                                 </label>
                             </div>
 
                             {/* Welcome Message Template */}
                             {settings.auto_welcome_enabled && (
-                                <div>
+                                <div className="p-4 bg-teal-50 rounded-xl border border-teal-100 animate-fade-in">
                                     <label className="block font-semibold text-gray-900 mb-2">
                                         Welcome Message Template
                                     </label>
@@ -174,29 +178,34 @@ export default function GroupDetailsModal({ group, onClose }: Props) {
                                         value={settings.welcome_message_template}
                                         onChange={(e) => setSettings({ ...settings, welcome_message_template: e.target.value })}
                                         rows={4}
-                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                                        className="w-full px-4 py-3 border border-teal-200 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-white transition-all"
                                         placeholder="Welcome {{name}} to {{group_name}}!"
                                     />
-                                    <p className="text-sm text-gray-600 mt-2">
-                                        Available variables: <code className="bg-gray-100 px-2 py-1 rounded">{'{{name}}'}</code>,{' '}
-                                        <code className="bg-gray-100 px-2 py-1 rounded">{'{{group_name}}'}</code>
+                                    <p className="text-sm text-teal-700 mt-2 flex flex-wrap items-center gap-2">
+                                        <span>Available variables:</span>
+                                        <code className="bg-white px-2 py-1 rounded-lg text-teal-600 border border-teal-200 font-mono text-xs">{'{{name}}'}</code>
+                                        <code className="bg-white px-2 py-1 rounded-lg text-teal-600 border border-teal-200 font-mono text-xs">{'{{group_name}}'}</code>
                                     </p>
                                 </div>
                             )}
 
                             {/* Auto-add as Contact */}
-                            <div>
+                            <div className="p-4 bg-gray-50 rounded-xl border border-gray-100">
                                 <label className="flex items-center justify-between cursor-pointer">
                                     <div>
                                         <div className="font-semibold text-gray-900">Auto-add as Contact</div>
-                                        <div className="text-sm text-gray-600">Automatically create contacts for new members</div>
+                                        <div className="text-sm text-gray-500 mt-0.5">Automatically create contacts for new members</div>
                                     </div>
-                                    <input
-                                        type="checkbox"
-                                        checked={settings.auto_add_as_contact}
-                                        onChange={(e) => setSettings({ ...settings, auto_add_as_contact: e.target.checked })}
-                                        className="w-12 h-6 rounded-full appearance-none bg-gray-300 relative cursor-pointer transition checked:bg-green-500"
-                                    />
+                                    {/* Professional Toggle Switch */}
+                                    <div className="relative">
+                                        <input
+                                            type="checkbox"
+                                            checked={settings.auto_add_as_contact}
+                                            onChange={(e) => setSettings({ ...settings, auto_add_as_contact: e.target.checked })}
+                                            className="sr-only peer"
+                                        />
+                                        <div className="w-14 h-7 bg-gray-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-teal-100 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all after:shadow-md peer-checked:bg-gradient-to-r peer-checked:from-teal-500 peer-checked:to-emerald-500 transition-all duration-300"></div>
+                                    </div>
                                 </label>
                             </div>
 
