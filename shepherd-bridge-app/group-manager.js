@@ -232,12 +232,14 @@ async function handleMemberJoined(groupId, memberId) {
 /**
  * Process welcome queue (send welcome messages to new members)
  */
+let welcomeQueueErrorCount = 0;
 async function processWelcomeQueue() {
     try {
         const { data: welcomes } = await axios.get(
             `${BACKEND_URL}/api/groups/welcome-queue?code=${CONNECTION_CODE}`
         );
 
+        welcomeQueueErrorCount = 0; // Reset on success
         if (welcomes.length === 0) return;
 
         console.log(`📬 Processing ${welcomes.length} welcome messages`);
@@ -265,8 +267,10 @@ async function processWelcomeQueue() {
             }
         }
     } catch (error) {
-        if (error.response?.status !== 404) {
-            console.error('❌ Error processing welcome queue:', error.message);
+        // Only log errors occasionally to reduce noise
+        welcomeQueueErrorCount++;
+        if (welcomeQueueErrorCount === 1 || welcomeQueueErrorCount % 30 === 0) {
+            console.log(`⚠️ Welcome queue not available (this is normal if no groups have auto-welcome enabled)`);
         }
     }
 }
