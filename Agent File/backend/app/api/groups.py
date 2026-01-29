@@ -188,6 +188,92 @@ async def sync_groups(
     )
 
 
+@router.post("/sync-members")
+async def sync_group_members(
+    data: dict,
+    code: Optional[str] = Query(None, description="Bridge connection code"),
+    db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user_optional)
+):
+    """Sync members for a specific group from bridge."""
+    # Use connection code if provided, otherwise use JWT
+    if code:
+        user = get_user_by_connection_code(code, db)
+    elif current_user:
+        user = current_user
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required"
+        )
+    
+    whatsapp_group_id = data.get("whatsapp_group_id")
+    members = data.get("members", [])
+    
+    if not whatsapp_group_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="whatsapp_group_id is required"
+        )
+    
+    # Find the group
+    group = db.query(Group).filter(
+        Group.whatsapp_group_id == whatsapp_group_id,
+        Group.organization_id == user.organization_id
+    ).first()
+    
+    if not group:
+        return {"message": "Group not found", "synced": 0}
+    
+    synced_count = 0
+    
+    for member_data in members:
+        whatsapp_id = member_data.get("whatsapp_id")
+        if not whatsapp_id:
+            continue
+        
+        # Check if member already exists
+        existing_member = db.query(GroupMember).filter(
+            GroupMember.group_id == group.id,
+            GroupMember.whatsapp_id == whatsapp_id
+        ).first()
+        
+        if existing_member:
+            # Update existing member
+            existing_member.name = member_data.get("name") or existing_member.name
+            existing_member.is_admin = member_data.get("is_admin", False)
+            existing_member.left_at = None  # Mark as active
+        else:
+            # Create new member
+            phone = member_data.get("phone", whatsapp_id.replace("@c.us", ""))
+            
+            # Check if there's a matching contact
+            contact = db.query(Contact).filter(
+                Contact.phone == phone,
+                Contact.organization_id == user.organization_id
+            ).first()
+            
+            new_member = GroupMember(
+                group_id=group.id,
+                whatsapp_id=whatsapp_id,
+                name=member_data.get("name"),
+                is_admin=member_data.get("is_admin", False),
+                contact_id=contact.id if contact else None,
+                joined_at=datetime.now()
+            )
+            db.add(new_member)
+        
+        synced_count += 1
+    
+    # Update group member count
+    group.member_count = synced_count
+    group.updated_at = datetime.now()
+    
+    db.commit()
+    
+    return {"message": "Members synced", "synced": synced_count}
+
+
 # ==================== GROUP MEMBERS ====================
 
 @router.get("/{group_id}/members", response_model=List[GroupMemberWithContact])
@@ -219,11 +305,19 @@ async def list_group_members(
     
     result = []
     for member, contact in members:
+        # Extract phone from whatsapp_id
+        phone = member.whatsapp_id.replace("@c.us", "") if member.whatsapp_id else None
+        
         result.append(GroupMemberWithContact(
             id=member.id,
+            group_id=member.group_id,
             whatsapp_id=member.whatsapp_id,
             name=member.name,
+            is_admin=member.is_admin,
             joined_at=member.joined_at,
+            left_at=member.left_at,
+            contact_id=member.contact_id,
+            phone=phone,
             contact_name=contact.name if contact else None,
             contact_category=contact.category if contact else None
         ))

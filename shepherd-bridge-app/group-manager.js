@@ -68,13 +68,41 @@ async function syncGroups() {
             syncRetryCount = 0;
         }
 
-        const groupData = groups.map(g => ({
-            whatsapp_group_id: g.id._serialized || g.id,
-            name: g.name || g.contact?.name || 'Unnamed Group',
-            description: g.description || null,
-            avatar_url: g.profilePicUrl || null,
-            member_count: g.participants ? g.participants.length : (g.groupMetadata?.participants?.length || 0)
-        }));
+        const groupData = [];
+
+        for (const g of groups) {
+            const groupId = g.id._serialized || g.id;
+            let participants = [];
+            let memberCount = 0;
+
+            // Try to get group metadata with participants
+            try {
+                const metadata = await client.getGroupMembers(groupId);
+                if (metadata && metadata.length > 0) {
+                    participants = metadata.map(p => ({
+                        whatsapp_id: p.id._serialized || p.id,
+                        name: p.pushname || p.name || p.shortName || null,
+                        phone: p.id?.user || (p.id._serialized || p.id).replace('@c.us', ''),
+                        is_admin: p.isAdmin || false
+                    }));
+                    memberCount = participants.length;
+                    console.log(`  📋 ${g.name || 'Group'}: ${memberCount} members found`);
+                }
+            } catch (metaError) {
+                // Fallback to chat info
+                memberCount = g.participants ? g.participants.length : (g.groupMetadata?.participants?.length || 0);
+                console.log(`  ⚠️ ${g.name || 'Group'}: Could not fetch members (${metaError.message})`);
+            }
+
+            groupData.push({
+                whatsapp_group_id: groupId,
+                name: g.name || g.contact?.name || 'Unnamed Group',
+                description: g.description || null,
+                avatar_url: g.profilePicUrl || null,
+                member_count: memberCount,
+                participants: participants // Include participants for syncing
+            });
+        }
 
         if (groupData.length === 0) {
             console.log('📭 No group data to sync');
@@ -87,6 +115,29 @@ async function syncGroups() {
         );
 
         console.log(`✅ Synced ${response.data.synced} groups (${response.data.new} new, ${response.data.updated} updated)`);
+
+        // Also sync participants for each group
+        console.log('👥 Syncing group members...');
+        let totalMembers = 0;
+
+        for (const group of groupData) {
+            if (group.participants && group.participants.length > 0) {
+                try {
+                    await axios.post(
+                        `${BACKEND_URL}/api/groups/sync-members?code=${CONNECTION_CODE}`,
+                        {
+                            whatsapp_group_id: group.whatsapp_group_id,
+                            members: group.participants
+                        }
+                    );
+                    totalMembers += group.participants.length;
+                } catch (memberError) {
+                    console.error(`  ⚠️ Could not sync members for ${group.name}: ${memberError.message}`);
+                }
+            }
+        }
+
+        console.log(`✅ Synced ${totalMembers} total group members`);
 
         return response.data;
     } catch (error) {
