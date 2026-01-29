@@ -75,23 +75,45 @@ async function syncGroups() {
             let participants = [];
             let memberCount = 0;
 
-            // Try to get group metadata with participants
+            // Try multiple methods to get group participants
             try {
-                const metadata = await client.getGroupMembers(groupId);
-                if (metadata && metadata.length > 0) {
-                    participants = metadata.map(p => ({
-                        whatsapp_id: p.id._serialized || p.id,
-                        name: p.pushname || p.name || p.shortName || null,
-                        phone: p.id?.user || (p.id._serialized || p.id).replace('@c.us', ''),
-                        is_admin: p.isAdmin || false
-                    }));
+                // Method 1: Try getGroupMembers
+                let members = null;
+                try {
+                    members = await client.getGroupMembers(groupId);
+                } catch (e) {
+                    // Method 2: Try getting from groupMetadata property
+                    if (g.groupMetadata && g.groupMetadata.participants) {
+                        members = g.groupMetadata.participants;
+                    } else if (g.participants) {
+                        // Method 3: Direct participants property
+                        members = g.participants;
+                    }
+                }
+
+                if (members && members.length > 0) {
+                    participants = members.map(p => {
+                        // Handle different participant data structures
+                        const id = p.id?._serialized || p.id || p;
+                        const idString = typeof id === 'string' ? id : (id?._serialized || '');
+                        return {
+                            whatsapp_id: idString,
+                            name: p.pushname || p.name || p.shortName || p.displayName || null,
+                            phone: p.id?.user || idString.replace('@c.us', '').replace('@g.us', ''),
+                            is_admin: p.isAdmin || p.isSuperAdmin || false
+                        };
+                    });
                     memberCount = participants.length;
-                    console.log(`  📋 ${g.name || 'Group'}: ${memberCount} members found`);
+                    console.log(`  📋 ${g.name || 'Group'}: ${memberCount} members synced`);
+                } else {
+                    // Fallback: just use count
+                    memberCount = g.memberCount || g.groupMetadata?.size || 0;
+                    console.log(`  ⚠️ ${g.name || 'Group'}: No participant details available (count: ${memberCount})`);
                 }
             } catch (metaError) {
-                // Fallback to chat info
-                memberCount = g.participants ? g.participants.length : (g.groupMetadata?.participants?.length || 0);
-                console.log(`  ⚠️ ${g.name || 'Group'}: Could not fetch members (${metaError.message})`);
+                // Final fallback
+                memberCount = g.memberCount || g.participants?.length || g.groupMetadata?.participants?.length || 0;
+                console.log(`  ❌ ${g.name || 'Group'}: Error fetching members - ${metaError.message}`);
             }
 
             groupData.push({
