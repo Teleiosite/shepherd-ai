@@ -238,28 +238,9 @@ export default function GroupDetailsModal({ group, onClose }: Props) {
                                     <p className="text-gray-600">Loading members...</p>
                                 </div>
                             ) : members.length === 0 ? (
-                                <div className="text-center py-12">
-                                    <div className="w-20 h-20 bg-gradient-to-br from-gray-100 to-gray-200 rounded-full flex items-center justify-center mx-auto mb-4">
-                                        <Users className="w-10 h-10 text-gray-400" />
-                                    </div>
-                                    <h3 className="text-lg font-semibold text-gray-700 mb-2">No members synced yet</h3>
-                                    <p className="text-gray-500 max-w-sm mx-auto mb-4">
-                                        Members will appear here when:
-                                    </p>
-                                    <ul className="text-sm text-gray-500 text-left max-w-xs mx-auto space-y-2 mb-6">
-                                        <li className="flex items-start gap-2">
-                                            <span className="text-teal-500 mt-0.5">•</span>
-                                            <span>New members join the group (detected by bridge)</span>
-                                        </li>
-                                        <li className="flex items-start gap-2">
-                                            <span className="text-teal-500 mt-0.5">•</span>
-                                            <span>The desktop bridge app is running and connected</span>
-                                        </li>
-                                    </ul>
-                                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-700 max-w-sm mx-auto">
-                                        <p className="font-medium mb-1">💡 Tip</p>
-                                        <p>Ensure your Shepherd Bridge desktop app is running to automatically track new group members.</p>
-                                    </div>
+                                <div className="text-center py-12 text-gray-500">
+                                    <Users className="w-16 h-16 mx-auto mb-4 opacity-50" />
+                                    <p>No members found</p>
                                 </div>
                             ) : (
                                 <div className="space-y-3">

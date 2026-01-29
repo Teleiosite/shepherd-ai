@@ -228,22 +228,6 @@ app.get('/api/status', (req, res) => {
   res.json({ status: bridgeStatus, wsPort: WS_PORT });
 });
 
-// Manually trigger group sync
-app.post('/api/sync-groups', async (req, res) => {
-  if (bridgeStatus !== 'connected' || !clientSession) {
-    return res.status(503).json({ success: false, error: 'Bridge not connected' });
-  }
-
-  try {
-    console.log('🔄 Manual group sync triggered via API...');
-    const result = await polling.triggerGroupSync();
-    res.json({ success: true, result: result });
-  } catch (error) {
-    console.error('❌ Group sync error:', error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
 // Send message
 app.post('/api/send', async (req, res) => {
   const { phone, message, whatsappId } = req.body;

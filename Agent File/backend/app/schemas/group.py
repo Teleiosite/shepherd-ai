@@ -72,7 +72,6 @@ class GroupMemberResponse(GroupMemberBase):
 
 class GroupMemberWithContact(GroupMemberResponse):
     """Member response with contact details."""
-    phone: Optional[str] = None  # Extracted from whatsapp_id
     contact_name: Optional[str] = None
     contact_category: Optional[str] = None
 

@@ -68,63 +68,13 @@ async function syncGroups() {
             syncRetryCount = 0;
         }
 
-        const groupData = [];
-
-        for (const g of groups) {
-            const groupId = g.id._serialized || g.id;
-            let participants = [];
-            let memberCount = 0;
-
-            // Try multiple methods to get group participants
-            try {
-                // Method 1: Try getGroupMembers
-                let members = null;
-                try {
-                    members = await client.getGroupMembers(groupId);
-                } catch (e) {
-                    // Method 2: Try getting from groupMetadata property
-                    if (g.groupMetadata && g.groupMetadata.participants) {
-                        members = g.groupMetadata.participants;
-                    } else if (g.participants) {
-                        // Method 3: Direct participants property
-                        members = g.participants;
-                    }
-                }
-
-                if (members && members.length > 0) {
-                    participants = members.map(p => {
-                        // Handle different participant data structures
-                        const id = p.id?._serialized || p.id || p;
-                        const idString = typeof id === 'string' ? id : (id?._serialized || '');
-                        return {
-                            whatsapp_id: idString,
-                            name: p.pushname || p.name || p.shortName || p.displayName || null,
-                            phone: p.id?.user || idString.replace('@c.us', '').replace('@g.us', ''),
-                            is_admin: p.isAdmin || p.isSuperAdmin || false
-                        };
-                    });
-                    memberCount = participants.length;
-                    console.log(`  📋 ${g.name || 'Group'}: ${memberCount} members synced`);
-                } else {
-                    // Fallback: just use count
-                    memberCount = g.memberCount || g.groupMetadata?.size || 0;
-                    console.log(`  ⚠️ ${g.name || 'Group'}: No participant details available (count: ${memberCount})`);
-                }
-            } catch (metaError) {
-                // Final fallback
-                memberCount = g.memberCount || g.participants?.length || g.groupMetadata?.participants?.length || 0;
-                console.log(`  ❌ ${g.name || 'Group'}: Error fetching members - ${metaError.message}`);
-            }
-
-            groupData.push({
-                whatsapp_group_id: groupId,
-                name: g.name || g.contact?.name || 'Unnamed Group',
-                description: g.description || null,
-                avatar_url: g.profilePicUrl || null,
-                member_count: memberCount,
-                participants: participants // Include participants for syncing
-            });
-        }
+        const groupData = groups.map(g => ({
+            whatsapp_group_id: g.id._serialized || g.id,
+            name: g.name || g.contact?.name || 'Unnamed Group',
+            description: g.description || null,
+            avatar_url: g.profilePicUrl || null,
+            member_count: g.participants ? g.participants.length : (g.groupMetadata?.participants?.length || 0)
+        }));
 
         if (groupData.length === 0) {
             console.log('📭 No group data to sync');
@@ -137,29 +87,6 @@ async function syncGroups() {
         );
 
         console.log(`✅ Synced ${response.data.synced} groups (${response.data.new} new, ${response.data.updated} updated)`);
-
-        // Also sync participants for each group
-        console.log('👥 Syncing group members...');
-        let totalMembers = 0;
-
-        for (const group of groupData) {
-            if (group.participants && group.participants.length > 0) {
-                try {
-                    await axios.post(
-                        `${BACKEND_URL}/api/groups/sync-members?code=${CONNECTION_CODE}`,
-                        {
-                            whatsapp_group_id: group.whatsapp_group_id,
-                            members: group.participants
-                        }
-                    );
-                    totalMembers += group.participants.length;
-                } catch (memberError) {
-                    console.error(`  ⚠️ Could not sync members for ${group.name}: ${memberError.message}`);
-                }
-            }
-        }
-
-        console.log(`✅ Synced ${totalMembers} total group members`);
 
         return response.data;
     } catch (error) {
@@ -232,14 +159,12 @@ async function handleMemberJoined(groupId, memberId) {
 /**
  * Process welcome queue (send welcome messages to new members)
  */
-let welcomeQueueErrorCount = 0;
 async function processWelcomeQueue() {
     try {
         const { data: welcomes } = await axios.get(
             `${BACKEND_URL}/api/groups/welcome-queue?code=${CONNECTION_CODE}`
         );
 
-        welcomeQueueErrorCount = 0; // Reset on success
         if (welcomes.length === 0) return;
 
         console.log(`📬 Processing ${welcomes.length} welcome messages`);
@@ -267,10 +192,8 @@ async function processWelcomeQueue() {
             }
         }
     } catch (error) {
-        // Only log errors occasionally to reduce noise
-        welcomeQueueErrorCount++;
-        if (welcomeQueueErrorCount === 1 || welcomeQueueErrorCount % 30 === 0) {
-            console.log(`⚠️ Welcome queue not available (this is normal if no groups have auto-welcome enabled)`);
+        if (error.response?.status !== 404) {
+            console.error('❌ Error processing welcome queue:', error.message);
         }
     }
 }
