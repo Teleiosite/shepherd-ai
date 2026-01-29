@@ -74,76 +74,88 @@ function createTray() {
     });
 }
 
-// IPC Handlers
+// App lifecycle
 
-ipcMain.handle('connect-bridge', async (event, connectionCode) => {
-    try {
-        console.log('🔗 Attempting to connect to:', BACKEND_URL);
-        console.log('📝 Connection code:', connectionCode);
+app.whenReady().then(() => {
+    createWindow();
+    createTray();
 
-        // Register with backend
-        const response = await axios.post(`${BACKEND_URL}/api/bridge/register`, {
-            code: connectionCode,
-            bridge_url: 'http://localhost:3001'
-        });
+    // IPC Handlers - must be set up after app is ready
+    ipcMain.handle('connect-bridge', async (event, connectionCode) => {
+        try {
+            console.log('🔗 Attempting to connect to:', BACKEND_URL);
+            console.log('📝 Connection code:', connectionCode);
 
-        console.log('✅ Backend response:', response.data);
+            // Register with backend
+            const response = await axios.post(`${BACKEND_URL}/api/bridge/register`, {
+                code: connectionCode,
+                bridge_url: 'http://localhost:3001'
+            });
 
-        if (response.data.success) {
-            // Start the bridge server
-            startBridgeServer();
+            console.log('✅ Backend response:', response.data);
 
-            // Start message polling
-            const polling = require('./bridge-polling');
-            setTimeout(function () {
-                polling.startPolling(connectionCode);
-                console.log('🔄 Message polling started');
-            }, 3000); // Wait 3 seconds for WhatsApp to connect
+            if (response.data.success) {
+                // Start the bridge server
+                startBridgeServer();
 
-            return {
-                success: true,
-                message: 'Connected successfully! Scan QR code with WhatsApp.'
-            };
-        } else {
+                // Start message polling
+                const polling = require('./bridge-polling');
+                setTimeout(function () {
+                    polling.startPolling(connectionCode);
+                    console.log('🔄 Message polling started');
+                }, 3000); // Wait 3 seconds for WhatsApp to connect
+
+                return {
+                    success: true,
+                    message: 'Connected successfully! Scan QR code with WhatsApp.'
+                };
+            } else {
+                return {
+                    success: false,
+                    message: 'Invalid connection code'
+                };
+            }
+        } catch (error) {
+            console.error('❌ Connection error FULL:', error);
+            console.error('❌ Error message:', error.message);
+            console.error('❌ Error response:', error.response?.data);
+            console.error('❌ Error status:', error.response?.status);
+
             return {
                 success: false,
-                message: 'Invalid connection code'
+                message: `Connection failed: ${error.message}. Check console for details.`
             };
         }
-    } catch (error) {
-        console.error('❌ Connection error FULL:', error);
-        console.error('❌ Error message:', error.message);
-        console.error('❌ Error response:', error.response?.data);
-        console.error('❌ Error status:', error.response?.status);
+    });
 
+    ipcMain.handle('check-status', async () => {
+        // Check if bridge is running
+        if (bridgeServer && bridgeServer.listening) {
+            return {
+                running: true,
+                status: 'connected'
+            };
+        }
         return {
-            success: false,
-            message: `Connection failed: ${error.message}. Check console for details.`
+            running: false,
+            status: 'disconnected'
         };
-    }
-});
+    });
 
-ipcMain.handle('check-status', async () => {
-    // Check if bridge is running
-    if (bridgeServer && bridgeServer.listening) {
-        return {
-            running: true,
-            status: 'connected'
-        };
-    }
-    return {
-        running: false,
-        status: 'disconnected'
-    };
-});
+    ipcMain.handle('stop-bridge', async () => {
+        if (bridgeServer) {
+            bridgeServer.close();
+            bridgeServer = null;
+            return { success: true };
+        }
+        return { success: false };
+    });
 
-ipcMain.handle('stop-bridge', async () => {
-    if (bridgeServer) {
-        bridgeServer.close();
-        bridgeServer = null;
-        return { success: true };
-    }
-    return { success: false };
+    app.on('activate', () => {
+        if (BrowserWindow.getAllWindows().length === 0) {
+            createWindow();
+        }
+    });
 });
 
 function startBridgeServer() {
@@ -158,19 +170,6 @@ function startBridgeServer() {
         mainWindow.webContents.send('bridge-status', { status: 'running' });
     }, 5000);
 }
-
-// App lifecycle
-
-app.whenReady().then(() => {
-    createWindow();
-    createTray();
-
-    app.on('activate', () => {
-        if (BrowserWindow.getAllWindows().length === 0) {
-            createWindow();
-        }
-    });
-});
 
 app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') {
