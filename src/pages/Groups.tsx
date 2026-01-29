@@ -63,14 +63,33 @@ export default function Groups() {
         setError('');
 
         try {
-            // This would trigger the bridge to sync
-            // For now, just refresh the list after a delay
-            setTimeout(async () => {
-                await loadGroups();
-                setSyncing(false);
-            }, 2000);
+            // Call local bridge to trigger group sync
+            const bridgeResponse = await fetch('http://localhost:3001/api/sync-groups', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+
+            if (!bridgeResponse.ok) {
+                const errorData = await bridgeResponse.json().catch(() => ({}));
+                throw new Error(errorData.error || 'Bridge sync failed');
+            }
+
+            const result = await bridgeResponse.json();
+            console.log('Group sync result:', result);
+
+            // Wait a moment for backend to process, then reload
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            await loadGroups();
+            setSyncing(false);
         } catch (err: any) {
-            setError('Sync failed. Make sure your bridge is connected.');
+            console.error('Sync error:', err);
+            // If bridge not available, just refresh from backend
+            if (err.message.includes('fetch') || err.message.includes('network')) {
+                setError('Bridge not connected. Refreshing from database...');
+                await loadGroups();
+            } else {
+                setError(err.message || 'Sync failed. Make sure your bridge is connected.');
+            }
             setSyncing(false);
         }
     };

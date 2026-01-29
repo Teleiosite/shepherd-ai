@@ -149,7 +149,19 @@ async function sendPendingMessage(msg) {
     }
 }
 
+// Manually trigger group sync
+async function triggerGroupSync() {
+    if (clientSessionRef && groupManagerInitialized) {
+        console.log('🔄 Manually triggering group sync...');
+        return await groupManager.syncGroups();
+    } else {
+        console.log('⚠️ Cannot sync - group manager not initialized');
+        return null;
+    }
+}
+
 module.exports = {
     startPolling: startMessagePolling,
-    initPolling: initPolling
+    initPolling: initPolling,
+    triggerGroupSync: triggerGroupSync
 };
