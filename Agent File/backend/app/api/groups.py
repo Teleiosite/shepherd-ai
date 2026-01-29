@@ -555,48 +555,53 @@ async def get_welcome_queue(
     """Get pending welcome messages for new group members."""
     from sqlalchemy import cast, String
     
-    # Find new members (joined in last 5 minutes, no contact yet or no welcome sent)
-    five_min_ago = datetime.now() - timedelta(minutes=5)
-    
-    # Build query
-    query = db.query(GroupMember, Group).join(
-        Group, GroupMember.group_id == Group.id
-    ).filter(
-        GroupMember.joined_at >= five_min_ago,
-        GroupMember.left_at.is_(None),
-        Group.auto_welcome_enabled == True
-    )
-    
-    # Filter by organization if connection code provided
-    if code:
-        # Find user by connection code
-        user = db.query(User).filter(
-            cast(User.id, String).like(f"{code.lower()}%")
-        ).first()
+    try:
+        # Find new members (joined in last 5 minutes, no contact yet or no welcome sent)
+        five_min_ago = datetime.now() - timedelta(minutes=5)
         
-        if user:
-            query = query.filter(Group.organization_id == user.organization_id)
-    
-    new_members = query.all()
-    
-    welcome_items = []
-    for member, group in new_members:
-        # Replace template variables
-        message = group.welcome_message_template or "Welcome to {{group_name}}!"
-        message = message.replace("{{name}}", member.name or "there")
-        message = message.replace("{{group_name}}", group.name)
+        # Build query
+        query = db.query(GroupMember, Group).join(
+            Group, GroupMember.group_id == Group.id
+        ).filter(
+            GroupMember.joined_at >= five_min_ago,
+            GroupMember.left_at.is_(None),
+            Group.auto_welcome_enabled == True
+        )
         
-        # Extract phone from whatsapp_id (remove @c.us)
-        phone = member.whatsapp_id.replace("@c.us", "")
+        # Filter by organization if connection code provided
+        if code:
+            # Find user by connection code
+            user = db.query(User).filter(
+                cast(User.id, String).like(f"{code.lower()}%")
+            ).first()
+            
+            if user:
+                query = query.filter(Group.organization_id == user.organization_id)
         
-        welcome_items.append(WelcomeQueueItem(
-            id=member.id,
-            phone=phone,
-            message=message,
-            group_name=group.name
-        ))
-    
-    return welcome_items
+        new_members = query.all()
+        
+        welcome_items = []
+        for member, group in new_members:
+            # Replace template variables
+            message = group.welcome_message_template or "Welcome to {{group_name}}!"
+            message = message.replace("{{name}}", member.name or "there")
+            message = message.replace("{{group_name}}", group.name)
+            
+            # Extract phone from whatsapp_id (remove @c.us)
+            phone = member.whatsapp_id.replace("@c.us", "") if member.whatsapp_id else ""
+            
+            welcome_items.append(WelcomeQueueItem(
+                id=member.id,
+                phone=phone,
+                message=message,
+                group_name=group.name
+            ))
+        
+        return welcome_items
+    except Exception as e:
+        # If table doesn't exist or other error, return empty list
+        print(f"Welcome queue error: {e}")
+        return []
 
 
 @router.post("/welcome-queue/{member_id}/sent")
