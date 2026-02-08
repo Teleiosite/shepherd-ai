@@ -71,7 +71,12 @@ wppconnect.create({
 
     // Incoming messages
     client.onMessage(async (message) => {
+      // DEBUG: Log EVERY message received (including groups) to diagnose the issue
+      console.log('🔔 onMessage TRIGGERED! From:', message.from, 'isGroup:', message.isGroupMsg, 'Body:', message.body?.substring(0, 30));
+
       if (!message.isGroupMsg && !message.from.includes('status@broadcast')) {
+        console.log('✅ Processing 1-on-1 message from:', message.from);
+
         // Handle media messages properly
         let body = message.body || '';
         let mediaType = null;
@@ -166,6 +171,7 @@ wppconnect.create({
           realPhone = phoneNumber;
         }
 
+        console.log('📤 Broadcasting to WebSocket clients...');
         broadcastToClients({
           type: 'incoming_message',
           from: message.from,
@@ -178,6 +184,9 @@ wppconnect.create({
           mediaType: mediaType,
           timestamp: message.timestamp || Date.now() / 1000
         });
+        console.log('✅ Broadcast complete!');
+      } else {
+        console.log('⏭️ Skipping (group or broadcast):', message.from);
       }
     });
 
