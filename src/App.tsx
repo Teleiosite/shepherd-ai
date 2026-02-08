@@ -568,7 +568,21 @@ function App() {
               type: 'Inbound'
             };
 
-            setLogs(prev => [newLog, ...prev]);
+            console.log('💾 Adding message to logs state:', {
+              logId: newLog.id,
+              contactId: contact.id,
+              contactName: contact.name,
+              content: newLog.content.substring(0, 50) + '...',
+              timestamp: newLog.timestamp
+            });
+
+            setLogs(prev => {
+              console.log('📝 Previous logs count:', prev.length);
+              const updated = [newLog, ...prev];
+              console.log('✅ Updated logs count:', updated.length);
+              console.log('📊 This message should now appear in LiveChats for contact:', contact.name);
+              return updated;
+            });
 
             if (Notification.permission === 'granted') {
               new Notification(`Message from ${contact.name}`, {

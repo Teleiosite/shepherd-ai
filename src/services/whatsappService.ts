@@ -75,6 +75,8 @@ export const whatsappService = {
   ): boolean {
     // Get bridge URL from localStorage (temporary until backend websocket)
     const bridgeUrl = localStorage.getItem('shepherd_bridge_url') || 'http://localhost:3001';
+    console.log('🔌 Attempting WebSocket connection...');
+    console.log('📍 Bridge URL from storage:', bridgeUrl);
 
     // Store callbacks
     messageCallback = onMessage;
@@ -88,47 +90,69 @@ export const whatsappService = {
       wsUrl = `${wsUrl}:3002`;
     }
 
+    console.log('🔗 Connecting to WebSocket:', wsUrl);
+
     try {
       ws = new WebSocket(wsUrl);
 
       ws.onopen = () => {
-        console.log('✅ WebSocket connected to bridge');
+        console.log('✅ WebSocket connected to bridge successfully!');
+        console.log('🎧 Listening for incoming WhatsApp messages...');
         if (connectionStatusCallback) connectionStatusCallback('connected');
       };
 
       ws.onmessage = (event) => {
+        console.log('📨 WebSocket message received:', event.data);
         try {
           const data = JSON.parse(event.data);
+          console.log('📦 Parsed message data:', data);
 
           switch (data.type) {
             case 'incoming_message':
-              if (messageCallback) messageCallback(data);
+              console.log('📩 INCOMING MESSAGE detected!', {
+                from: data.from,
+                phone: data.phone,
+                realPhone: data.realPhone,
+                body: data.body?.substring(0, 50) + '...'
+              });
+              if (messageCallback) {
+                console.log('📤 Passing to message callback...');
+                messageCallback(data);
+              } else {
+                console.warn('⚠️ No message callback registered!');
+              }
               break;
             case 'message_ack':
-              console.log('Message ack:', data.ackStatus);
+              console.log('✓ Message ack:', data.ackStatus);
               break;
             case 'status':
+              console.log('📡 Bridge status update:', data.status);
               if (connectionStatusCallback) connectionStatusCallback(data.status);
               break;
             case 'state_change':
-              console.log('WhatsApp state:', data.state);
+              console.log('🔄 WhatsApp state:', data.state);
               break;
+            default:
+              console.log('❓ Unknown message type:', data.type);
           }
         } catch (e) {
-          console.error('Error parsing WebSocket message:', e);
+          console.error('❌ Error parsing WebSocket message:', e);
+          console.error('Raw data:', event.data);
         }
       };
 
       ws.onerror = (error) => {
-        console.error('WebSocket error:', error);
+        console.error('❌ WebSocket error:', error);
+        console.error('Connection URL was:', wsUrl);
         if (connectionStatusCallback) connectionStatusCallback('error');
       };
 
       ws.onclose = () => {
-        console.log('WebSocket disconnected, will retry in 5s...');
+        console.log('🔌 WebSocket disconnected, will retry in 5s...');
         if (connectionStatusCallback) connectionStatusCallback('disconnected');
 
         reconnectTimeout = setTimeout(() => {
+          console.log('🔄 Attempting to reconnect WebSocket...');
           if (messageCallback) {
             whatsappService.connectToIncoming(messageCallback, connectionStatusCallback);
           }
@@ -137,7 +161,8 @@ export const whatsappService = {
 
       return true;
     } catch (e) {
-      console.error('Failed to create WebSocket:', e);
+      console.error('❌ Failed to create WebSocket:', e);
+      console.error('URL was:', wsUrl);
       return false;
     }
   },
