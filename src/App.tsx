@@ -479,6 +479,12 @@ function App() {
 
       whatsappService.connectToIncoming(
         (messageData) => {
+          // Filter out group messages - they should be handled separately in Groups feature
+          if (messageData.from && messageData.from.includes('@g.us')) {
+            console.log('👥 Skipping group message (use Groups feature):', messageData.from);
+            return;
+          }
+
           // Deduplicate messages
           const messageKey = `${messageData.from}-${messageData.timestamp}`;
           if (processedMessageIds.current.has(messageKey)) {
@@ -487,10 +493,24 @@ function App() {
           }
           processedMessageIds.current.add(messageKey);
 
-          console.log('📩 Received WhatsApp message:', messageData);
+          console.log('📩 Received WhatsApp message (1-on-1):', messageData);
 
           const incomingWhatsappId = messageData.from;
-          const incomingPhone = (messageData.phone || messageData.from || '').replace('@c.us', '').replace('@lid', '').replace(/\D/g, '');
+
+          // Improved phone extraction - use realPhone if available, otherwise clean the ID
+          let incomingPhone = '';
+          if (messageData.realPhone && messageData.realPhone.match(/^\d{10,15}$/)) {
+            // realPhone is already clean
+            incomingPhone = messageData.realPhone;
+          } else {
+            // Fallback: extract from whatsappId (remove @c.us, @lid, @g.us, and non-digits)
+            incomingPhone = (messageData.phone || messageData.from || '')
+              .replace('@c.us', '')
+              .replace('@lid', '')
+              .replace('@g.us', '')
+              .replace(/\D/g, '');
+          }
+
           const incomingContactName = messageData.contactName || ''; // Saved name from their phone
           const incomingPushname = messageData.pushname || ''; // WhatsApp display name
 
@@ -605,9 +625,9 @@ function App() {
             console.log('📱 Creating new contact for:', incomingPhone);
             const newContactId = uuidv4();
 
-            // Prefer using the real phone if bridge managed to resolve it, otherwise use the extracted ID
-            const finalPhone = messageData.realPhone || incomingPhone;
-            console.log('📱 finalPhone:', finalPhone, '(from realPhone:', messageData.realPhone, ', incomingPhone:', incomingPhone, ')');
+            // Use cleaned incomingPhone (realPhone is already validated above)
+            const finalPhone = incomingPhone;
+            console.log('📱 finalPhone:', finalPhone, '(cleaned from incoming data)');
 
             // Use their WhatsApp Display Name (Pushname) or Saved Name if available
             // Fallback to phone number for better UX
