@@ -84,33 +84,73 @@ wppconnect.create({
         let body = message.body || '';
         let mediaType = null;
         let isMedia = false;
+        let mediaData = null;
+        let mediaUrl = null;
 
         // Check if it's a media message (image, video, audio, etc.)
         if (message.type && ['image', 'video', 'audio', 'ptt', 'document', 'sticker'].includes(message.type)) {
           isMedia = true;
           mediaType = message.type;
 
-          // Clear Base64 data and show media indicator
-          if (message.type === 'image') {
-            body = body && !body.startsWith('/9j/') && !body.startsWith('data:') ? body + ' 📷 [Image]' : '📷 [Image]';
-          } else if (message.type === 'video') {
-            body = body && !body.startsWith('data:') ? body + ' 🎥 [Video]' : '🎥 [Video]';
-          } else if (message.type === 'audio' || message.type === 'ptt') {
-            body = body && !body.startsWith('data:') ? body + ' 🎵 [Audio]' : '🎵 [Audio]';
-          } else if (message.type === 'document') {
-            body = body && !body.startsWith('data:') ? body + ' 📄 [Document]' : '📄 [Document]';
-          } else if (message.type === 'sticker') {
-            body = '🎨 [Sticker]';
-          } else {
-            body = '[Media]';
+          try {
+            console.log(`📥 Downloading ${mediaType} from WhatsApp...`);
+
+            // Download media as base64
+            const mediaBuffer = await client.decryptFile(message);
+            mediaData = mediaBuffer.toString('base64');
+
+            console.log(`✅ Media downloaded (${Math.round(mediaData.length / 1024)}KB)`);
+
+            // Set body with media indicator
+            if (message.type === 'image') {
+              body = message.caption || '📷 Image';
+              mediaUrl = `data:image/jpeg;base64,${mediaData}`;
+            } else if (message.type === 'video') {
+              body = message.caption || '🎥 Video';
+              mediaUrl = `data:video/mp4;base64,${mediaData}`;
+            } else if (message.type === 'audio' || message.type === 'ptt') {
+              body = '🎵 Audio';
+              mediaUrl = `data:audio/ogg;base64,${mediaData}`;
+            } else if (message.type === 'document') {
+              body = message.filename || '📄 Document';
+              mediaUrl = `data:application/octet-stream;base64,${mediaData}`;
+            } else if (message.type === 'sticker') {
+              body = '🎨 Sticker';
+              mediaUrl = `data:image/webp;base64,${mediaData}`;
+            }
+
+            console.log(`📩 INCOMING ${mediaType} from ${message.from}: ${body}`);
+          } catch (error) {
+            console.error(`❌ Error downloading media: ${error.message}`);
+            // Fallback to text indicator
+            if (message.type === 'image') {
+              body = '📷 [Image - download failed]';
+            } else if (message.type === 'video') {
+              body = '🎥 [Video - download failed]';
+            } else if (message.type === 'audio' || message.type === 'ptt') {
+              body = '🎵 [Audio - download failed]';
+            } else if (message.type === 'document') {
+              body = '📄 [Document - download failed]';
+            } else if (message.type === 'sticker') {
+              body = '🎨 [Sticker - download failed]';
+            }
           }
-          console.log(`📩 INCOMING ${mediaType} from ${message.from}: ${body}`);
         } else if (message.hasMedia) {
           // Fallback for hasMedia flag
           isMedia = true;
           mediaType = 'unknown';
-          body = '📎 [Media]';
-          console.log(`📩 INCOMING media from ${message.from}: ${body}`);
+
+          try {
+            console.log(`📥 Downloading media from WhatsApp...`);
+            const mediaBuffer = await client.decryptFile(message);
+            mediaData = mediaBuffer.toString('base64');
+            mediaUrl = `data:application/octet-stream;base64,${mediaData}`;
+            body = '📎 Media';
+            console.log(`✅ Media downloaded (${Math.round(mediaData.length / 1024)}KB)`);
+          } catch (error) {
+            console.error(`❌ Error downloading media: ${error.message}`);
+            body = '📎 [Media - download failed]';
+          }
         } else {
           body = message.body || '[No content]';
           console.log(`📩 INCOMING from ${message.from}: ${body.substring(0, 50)}...`);
@@ -183,8 +223,9 @@ wppconnect.create({
           contactName: contactName,
           pushname: pushname,
           body: body,
-          hasMedia: message.hasMedia || false,
+          hasMedia: isMedia,
           mediaType: mediaType,
+          mediaUrl: mediaUrl,
           timestamp: message.timestamp || Date.now() / 1000
         });
         console.log('✅ Broadcast complete!');
@@ -192,13 +233,18 @@ wppconnect.create({
         // Also save to backend database via webhook
         try {
           console.log('💾 Saving message to backend database...');
-          await axios.post(`${BACKEND_URL}/api/whatsapp/webhook`, {
+          const webhookData = {
             phone: realPhone || phoneNumber,
             whatsapp_id: message.from,
             content: body,
             contact_name: contactName,
-            pushname: pushname
-          });
+            pushname: pushname,
+            has_media: isMedia,
+            media_type: mediaType,
+            media_url: mediaUrl
+          };
+
+          await axios.post(`${BACKEND_URL}/api/whatsapp/webhook`, webhookData);
           console.log('✅ Message saved to backend!');
         } catch (error) {
           console.error('❌ Error saving message to backend:', error.message);
