@@ -6,7 +6,10 @@ const WebSocket = require('ws');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const axios = require('axios');
 const polling = require('./bridge-polling');
+
+const BACKEND_URL = 'https://shepherd-ai-backend.onrender.com';
 
 const app = express();
 
@@ -185,6 +188,21 @@ wppconnect.create({
           timestamp: message.timestamp || Date.now() / 1000
         });
         console.log('✅ Broadcast complete!');
+
+        // Also save to backend database via webhook
+        try {
+          console.log('💾 Saving message to backend database...');
+          await axios.post(`${BACKEND_URL}/api/whatsapp/webhook`, {
+            phone: realPhone || phoneNumber,
+            whatsapp_id: message.from,
+            content: body,
+            contact_name: contactName,
+            pushname: pushname
+          });
+          console.log('✅ Message saved to backend!');
+        } catch (error) {
+          console.error('❌ Error saving message to backend:', error.message);
+        }
       } else {
         console.log('⏭️ Skipping (group or broadcast):', message.from);
       }

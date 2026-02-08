@@ -318,11 +318,64 @@ async def whatsapp_incoming_webhook(
     - WPPConnect bridge when receiving messages
     - Meta webhook when configured
     """
-    logger.info(f"Incoming message from {phone} ({whatsapp_id})")
-    
-    # TODO: Implement incoming message handling
-    # - Find organization based on phone number or session
-    # - Create/update contact
-    # - Log message to database
-    
-    return {"success": True, "message": "Message received"}
+    try:
+        logger.info(f"📩 Incoming webhook: {phone} ({whatsapp_id}): {content[:50]}")
+        
+        # Clean phone number
+        clean_phone = phone.replace('+', '').replace(' ', '').replace('-', '')
+        
+        # Find or create contact
+        # Try to find by whatsapp_id first
+        contact = db.query(Contact).filter(Contact.whatsapp_id == whatsapp_id).first()
+        
+        # If not found, try by phone
+        if not contact and clean_phone:
+            contact = db.query(Contact).filter(Contact.phone == clean_phone).first()
+        
+        # If still not found, create new contact
+        if not contact:
+            # Determine display name
+            display_name = pushname or contact_name or f"WhatsApp {clean_phone}"
+            
+            logger.info(f"📝 Creating new contact: {display_name} ({clean_phone})")
+            contact = Contact(
+                name=display_name,
+                phone=clean_phone,
+                whatsapp_id=whatsapp_id,
+                tags=["auto-created"],
+                notes=f"Auto-created from incoming message on {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+            )
+            db.add(contact)
+            db.flush()  # Get the contact ID
+        else:
+            # Update contact info if we have better data
+            if whatsapp_id and not contact.whatsapp_id:
+                contact.whatsapp_id = whatsapp_id
+            if pushname and not contact.name:
+                contact.name = pushname
+        
+        # Create incoming message log
+        message = Message(
+            contact_id=contact.id,
+            type="Inbound",
+            content=content,
+            status="Received",
+            sent_at=datetime.now(),
+            created_at=datetime.now()
+        )
+        db.add(message)
+        db.commit()
+        
+        logger.info(f"✅ Message saved for contact {contact.name} (ID: {contact.id})")
+        
+        return {
+            "success": True, 
+            "message": "Message received and saved",
+            "contact_id": str(contact.id),
+            "message_id": str(message.id)
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Error processing incoming message: {str(e)}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
