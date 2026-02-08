@@ -428,9 +428,24 @@ const LiveChats: React.FC<LiveChatsProps> = ({ contacts, logs, setLogs }) => {
                             <img
                               src={msg.attachment.url}
                               alt="Attachment"
-                              className="rounded-lg max-h-60 object-cover w-full"
+                              className="rounded-lg max-h-60 object-cover w-full cursor-pointer hover:opacity-95 transition-opacity"
+                              onClick={() => window.open(msg.attachment?.url, '_blank')}
                             />
                           </div>
+                        )}
+
+                        {msg.attachment && msg.attachment.type !== 'image' && !isEditing && (
+                          <a
+                            href={msg.attachment.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className={`flex items-center gap-2 -mx-1 -mt-1 mb-2 p-2 rounded-lg ${isOutbound ? 'bg-white/20 hover:bg-white/30' : 'bg-slate-100 hover:bg-slate-200'} transition-colors`}
+                          >
+                            <Paperclip size={18} />
+                            <span className="font-medium underline decoration-dotted truncate max-w-[200px]">
+                              View Attachment
+                            </span>
+                          </a>
                         )}
 
                         {/* Scheduled Banner inside bubble */}

@@ -585,7 +585,12 @@ function App() {
               content: messageData.body || '[No content]',
               timestamp: new Date((messageData.timestamp || Date.now() / 1000) * 1000).toISOString(),
               status: MessageStatus.RESPONDED,
-              type: 'Inbound'
+              type: 'Inbound',
+              attachment: messageData.hasMedia && messageData.mediaUrl ? {
+                type: messageData.mediaType?.includes('image') ? 'image' : 'file',
+                url: messageData.mediaUrl,
+                name: 'attachment'
+              } : undefined
             };
 
             console.log('💾 Adding message to logs state:', {
@@ -593,7 +598,8 @@ function App() {
               contactId: contact.id,
               contactName: contact.name,
               content: newLog.content.substring(0, 50) + '...',
-              timestamp: newLog.timestamp
+              timestamp: newLog.timestamp,
+              hasAttachment: !!newLog.attachment
             });
 
             setLogs(prev => {
@@ -668,7 +674,12 @@ function App() {
               content: messageData.body || '[No content]',
               timestamp: new Date((messageData.timestamp || Date.now() / 1000) * 1000).toISOString(),
               status: MessageStatus.RESPONDED,
-              type: 'Inbound'
+              type: 'Inbound',
+              attachment: messageData.hasMedia && messageData.mediaUrl ? {
+                type: messageData.mediaType?.includes('image') ? 'image' : 'file',
+                url: messageData.mediaUrl,
+                name: 'attachment'
+              } : undefined
             };
             setLogs(prev => [newLog, ...prev]);
 
