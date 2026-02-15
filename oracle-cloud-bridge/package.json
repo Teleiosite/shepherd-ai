@@ -1,0 +1,25 @@
+{
+    "name": "shepherd-oracle-bridge",
+    "version": "2.0.0",
+    "description": "Shepherd AI WhatsApp Bridge - Oracle Cloud Deployment",
+    "main": "index.js",
+    "scripts": {
+        "start": "node index.js",
+        "dev": "nodemon index.js"
+    },
+    "dependencies": {
+        "@wppconnect-team/wppconnect": "^1.30.0",
+        "axios": "^1.6.0",
+        "cors": "^2.8.5",
+        "dotenv": "^16.3.1",
+        "express": "^4.18.2",
+        "puppeteer": "^23.11.1",
+        "ws": "^8.14.2"
+    },
+    "devDependencies": {
+        "nodemon": "^3.0.1"
+    },
+    "engines": {
+        "node": ">=18.0.0"
+    }
+}
