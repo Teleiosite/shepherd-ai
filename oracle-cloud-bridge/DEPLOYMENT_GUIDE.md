@@ -29,7 +29,7 @@ WhatsApp ←→ Bridge (Oracle Cloud VM) ←→ Backend (Render) ←→ Frontend
 1. Go to **Compute → Instances → Create Instance**
 2. Configure:
    - **Name**: `shepherd-bridge`
-   - **Image**: **Ubuntu 22.04** (or 24.04)
+   - **Image**: **Oracle Linux 9** (or Ubuntu 22.04/24.04)
    - **Shape**: Choose **Always Free** eligible:
      - **VM.Standard.A1.Flex** (ARM) - Recommended! Up to 4 OCPU / 24GB RAM
      - Or **VM.Standard.E2.1.Micro** (AMD) - 1 OCPU / 1GB RAM
@@ -59,14 +59,24 @@ Once the instance is running, note the **Public IP Address** (e.g., `129.154.xxx
 
 4. Click **Add Ingress Rules**
 
-### 2.2 VM Firewall (iptables)
+### 2.2 VM Firewall
 After SSH-ing into the VM (Step 3), also run:
 
+**Oracle Linux 9 (firewalld):**
+```bash
+sudo firewall-cmd --permanent --add-port=3001/tcp
+sudo firewall-cmd --permanent --add-port=3002/tcp
+sudo firewall-cmd --reload
+```
+
+**Ubuntu (iptables):**
 ```bash
 sudo iptables -I INPUT 6 -m state --state NEW -p tcp --dport 3001 -j ACCEPT
 sudo iptables -I INPUT 6 -m state --state NEW -p tcp --dport 3002 -j ACCEPT
 sudo netfilter-persistent save
 ```
+
+> **Note:** The setup script handles this automatically!
 
 ---
 
@@ -74,7 +84,11 @@ sudo netfilter-persistent save
 
 ### From Windows (PowerShell):
 ```powershell
-ssh -i "C:\path\to\your-key.key" ubuntu@YOUR_VM_IP
+# Oracle Linux 9 uses 'opc' as the default user
+ssh -i "C:\path\to\your-key.key" opc@YOUR_VM_IP
+
+# Ubuntu uses 'ubuntu' as the default user
+# ssh -i "C:\path\to\your-key.key" ubuntu@YOUR_VM_IP
 ```
 
 ### From Windows (PuTTY):
@@ -91,10 +105,10 @@ Upload the bridge files to your VM, then run:
 
 ```bash
 # Upload files (from your local PC, in PowerShell)
-scp -i "C:\path\to\key.key" -r "C:\Users\USER\Downloads\SHEPHERD Ai\oracle-cloud-bridge\*" ubuntu@YOUR_VM_IP:~/shepherd-bridge/
+scp -i "C:\path\to\key.key" -r "C:\Users\USER\Downloads\SHEPHERD Ai\oracle-cloud-bridge\*" opc@YOUR_VM_IP:~/shepherd-bridge/
 
-# SSH into VM
-ssh -i "C:\path\to\key.key" ubuntu@YOUR_VM_IP
+# SSH into VM (Oracle Linux uses 'opc' user)
+ssh -i "C:\path\to\key.key" opc@YOUR_VM_IP
 
 # Run setup script
 cd ~/shepherd-bridge
@@ -105,21 +119,21 @@ chmod +x setup.sh
 ### Option B: Manual Setup
 
 ```bash
-# SSH into VM
-ssh -i "C:\path\to\key.key" ubuntu@YOUR_VM_IP
+# SSH into VM (Oracle Linux uses 'opc' user)
+ssh -i "C:\path\to\key.key" opc@YOUR_VM_IP
 
 # 1. Update system
-sudo apt update && sudo apt upgrade -y
+sudo dnf update -y
 
 # 2. Install Node.js 20
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-sudo apt install -y nodejs
+curl -fsSL https://rpm.nodesource.com/setup_20.x | sudo bash -
+sudo dnf install -y nodejs
 
 # 3. Install Chromium (required for WhatsApp Web)
-sudo apt install -y chromium-browser fonts-liberation libappindicator3-1 \
-  libasound2 libatk-bridge2.0-0 libatk1.0-0 libcups2 libdbus-1-3 \
-  libdrm2 libgbm1 libgtk-3-0 libnspr4 libnss3 libxcomposite1 \
-  libxdamage1 libxrandr2 xdg-utils wget ca-certificates
+sudo dnf install -y oracle-epel-release-el9
+sudo dnf install -y chromium liberation-fonts libdrm mesa-libgbm \
+  alsa-lib atk at-spi2-atk cups-libs gtk3 nspr nss \
+  libXcomposite libXdamage libXrandr xdg-utils wget ca-certificates git
 
 # 4. Install PM2 (keeps bridge running 24/7)
 sudo npm install -g pm2
@@ -139,6 +153,7 @@ PORT=3001
 WS_PORT=3002
 CHROME_PATH=/usr/bin/chromium-browser
 NODE_ENV=production
+# Note: On Oracle Linux, Chrome path is usually /usr/bin/chromium
 EOF
 
 # 8. Install dependencies
@@ -223,6 +238,7 @@ pm2 save
 ```bash
 # Check Chrome/Chromium is installed
 which chromium-browser || which chromium
+# Oracle Linux: usually /usr/bin/chromium
 
 # Check logs for errors
 pm2 logs shepherd-bridge --lines 50
