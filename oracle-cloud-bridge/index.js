@@ -41,7 +41,15 @@ const SENT_MESSAGE_TTL = 60000;
 
 // =================== EXPRESS SETUP ===================
 
-app.use(cors());
+// CORS setup (includes Private Network header for local access)
+app.use((req, res, next) => {
+    res.header("Access-Control-Allow-Origin", "*");
+    res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PUT, PATCH, DELETE");
+    res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Authorization");
+    res.header("Access-Control-Allow-Private-Network", "true");
+    if (req.method === 'OPTIONS') return res.sendStatus(200);
+    next();
+});
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
@@ -135,26 +143,41 @@ app.post('/api/send', async (req, res) => {
     const { phone, message, whatsappId } = req.body;
 
     if (bridgeStatus !== 'connected' || !clientSession) {
-        return res.status(503).json({ success: false, error: 'Bridge not connected' });
+        return res.status(503).json({ success: false, error: 'Bridge not connected. Please wait for reconnection.' });
     }
 
     try {
         let chatId;
         if (whatsappId && whatsappId.includes('@')) {
             chatId = whatsappId;
+            console.log(`📤 Replying to WhatsApp ID: ${chatId}...`);
         } else {
             let cleanPhone = phone.replace(/\D/g, '');
             if (cleanPhone.startsWith('0')) cleanPhone = '234' + cleanPhone.substring(1);
             chatId = `${cleanPhone}@c.us`;
+            console.log(`📤 Sending to phone: ${chatId}...`);
         }
 
-        console.log(`📤 Sending to ${chatId}: ${message.substring(0, 50)}...`);
+        console.log(`📝 Message: ${message.substring(0, 50)}...`);
         const result = await clientSession.sendText(chatId, message);
         console.log('✅ Sent successfully!', result?.id || '');
         res.json({ success: true, messageId: result?.id });
     } catch (error) {
-        console.error('❌ Send Error:', error.message);
-        res.status(500).json({ success: false, error: error.message });
+        console.error('❌ Send Error:', error.message || error);
+
+        // Detect session errors
+        let errorType = 'unknown';
+        if (error.message && error.message.includes('detached')) {
+            errorType = 'session_detached';
+            bridgeStatus = 'disconnected';
+            broadcastToClients({ type: 'status', status: 'disconnected' });
+        }
+
+        res.status(500).json({
+            success: false,
+            error: error.message || error.toString(),
+            errorType: errorType
+        });
     }
 });
 
@@ -293,6 +316,9 @@ async function initializeWhatsApp() {
 
         // Start polling for pending messages
         startPolling();
+
+        // Initialize group manager
+        initGroupManager();
 
         // Health monitoring
         startHealthMonitoring();
@@ -572,6 +598,221 @@ function startHealthMonitoring() {
             broadcastToClients({ type: 'status', status: 'disconnected' });
         }
     }, 300000); // Every 5 minutes
+}
+
+// =================== GROUP MANAGER ===================
+
+let groupSyncRetryCount = 0;
+
+/**
+ * Initialize group management features
+ */
+function initGroupManager() {
+    console.log('👥 Initializing Group Manager...');
+    setupGroupEventListeners();
+
+    // Wait for WhatsApp to fully load chats before syncing
+    console.log('⏳ Waiting 30 seconds for WhatsApp to fully load all chats...');
+    setTimeout(() => syncGroups(), 30000);
+
+    // Start group polling (welcome queue + group messages)
+    startGroupPolling(10000);
+}
+
+/**
+ * Sync all WhatsApp groups with backend
+ */
+async function syncGroups() {
+    try {
+        console.log('🔄 Syncing WhatsApp groups...');
+
+        const allChats = await clientSession.listChats();
+        console.log(`📱 Total chats loaded: ${allChats.length}`);
+
+        // Robust group filter
+        const groups = allChats.filter(chat => {
+            const isGroupByFlag = chat.isGroup === true;
+            const isGroupByServer = chat.id && (chat.id.server === 'g.us' || chat.id._serialized?.includes('@g.us'));
+            const isGroupByKind = chat.kind === 'group';
+            return isGroupByFlag || isGroupByServer || isGroupByKind;
+        });
+
+        console.log(`📊 Found ${groups.length} groups in WhatsApp`);
+
+        // Retry if no groups found
+        if (groups.length === 0 && groupSyncRetryCount < 2) {
+            groupSyncRetryCount++;
+            console.log(`⚠️ No groups found. Retrying in 10s... (Attempt ${groupSyncRetryCount}/2)`);
+            setTimeout(() => syncGroups(), 10000);
+            return null;
+        }
+
+        if (groups.length > 0) groupSyncRetryCount = 0;
+
+        const groupData = groups.map(g => ({
+            whatsapp_group_id: g.id._serialized || g.id,
+            name: g.name || g.contact?.name || 'Unnamed Group',
+            description: g.description || null,
+            avatar_url: g.profilePicUrl || null,
+            member_count: g.participants ? g.participants.length : (g.groupMetadata?.participants?.length || 0)
+        }));
+
+        if (groupData.length === 0) {
+            console.log('📭 No group data to sync');
+            return null;
+        }
+
+        const response = await axios.post(
+            `${BACKEND_URL}/api/groups/sync?code=${CONNECTION_CODE}`,
+            { groups: groupData }
+        );
+
+        console.log(`✅ Synced ${response.data.synced} groups (${response.data.new} new, ${response.data.updated} updated)`);
+        return response.data;
+    } catch (error) {
+        console.error('❌ Error syncing groups:', error.message);
+        if (error.response) {
+            console.error('Response status:', error.response.status);
+        }
+        return null;
+    }
+}
+
+/**
+ * Set up event listeners for group participant changes
+ */
+function setupGroupEventListeners() {
+    if (!clientSession) return;
+
+    clientSession.onParticipantsChanged(async (event) => {
+        try {
+            console.log('👥 Group participant event:', event.action, event.by);
+
+            if (event.action === 'add') {
+                for (const newMember of event.who) {
+                    await handleMemberJoined(event.chatId, newMember);
+                }
+            } else if (event.action === 'remove') {
+                console.log(`👋 Member left: ${event.who}`);
+            }
+        } catch (error) {
+            console.error('❌ Error handling participant change:', error);
+        }
+    });
+
+    console.log('👂 Group event listeners set up');
+}
+
+/**
+ * Handle a new member joining a group
+ */
+async function handleMemberJoined(groupId, memberId) {
+    try {
+        console.log(`🆕 New member ${memberId} joined group ${groupId}`);
+
+        const contact = await clientSession.getContact(memberId);
+        const phone = contact.id.user || memberId.replace('@c.us', '');
+
+        const response = await axios.post(
+            `${BACKEND_URL}/api/groups/${groupId}/members/joined?code=${CONNECTION_CODE}`,
+            {
+                whatsapp_id: memberId,
+                name: contact.pushname || contact.name || 'Unknown',
+                phone: phone,
+                joined_at: new Date().toISOString()
+            }
+        );
+
+        console.log(`✅ Backend notified: ${response.data.contact_created ? 'Contact created' : 'Existing contact'}`);
+    } catch (error) {
+        console.error('❌ Error handling member joined:', error.message);
+    }
+}
+
+/**
+ * Process welcome queue (send welcome messages to new group members)
+ */
+async function processWelcomeQueue() {
+    try {
+        const { data: welcomes } = await axios.get(
+            `${BACKEND_URL}/api/groups/welcome-queue?code=${CONNECTION_CODE}`
+        );
+
+        if (welcomes.length === 0) return;
+
+        console.log(`📬 Processing ${welcomes.length} welcome messages`);
+
+        for (const welcome of welcomes) {
+            try {
+                const chatId = welcome.phone.includes('@') ? welcome.phone : `${welcome.phone}@c.us`;
+                await clientSession.sendText(chatId, welcome.message);
+                console.log(`✅ Sent welcome to ${welcome.phone} (${welcome.group_name})`);
+
+                await axios.post(
+                    `${BACKEND_URL}/api/groups/welcome-queue/${welcome.id}/sent?code=${CONNECTION_CODE}`
+                );
+
+                // Rate limit delay
+                await new Promise(resolve => setTimeout(resolve, 3000));
+            } catch (error) {
+                console.error(`❌ Error sending welcome to ${welcome.phone}:`, error.message);
+            }
+        }
+    } catch (error) {
+        if (error.response?.status !== 404) {
+            console.error('❌ Error processing welcome queue:', error.message);
+        }
+    }
+}
+
+/**
+ * Process pending group messages (broadcasts)
+ */
+async function processGroupMessages() {
+    try {
+        const { data: messages } = await axios.get(
+            `${BACKEND_URL}/api/groups/messages/pending?code=${CONNECTION_CODE}`
+        );
+
+        if (messages.length === 0) return;
+
+        console.log(`📤 Processing ${messages.length} group messages`);
+
+        for (const msg of messages) {
+            try {
+                await clientSession.sendText(msg.group_id, msg.content);
+                console.log(`✅ Sent message to group ${msg.group_id}`);
+
+                await axios.post(
+                    `${BACKEND_URL}/api/groups/messages/${msg.id}/status?code=${CONNECTION_CODE}`,
+                    { status: 'sent', sent_at: new Date().toISOString() }
+                );
+
+                await new Promise(resolve => setTimeout(resolve, 3000));
+            } catch (error) {
+                console.error(`❌ Error sending group message:`, error.message);
+                await axios.post(
+                    `${BACKEND_URL}/api/groups/messages/${msg.id}/status?code=${CONNECTION_CODE}`,
+                    { status: 'failed', error_message: error.message }
+                );
+            }
+        }
+    } catch (error) {
+        if (error.response?.status !== 404) {
+            console.error('❌ Error processing group messages:', error.message);
+        }
+    }
+}
+
+/**
+ * Start polling for group tasks (welcome queue + group broadcasts)
+ */
+function startGroupPolling(intervalMs = 10000) {
+    console.log(`🔄 Starting group polling (every ${intervalMs / 1000}s)`);
+    setInterval(async () => {
+        await processWelcomeQueue();
+        await processGroupMessages();
+    }, intervalMs);
 }
 
 // =================== START ===================
