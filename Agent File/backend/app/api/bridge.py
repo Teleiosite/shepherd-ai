@@ -178,7 +178,7 @@ async def disconnect_bridge(
         
         return {
             "success": True,
-            "message": "Bridge disconnected successfully"
+            "message": "Bridge Did you create a NEW test contact after the frontend was redeployeddisconnected successfully"
         }
     else:
         raise HTTPException(
