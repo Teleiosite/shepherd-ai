@@ -1,18 +1,20 @@
 /**
- * Shepherd AI Oracle Cloud Bridge
+ * Shepherd AI Oracle Cloud Bridge v3.0.0 (Baileys Edition)
  * 
- * Full-featured WhatsApp Bridge for Oracle Cloud deployment.
- * Combines all features from local bridge:
+ * Full-featured WhatsApp Bridge using @whiskeysockets/baileys
+ * NO CHROMIUM REQUIRED - Pure WebSocket connection to WhatsApp
+ * 
+ * Features:
  * - Incoming message handling with media support
  * - Outgoing message polling from backend
  * - Group management
- * - WebSocket broadcasting
+ * - WebSocket broadcasting to frontend
  * - Backend webhook integration
  * - QR code authentication via API endpoint
  */
 
 require('dotenv').config();
-const wppconnect = require('@wppconnect-team/wppconnect');
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, downloadMediaMessage, makeInMemoryStore, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
 const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
@@ -20,6 +22,8 @@ const WebSocket = require('ws');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const QRCode = require('qrcode');
+const pino = require('pino');
 
 const app = express();
 
@@ -29,19 +33,27 @@ const WS_PORT = process.env.WS_PORT || 3002;
 const BACKEND_URL = process.env.BACKEND_URL || 'https://shepherd-ai-backend.onrender.com';
 const CONNECTION_CODE = process.env.CONNECTION_CODE || '1DCFEA1A';
 const POLL_INTERVAL = 5000; // 5 seconds
+const AUTH_DIR = path.join(__dirname, 'auth_info');
+
+// Logger (minimal to save memory)
+const logger = pino({ level: 'warn' });
 
 // State
-let clientSession = null;
+let sock = null;
 let bridgeStatus = 'initializing';
-let latestQRCode = null; // Store QR code for API access
+let latestQRCode = null; // Base64 QR image for API access
+let latestQRString = null; // Raw QR string
 
 // Track recently sent messages to prevent duplicates
 const sentMessageIds = new Set();
 const SENT_MESSAGE_TTL = 60000;
 
+// In-memory store for message retry
+const store = makeInMemoryStore({ logger });
+
 // =================== EXPRESS SETUP ===================
 
-// CORS setup (includes Private Network header for local access)
+// CORS setup
 app.use((req, res, next) => {
     res.header("Access-Control-Allow-Origin", "*");
     res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PUT, PATCH, DELETE");
@@ -85,8 +97,8 @@ app.get('/', (req, res) => {
     res.json({
         status: 'online',
         whatsappConnected: bridgeStatus === 'connected',
-        service: 'Shepherd AI Oracle Cloud Bridge',
-        version: '2.0.0',
+        service: 'Shepherd AI Oracle Cloud Bridge (Baileys)',
+        version: '3.0.0',
         uptime: process.uptime()
     });
 });
@@ -124,25 +136,69 @@ app.get('/api/qr', (req, res) => {
 });
 
 // QR Code as image (for browser viewing)
-app.get('/api/qr-image', (req, res) => {
-    if (!latestQRCode) {
-        return res.status(404).send('QR code not available yet');
+app.get('/api/qr-image', async (req, res) => {
+    if (bridgeStatus === 'connected') {
+        return res.status(200).send(`
+            <html><body style="display:flex;justify-content:center;align-items:center;height:100vh;font-family:Arial;background:#1a1a2e;color:#16c784;">
+                <div style="text-align:center;">
+                    <h1>✅ WhatsApp Connected!</h1>
+                    <p>The bridge is running and connected.</p>
+                </div>
+            </body></html>
+        `);
     }
-    // latestQRCode is base64 image
-    const base64Data = latestQRCode.replace(/^data:image\/\w+;base64,/, '');
-    const imgBuffer = Buffer.from(base64Data, 'base64');
-    res.writeHead(200, {
-        'Content-Type': 'image/png',
-        'Content-Length': imgBuffer.length
-    });
-    res.end(imgBuffer);
+
+    if (!latestQRCode && !latestQRString) {
+        return res.status(200).send(`
+            <html><head><meta http-equiv="refresh" content="5"></head>
+            <body style="display:flex;justify-content:center;align-items:center;height:100vh;font-family:Arial;background:#1a1a2e;color:white;">
+                <div style="text-align:center;">
+                    <h1>⏳ Generating QR Code...</h1>
+                    <p>This page will auto-refresh in 5 seconds.</p>
+                </div>
+            </body></html>
+        `);
+    }
+
+    try {
+        // Generate QR code image from the raw QR string
+        if (latestQRString) {
+            const qrImageBuffer = await QRCode.toBuffer(latestQRString, {
+                width: 400,
+                margin: 2,
+                color: { dark: '#000000', light: '#ffffff' }
+            });
+            res.writeHead(200, {
+                'Content-Type': 'image/png',
+                'Content-Length': qrImageBuffer.length,
+                'Cache-Control': 'no-cache'
+            });
+            return res.end(qrImageBuffer);
+        }
+
+        // Fallback: use base64 QR
+        if (latestQRCode) {
+            const base64Data = latestQRCode.replace(/^data:image\/\w+;base64,/, '');
+            const imgBuffer = Buffer.from(base64Data, 'base64');
+            res.writeHead(200, {
+                'Content-Type': 'image/png',
+                'Content-Length': imgBuffer.length
+            });
+            return res.end(imgBuffer);
+        }
+
+        return res.status(404).send('QR code not available');
+    } catch (error) {
+        console.error('❌ QR image error:', error.message);
+        return res.status(500).send('Error generating QR image');
+    }
 });
 
 // Send text message
 app.post('/api/send', async (req, res) => {
     const { phone, message, whatsappId } = req.body;
 
-    if (bridgeStatus !== 'connected' || !clientSession) {
+    if (bridgeStatus !== 'connected' || !sock) {
         return res.status(503).json({ success: false, error: 'Bridge not connected. Please wait for reconnection.' });
     }
 
@@ -154,20 +210,22 @@ app.post('/api/send', async (req, res) => {
         } else {
             let cleanPhone = phone.replace(/\D/g, '');
             if (cleanPhone.startsWith('0')) cleanPhone = '234' + cleanPhone.substring(1);
-            chatId = `${cleanPhone}@c.us`;
+            chatId = `${cleanPhone}@s.whatsapp.net`;
             console.log(`📤 Sending to phone: ${chatId}...`);
         }
 
+        // Convert @c.us to @s.whatsapp.net for Baileys
+        chatId = chatId.replace('@c.us', '@s.whatsapp.net');
+
         console.log(`📝 Message: ${message.substring(0, 50)}...`);
-        const result = await clientSession.sendText(chatId, message);
-        console.log('✅ Sent successfully!', result?.id || '');
-        res.json({ success: true, messageId: result?.id });
+        const result = await sock.sendMessage(chatId, { text: message });
+        console.log('✅ Sent successfully!', result?.key?.id || '');
+        res.json({ success: true, messageId: result?.key?.id });
     } catch (error) {
         console.error('❌ Send Error:', error.message || error);
 
-        // Detect session errors
         let errorType = 'unknown';
-        if (error.message && error.message.includes('detached')) {
+        if (error.message && (error.message.includes('disconnected') || error.message.includes('Connection Closed'))) {
             errorType = 'session_detached';
             bridgeStatus = 'disconnected';
             broadcastToClients({ type: 'status', status: 'disconnected' });
@@ -185,7 +243,7 @@ app.post('/api/send', async (req, res) => {
 app.post('/api/sendMedia', async (req, res) => {
     const { phone, whatsappId, mediaType, mediaData, caption, filename } = req.body;
 
-    if (bridgeStatus !== 'connected' || !clientSession) {
+    if (bridgeStatus !== 'connected' || !sock) {
         return res.status(503).json({ success: false, error: 'Bridge not connected' });
     }
     if (!mediaData) {
@@ -197,8 +255,11 @@ app.post('/api/sendMedia', async (req, res) => {
     else {
         let cleanPhone = (phone || '').replace(/\D/g, '');
         if (cleanPhone.startsWith('0')) cleanPhone = '234' + cleanPhone.substring(1);
-        chatId = `${cleanPhone}@c.us`;
+        chatId = `${cleanPhone}@s.whatsapp.net`;
     }
+
+    // Convert @c.us to @s.whatsapp.net for Baileys
+    chatId = chatId.replace('@c.us', '@s.whatsapp.net');
 
     try {
         // Sanitize base64
@@ -219,115 +280,152 @@ app.post('/api/sendMedia', async (req, res) => {
 
         // Detect file type
         const header = buffer.slice(0, 8).toString('hex');
-        let inferredExt = '';
-        if (header.startsWith('89504e47')) inferredExt = 'png';
-        else if (header.startsWith('ffd8ff')) inferredExt = 'jpg';
-        else if (header.startsWith('25504446')) inferredExt = 'pdf';
-        else if (header.startsWith('00000018') || header.includes('66747970')) inferredExt = 'mp4';
+        let inferredType = 'document';
+        let mimeType = 'application/octet-stream';
 
-        let outFilename = filename || `file.${inferredExt || 'bin'}`;
-        if (!path.extname(outFilename) && inferredExt) outFilename = `${outFilename}.${inferredExt}`;
+        if (header.startsWith('89504e47')) { inferredType = 'image'; mimeType = 'image/png'; }
+        else if (header.startsWith('ffd8ff')) { inferredType = 'image'; mimeType = 'image/jpeg'; }
+        else if (header.startsWith('25504446')) { inferredType = 'document'; mimeType = 'application/pdf'; }
+        else if (header.startsWith('00000018') || header.includes('66747970')) { inferredType = 'video'; mimeType = 'video/mp4'; }
+        else if (header.startsWith('52494646')) { inferredType = 'audio'; mimeType = 'audio/wav'; }
+        else if (header.startsWith('4f676753')) { inferredType = 'audio'; mimeType = 'audio/ogg'; }
 
-        // Try sendFileFromBase64 first
-        try {
-            const result = await clientSession.sendFileFromBase64(chatId, pureBase64, outFilename, caption || '');
-            console.log('✅ Media sent:', result?.id);
-            return res.json({ success: true, messageId: result?.id || null });
-        } catch (errSend) {
-            console.warn('⚠️ sendFileFromBase64 failed, trying fallback...');
+        // Use explicit mediaType if provided
+        if (mediaType === 'image' || mediaType === 'sticker') inferredType = 'image';
+        else if (mediaType === 'video') inferredType = 'video';
+        else if (mediaType === 'audio' || mediaType === 'ptt') inferredType = 'audio';
+        else if (mediaType === 'document') inferredType = 'document';
+
+        let messageContent;
+        const outFilename = filename || `file.${mimeType.split('/')[1] || 'bin'}`;
+
+        if (inferredType === 'image') {
+            messageContent = { image: buffer, caption: caption || '', mimetype: mimeType };
+        } else if (inferredType === 'video') {
+            messageContent = { video: buffer, caption: caption || '', mimetype: mimeType };
+        } else if (inferredType === 'audio') {
+            messageContent = { audio: buffer, mimetype: mimeType, ptt: mediaType === 'ptt' };
+        } else {
+            messageContent = { document: buffer, mimetype: mimeType, fileName: outFilename, caption: caption || '' };
         }
 
-        // Fallback: write to temp file
-        try {
-            const tmpDir = fs.existsSync(os.tmpdir()) ? os.tmpdir() : '.';
-            const tmpPath = path.join(tmpDir, `upload-${Date.now()}.${inferredExt || 'bin'}`);
-            fs.writeFileSync(tmpPath, buffer);
+        const result = await sock.sendMessage(chatId, messageContent);
+        console.log('✅ Media sent:', result?.key?.id);
+        return res.json({ success: true, messageId: result?.key?.id || null });
 
-            const result2 = await clientSession.sendFile(chatId, tmpPath, outFilename, caption || '');
-            console.log('✅ Media sent via fallback:', result2?.id);
-
-            try { fs.unlinkSync(tmpPath); } catch (e) { }
-            return res.json({ success: true, messageId: result2?.id || null, fallback: true });
-        } catch (errFallback) {
-            return res.status(500).json({ success: false, error: errFallback.message });
-        }
     } catch (err) {
+        console.error('❌ Media send error:', err.message);
         return res.status(500).json({ success: false, error: err.message });
     }
 });
 
-// =================== WHATSAPP INITIALIZATION ===================
+// =================== WHATSAPP INITIALIZATION (BAILEYS) ===================
 
 async function initializeWhatsApp() {
-    console.log('🚀 Starting Shepherd AI Oracle Cloud Bridge...');
+    console.log('🚀 Starting Shepherd AI Oracle Cloud Bridge (Baileys)...');
     console.log(`📡 Backend: ${BACKEND_URL}`);
     console.log(`🔑 Connection Code: ${CONNECTION_CODE}`);
+    console.log('🧠 No Chromium required - Pure WebSocket connection!');
 
     try {
-        clientSession = await wppconnect.create({
-            session: 'shepherd-oracle',
-            headless: 'new',
-            devtools: false,
-            useChrome: false,
-            debug: false,
-            logQR: true,
-            autoClose: 0,
-            browserArgs: [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage',
-                '--disable-accelerated-2d-canvas',
-                '--no-first-run',
-                '--no-zygote',
-                '--disable-gpu',
-                '--single-process'
-            ],
-            puppeteerOptions: {
-                headless: 'new',
-                executablePath: process.env.CHROME_PATH || '/usr/bin/chromium-browser',
-                args: [
-                    '--no-sandbox',
-                    '--disable-setuid-sandbox',
-                    '--disable-dev-shm-usage',
-                    '--single-process'
-                ]
-            },
-            statusFind: (statusSession, session) => {
-                console.log('📱 Status Session:', statusSession);
-            },
-            catchQR: (base64Qr, asciiQR) => {
-                latestQRCode = base64Qr; // Store for API access
-                console.log('\n📱 SCAN THIS QR CODE WITH YOUR PHONE:\n');
-                console.log(asciiQR);
-                console.log('\n✅ QR Code available at: http://YOUR_IP:' + PORT + '/api/qr-image\n');
+        // Ensure auth directory exists
+        if (!fs.existsSync(AUTH_DIR)) fs.mkdirSync(AUTH_DIR, { recursive: true });
+
+        const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
+        const { version } = await fetchLatestBaileysVersion();
+
+        console.log(`📱 Using WA version: ${version.join('.')}`);
+
+        sock = makeWASocket({
+            version,
+            auth: state,
+            logger,
+            printQRInTerminal: true,
+            browser: ['Shepherd AI Bridge', 'Chrome', '120.0.0'],
+            connectTimeoutMs: 60000,
+            defaultQueryTimeoutMs: 60000,
+            keepAliveIntervalMs: 30000,
+            markOnlineOnConnect: true,
+            generateHighQualityLinkPreview: false,
+        });
+
+        // Bind store to socket
+        store.bind(sock.ev);
+
+        // Handle connection updates
+        sock.ev.on('connection.update', async (update) => {
+            const { connection, lastDisconnect, qr } = update;
+
+            if (qr) {
+                // New QR code generated
+                latestQRString = qr;
+                try {
+                    latestQRCode = await QRCode.toDataURL(qr, { width: 400, margin: 2 });
+                } catch (e) {
+                    console.error('QR generation error:', e.message);
+                }
+                console.log('\n📱 SCAN THIS QR CODE WITH YOUR PHONE!');
+                console.log(`✅ QR Code available at: http://YOUR_IP:${PORT}/api/qr-image\n`);
+                bridgeStatus = 'waiting_scan';
+                broadcastToClients({ type: 'qr', qr: latestQRCode });
+                broadcastToClients({ type: 'status', status: 'waiting_scan' });
+            }
+
+            if (connection === 'close') {
+                const statusCode = lastDisconnect?.error?.output?.statusCode;
+                const reason = DisconnectReason;
+
+                console.log(`⚠️ Connection closed. Status: ${statusCode}`);
+                bridgeStatus = 'disconnected';
+                latestQRCode = null;
+                latestQRString = null;
+                broadcastToClients({ type: 'status', status: 'disconnected' });
+
+                if (statusCode === reason.loggedOut) {
+                    console.log('🚪 Logged out. Clearing auth and restarting...');
+                    // Clear auth data
+                    try {
+                        fs.rmSync(AUTH_DIR, { recursive: true, force: true });
+                    } catch (e) { }
+                    setTimeout(initializeWhatsApp, 5000);
+                } else {
+                    // Reconnect for other reasons
+                    const delay = statusCode === reason.restartRequired ? 3000 : 10000;
+                    console.log(`🔄 Reconnecting in ${delay / 1000}s...`);
+                    setTimeout(initializeWhatsApp, delay);
+                }
+            }
+
+            if (connection === 'open') {
+                bridgeStatus = 'connected';
+                latestQRCode = null;
+                latestQRString = null;
+                console.log('✅ WhatsApp connected!');
+                broadcastToClients({ type: 'status', status: 'connected' });
+
+                // Register bridge with backend
+                registerWithBackend();
+
+                // Start polling for pending messages
+                startPolling();
+
+                // Initialize group manager
+                setTimeout(() => initGroupManager(), 5000);
+
+                // Health monitoring
+                startHealthMonitoring();
             }
         });
 
-        bridgeStatus = 'connected';
-        latestQRCode = null; // Clear QR after connection
-        console.log('✅ WhatsApp connected!');
-        broadcastToClients({ type: 'status', status: 'connected' });
-
-        // Register bridge with backend
-        registerWithBackend();
+        // Save credentials whenever updated
+        sock.ev.on('creds.update', saveCreds);
 
         // Setup message handlers
         setupMessageHandlers();
 
-        // Start polling for pending messages
-        startPolling();
-
-        // Initialize group manager
-        initGroupManager();
-
-        // Health monitoring
-        startHealthMonitoring();
-
     } catch (error) {
         console.error('❌ Failed to initialize WhatsApp:', error.message);
         bridgeStatus = 'disconnected';
-
-        // Retry after 30 seconds
         console.log('🔄 Retrying in 30 seconds...');
         setTimeout(initializeWhatsApp, 30000);
     }
@@ -337,12 +435,24 @@ async function initializeWhatsApp() {
 
 async function registerWithBackend() {
     try {
+        // Auto-detect public IP for registration
+        let bridgeUrl = `http://localhost:${PORT}`;
+        try {
+            const ipResp = await axios.get('https://api.ipify.org?format=json', { timeout: 5000 });
+            if (ipResp.data?.ip) {
+                bridgeUrl = `http://${ipResp.data.ip}:${PORT}`;
+                console.log(`🌍 Detected public IP: ${ipResp.data.ip}`);
+            }
+        } catch (e) {
+            console.log('⚠️ Could not detect public IP, using localhost');
+        }
+
         await axios.post(`${BACKEND_URL}/api/bridge/register`, {
             connection_code: CONNECTION_CODE,
-            bridge_url: `http://YOUR_IP:${PORT}`,
+            bridge_url: bridgeUrl,
             status: 'connected'
         });
-        console.log('✅ Registered with backend');
+        console.log(`✅ Registered with backend (bridge URL: ${bridgeUrl})`);
     } catch (error) {
         console.error('⚠️ Failed to register with backend:', error.message);
     }
@@ -351,162 +461,233 @@ async function registerWithBackend() {
 // =================== INCOMING MESSAGE HANDLER ===================
 
 function setupMessageHandlers() {
-    clientSession.onMessage(async (message) => {
-        console.log('🔔 onMessage! From:', message.from, 'isGroup:', message.isGroupMsg, 'Body:', message.body?.substring(0, 30));
+    sock.ev.on('messages.upsert', async ({ messages, type }) => {
+        if (type !== 'notify') return;
 
-        if (!message.isGroupMsg && !message.from.includes('status@broadcast')) {
-            console.log('✅ Processing 1-on-1 message from:', message.from);
-
-            // Handle media
-            let body = message.body || '';
-            let mediaType = null;
-            let isMedia = false;
-            let mediaData = null;
-            let mediaUrl = null;
-
-            if (message.type && ['image', 'video', 'audio', 'ptt', 'document', 'sticker'].includes(message.type)) {
-                isMedia = true;
-                mediaType = message.type;
-
-                try {
-                    console.log(`📥 Downloading ${mediaType}...`);
-                    const mediaBuffer = await clientSession.decryptFile(message);
-                    mediaData = mediaBuffer.toString('base64');
-                    console.log(`✅ Media downloaded (${Math.round(mediaData.length / 1024)}KB)`);
-
-                    if (message.type === 'image') {
-                        body = message.caption || '📷 Image';
-                        mediaUrl = `data:image/jpeg;base64,${mediaData}`;
-                    } else if (message.type === 'video') {
-                        body = message.caption || '🎥 Video';
-                        mediaUrl = `data:video/mp4;base64,${mediaData}`;
-                    } else if (message.type === 'audio' || message.type === 'ptt') {
-                        body = '🎵 Audio';
-                        mediaUrl = `data:audio/ogg;base64,${mediaData}`;
-                    } else if (message.type === 'document') {
-                        body = message.filename || '📄 Document';
-                        mediaUrl = `data:application/octet-stream;base64,${mediaData}`;
-                    } else if (message.type === 'sticker') {
-                        body = '🎨 Sticker';
-                        mediaUrl = `data:image/webp;base64,${mediaData}`;
-                    }
-                } catch (error) {
-                    console.error(`❌ Media download error: ${error.message}`);
-                    body = `📎 [${mediaType} - download failed]`;
-                }
-            } else if (message.hasMedia) {
-                isMedia = true;
-                mediaType = 'unknown';
-                try {
-                    const mediaBuffer = await clientSession.decryptFile(message);
-                    mediaData = mediaBuffer.toString('base64');
-                    mediaUrl = `data:application/octet-stream;base64,${mediaData}`;
-                    body = '📎 Media';
-                } catch (error) {
-                    body = '📎 [Media - download failed]';
-                }
-            } else {
-                body = message.body || '[No content]';
-                console.log(`📩 INCOMING: ${body.substring(0, 50)}...`);
-            }
-
-            // Extract contact info
-            let phoneNumber = message.from.replace('@c.us', '').replace('@lid', '');
-            let contactName = null;
-            let pushname = null;
-            let realPhone = null;
-
-            if (message.from.includes('@lid')) {
-                try {
-                    const contact = await clientSession.getContact(message.from);
-                    if (contact) {
-                        contactName = contact.name || contact.shortName || contact.formattedName;
-                        pushname = contact.pushname;
-
-                        if (contactName && /^\+?\d{10,15}$/.test(contactName.replace(/[\s\-]/g, ''))) {
-                            realPhone = contactName.replace(/\D/g, '');
-                        } else if (contact.formattedNumber && contact.formattedNumber.trim()) {
-                            realPhone = contact.formattedNumber.replace(/\D/g, '');
-                        } else if (contact.number && contact.number.trim()) {
-                            realPhone = contact.number.replace(/\D/g, '');
-                        } else if (contact.id && contact.id._serialized) {
-                            const serialized = contact.id._serialized.replace(/@.*$/, '');
-                            if (/^(1|2[0-9]{2}|3[0-9]{2}|4[0-9]{2}|5[0-9]{2}|6[0-9]{2}|7|8[0-9]{2}|9[0-9]{2})\d{8,13}$/.test(serialized)) {
-                                realPhone = serialized;
-                            }
-                        } else if (contact.id && contact.id.user) {
-                            realPhone = contact.id.user;
-                        }
-                    }
-                } catch (e) {
-                    console.log('Could not get contact info:', e.message);
-                }
-            } else {
-                realPhone = phoneNumber;
-            }
-
-            // Broadcast to WebSocket clients
-            broadcastToClients({
-                type: 'incoming_message',
-                from: message.from,
-                phone: phoneNumber,
-                realPhone: realPhone,
-                contactName: contactName,
-                pushname: pushname,
-                body: body,
-                hasMedia: isMedia,
-                mediaType: mediaType,
-                mediaUrl: mediaUrl,
-                timestamp: message.timestamp || Date.now() / 1000
-            });
-
-            // Save to backend via webhook
+        for (const message of messages) {
             try {
-                console.log('💾 Saving to backend...');
-                await axios.post(`${BACKEND_URL}/api/whatsapp/webhook`, {
-                    phone: realPhone || phoneNumber,
-                    whatsapp_id: message.from,
-                    content: body,
-                    contact_name: contactName,
-                    pushname: pushname,
-                    has_media: isMedia,
-                    media_type: mediaType,
-                    media_url: mediaUrl
-                });
-                console.log('✅ Saved to backend!');
+                await handleIncomingMessage(message);
             } catch (error) {
-                console.error('❌ Backend save error:', error.message);
+                console.error('❌ Error handling message:', error.message);
             }
-
-        } else {
-            console.log('⏭️ Skipping (group/broadcast):', message.from);
         }
     });
 
-    // Message acknowledgments
-    clientSession.onAck((ack) => {
-        broadcastToClients({
-            type: 'message_ack',
-            messageId: ack.id?._serialized,
-            ack: ack.ack
-        });
+    // Message status updates (ack)
+    sock.ev.on('messages.update', (updates) => {
+        for (const update of updates) {
+            if (update.update?.status) {
+                broadcastToClients({
+                    type: 'message_ack',
+                    messageId: update.key?.id,
+                    ack: update.update.status
+                });
+            }
+        }
     });
+}
+
+async function handleIncomingMessage(message) {
+    // Skip if from self
+    if (message.key.fromMe) return;
+
+    const remoteJid = message.key.remoteJid;
+    if (!remoteJid) return;
+
+    // Skip status broadcasts
+    if (remoteJid === 'status@broadcast') return;
+
+    // Check if it's a group message
+    const isGroup = remoteJid.endsWith('@g.us');
+    if (isGroup) {
+        console.log('⏭️ Skipping (group):', remoteJid);
+        return;
+    }
+
+    const msg = message.message;
+    if (!msg) return;
+
+    console.log('🔔 Incoming message from:', remoteJid);
+
+    // Extract message content
+    let body = '';
+    let isMedia = false;
+    let mediaType = null;
+    let mediaUrl = null;
+
+    // Text messages
+    if (msg.conversation) {
+        body = msg.conversation;
+    } else if (msg.extendedTextMessage?.text) {
+        body = msg.extendedTextMessage.text;
+    }
+    // Image
+    else if (msg.imageMessage) {
+        isMedia = true;
+        mediaType = 'image';
+        body = msg.imageMessage.caption || '📷 Image';
+        try {
+            const buffer = await downloadMediaMessage(message, 'buffer', {}, { logger, reuploadRequest: sock.updateMediaMessage });
+            const base64 = buffer.toString('base64');
+            mediaUrl = `data:image/jpeg;base64,${base64}`;
+            console.log(`✅ Image downloaded (${Math.round(base64.length / 1024)}KB)`);
+        } catch (e) {
+            console.error('❌ Image download error:', e.message);
+            body = '📷 [Image - download failed]';
+        }
+    }
+    // Video
+    else if (msg.videoMessage) {
+        isMedia = true;
+        mediaType = 'video';
+        body = msg.videoMessage.caption || '🎥 Video';
+        try {
+            const buffer = await downloadMediaMessage(message, 'buffer', {}, { logger, reuploadRequest: sock.updateMediaMessage });
+            const base64 = buffer.toString('base64');
+            mediaUrl = `data:video/mp4;base64,${base64}`;
+            console.log(`✅ Video downloaded (${Math.round(base64.length / 1024)}KB)`);
+        } catch (e) {
+            console.error('❌ Video download error:', e.message);
+            body = '🎥 [Video - download failed]';
+        }
+    }
+    // Audio / Voice note
+    else if (msg.audioMessage) {
+        isMedia = true;
+        mediaType = msg.audioMessage.ptt ? 'ptt' : 'audio';
+        body = '🎵 Audio';
+        try {
+            const buffer = await downloadMediaMessage(message, 'buffer', {}, { logger, reuploadRequest: sock.updateMediaMessage });
+            const base64 = buffer.toString('base64');
+            mediaUrl = `data:audio/ogg;base64,${base64}`;
+            console.log(`✅ Audio downloaded (${Math.round(base64.length / 1024)}KB)`);
+        } catch (e) {
+            console.error('❌ Audio download error:', e.message);
+            body = '🎵 [Audio - download failed]';
+        }
+    }
+    // Document
+    else if (msg.documentMessage) {
+        isMedia = true;
+        mediaType = 'document';
+        body = msg.documentMessage.fileName || '📄 Document';
+        try {
+            const buffer = await downloadMediaMessage(message, 'buffer', {}, { logger, reuploadRequest: sock.updateMediaMessage });
+            const base64 = buffer.toString('base64');
+            mediaUrl = `data:application/octet-stream;base64,${base64}`;
+            console.log(`✅ Document downloaded (${Math.round(base64.length / 1024)}KB)`);
+        } catch (e) {
+            console.error('❌ Document download error:', e.message);
+            body = '📄 [Document - download failed]';
+        }
+    }
+    // Sticker
+    else if (msg.stickerMessage) {
+        isMedia = true;
+        mediaType = 'sticker';
+        body = '🎨 Sticker';
+        try {
+            const buffer = await downloadMediaMessage(message, 'buffer', {}, { logger, reuploadRequest: sock.updateMediaMessage });
+            const base64 = buffer.toString('base64');
+            mediaUrl = `data:image/webp;base64,${base64}`;
+        } catch (e) {
+            body = '🎨 [Sticker - download failed]';
+        }
+    }
+    // Location
+    else if (msg.locationMessage) {
+        const lat = msg.locationMessage.degreesLatitude;
+        const lng = msg.locationMessage.degreesLongitude;
+        const locName = msg.locationMessage.name || '';
+        body = `📍 Location: ${locName ? locName + ' - ' : ''}${lat}, ${lng}`;
+        console.log(`📍 Location received: ${lat}, ${lng}`);
+    }
+    // Live Location
+    else if (msg.liveLocationMessage) {
+        const lat = msg.liveLocationMessage.degreesLatitude;
+        const lng = msg.liveLocationMessage.degreesLongitude;
+        body = `📍 Live Location: ${lat}, ${lng}`;
+        console.log(`📍 Live location received: ${lat}, ${lng}`);
+    }
+    // Contact / vCard
+    else if (msg.contactMessage) {
+        const contactName = msg.contactMessage.displayName || 'Unknown';
+        body = `👤 Contact: ${contactName}`;
+        console.log(`👤 Contact card received: ${contactName}`);
+    }
+    // Contact Array (multiple contacts)
+    else if (msg.contactsArrayMessage) {
+        const names = (msg.contactsArrayMessage.contacts || []).map(c => c.displayName || 'Unknown').join(', ');
+        body = `👥 Contacts: ${names}`;
+        console.log(`👥 Multiple contacts received: ${names}`);
+    }
+    // Fallback
+    else {
+        body = '[Unsupported message type]';
+    }
+
+    if (!body && !isMedia) return;
+
+    // Extract phone number
+    const phoneNumber = remoteJid.replace('@s.whatsapp.net', '').replace('@c.us', '');
+    const realPhone = phoneNumber;
+
+    // Get contact name (push name)
+    const pushname = message.pushName || null;
+
+    console.log(`📩 INCOMING: ${body.substring(0, 50)}... from ${phoneNumber}`);
+
+    // Broadcast to WebSocket clients
+    // Convert to @c.us format for frontend compatibility
+    const frontendJid = remoteJid.replace('@s.whatsapp.net', '@c.us');
+
+    broadcastToClients({
+        type: 'incoming_message',
+        from: frontendJid,
+        phone: phoneNumber,
+        realPhone: realPhone,
+        contactName: pushname,
+        pushname: pushname,
+        body: body,
+        hasMedia: isMedia,
+        mediaType: mediaType,
+        mediaUrl: mediaUrl,
+        timestamp: message.messageTimestamp || Date.now() / 1000
+    });
+
+    // Save to backend via webhook
+    try {
+        console.log('💾 Saving to backend...');
+        await axios.post(`${BACKEND_URL}/api/whatsapp/webhook`, {
+            phone: realPhone || phoneNumber,
+            whatsapp_id: frontendJid,
+            content: body,
+            contact_name: pushname,
+            pushname: pushname,
+            has_media: isMedia,
+            media_type: mediaType,
+            media_url: mediaUrl
+        });
+        console.log('✅ Saved to backend!');
+    } catch (error) {
+        console.error('❌ Backend save error:', error.message);
+    }
 }
 
 // =================== OUTGOING MESSAGE POLLING ===================
 
+let pollingInterval = null;
+
 function startPolling() {
+    if (pollingInterval) clearInterval(pollingInterval);
+
     console.log('🔄 Starting message polling...');
-
-    // Poll immediately
     setTimeout(pollPendingMessages, 2000);
-
-    // Then poll every 5 seconds
-    setInterval(pollPendingMessages, POLL_INTERVAL);
+    pollingInterval = setInterval(pollPendingMessages, POLL_INTERVAL);
 }
 
 async function pollPendingMessages() {
-    if (bridgeStatus !== 'connected' || !clientSession) return;
+    if (bridgeStatus !== 'connected' || !sock) return;
 
     try {
         const response = await axios.get(`${BACKEND_URL}/api/bridge/pending-messages`, {
@@ -516,7 +697,6 @@ async function pollPendingMessages() {
 
         if (response.data.success && response.data.count > 0) {
             console.log(`📬 Found ${response.data.count} pending message(s)`);
-
             for (const msg of response.data.messages) {
                 await sendPendingMessage(msg);
             }
@@ -541,28 +721,50 @@ async function sendPendingMessage(msg) {
         } else {
             let cleanPhone = msg.phone.replace(/\D/g, '');
             if (cleanPhone.startsWith('0')) cleanPhone = '234' + cleanPhone.substring(1);
-            chatId = `${cleanPhone}@c.us`;
+            chatId = `${cleanPhone}@s.whatsapp.net`;
         }
+
+        // Convert @c.us to @s.whatsapp.net for Baileys
+        chatId = chatId.replace('@c.us', '@s.whatsapp.net');
 
         console.log(`📤 Sending queued message to ${chatId}...`);
 
         let result;
         if (msg.attachment_url && msg.attachment_type) {
             console.log(`📸 Sending ${msg.attachment_type}...`);
-            result = await clientSession.sendFile(chatId, msg.attachment_url, {
-                caption: msg.content || '',
-                filename: `attachment.${msg.attachment_type.split('/')[1] || 'jpg'}`
-            });
+            // Download attachment from URL
+            try {
+                const mediaResp = await axios.get(msg.attachment_url, { responseType: 'arraybuffer', timeout: 30000 });
+                const buffer = Buffer.from(mediaResp.data);
+                const type = msg.attachment_type.split('/')[0]; // image, video, audio, etc.
+
+                let messageContent;
+                if (type === 'image') {
+                    messageContent = { image: buffer, caption: msg.content || '', mimetype: msg.attachment_type };
+                } else if (type === 'video') {
+                    messageContent = { video: buffer, caption: msg.content || '', mimetype: msg.attachment_type };
+                } else if (type === 'audio') {
+                    messageContent = { audio: buffer, mimetype: msg.attachment_type };
+                } else {
+                    messageContent = { document: buffer, mimetype: msg.attachment_type, fileName: `attachment.${msg.attachment_type.split('/')[1] || 'bin'}` };
+                }
+
+                result = await sock.sendMessage(chatId, messageContent);
+            } catch (dlErr) {
+                console.error('❌ Failed to download/send attachment:', dlErr.message);
+                // Fallback: send text only
+                result = await sock.sendMessage(chatId, { text: msg.content || '[Attachment unavailable]' });
+            }
         } else {
-            result = await clientSession.sendText(chatId, msg.content);
+            result = await sock.sendMessage(chatId, { text: msg.content });
         }
 
-        console.log('✅ Message sent!', result?.id);
+        console.log('✅ Message sent!', result?.key?.id);
 
         await axios.post(`${BACKEND_URL}/api/bridge/update-message-status`, {
             message_id: msg.id,
             status: 'sent',
-            whatsapp_message_id: result?.id
+            whatsapp_message_id: result?.key?.id
         }, { params: { code: CONNECTION_CODE } });
 
     } catch (error) {
@@ -579,23 +781,24 @@ async function sendPendingMessage(msg) {
 
 // =================== HEALTH MONITORING ===================
 
+let healthInterval = null;
+
 function startHealthMonitoring() {
-    setInterval(async () => {
+    if (healthInterval) clearInterval(healthInterval);
+
+    healthInterval = setInterval(async () => {
         try {
-            const state = await clientSession.getConnectionState();
-            if (state !== 'CONNECTED') {
-                console.log('⚠️ Health check: state =', state);
-                bridgeStatus = 'disconnected';
-                broadcastToClients({ type: 'status', status: 'disconnected' });
-            } else if (bridgeStatus !== 'connected') {
-                console.log('✅ Connection restored!');
-                bridgeStatus = 'connected';
-                broadcastToClients({ type: 'status', status: 'connected' });
+            if (sock && bridgeStatus === 'connected') {
+                // Baileys handles connection state internally
+                // If we can access sock.user, we're connected
+                if (!sock.user) {
+                    console.log('⚠️ Health check: not connected');
+                    bridgeStatus = 'disconnected';
+                    broadcastToClients({ type: 'status', status: 'disconnected' });
+                }
             }
         } catch (error) {
             console.log('⚠️ Health check error:', error.message);
-            bridgeStatus = 'disconnected';
-            broadcastToClients({ type: 'status', status: 'disconnected' });
         }
     }, 300000); // Every 5 minutes
 }
@@ -603,58 +806,42 @@ function startHealthMonitoring() {
 // =================== GROUP MANAGER ===================
 
 let groupSyncRetryCount = 0;
+let groupPollingInterval = null;
 
-/**
- * Initialize group management features
- */
 function initGroupManager() {
     console.log('👥 Initializing Group Manager...');
     setupGroupEventListeners();
 
-    // Wait for WhatsApp to fully load chats before syncing
     console.log('⏳ Waiting 30 seconds for WhatsApp to fully load all chats...');
     setTimeout(() => syncGroups(), 30000);
 
-    // Start group polling (welcome queue + group messages)
     startGroupPolling(10000);
 }
 
-/**
- * Sync all WhatsApp groups with backend
- */
 async function syncGroups() {
     try {
         console.log('🔄 Syncing WhatsApp groups...');
 
-        const allChats = await clientSession.listChats();
-        console.log(`📱 Total chats loaded: ${allChats.length}`);
+        const groups = await sock.groupFetchAllParticipating();
+        const groupList = Object.values(groups);
 
-        // Robust group filter
-        const groups = allChats.filter(chat => {
-            const isGroupByFlag = chat.isGroup === true;
-            const isGroupByServer = chat.id && (chat.id.server === 'g.us' || chat.id._serialized?.includes('@g.us'));
-            const isGroupByKind = chat.kind === 'group';
-            return isGroupByFlag || isGroupByServer || isGroupByKind;
-        });
+        console.log(`📊 Found ${groupList.length} groups in WhatsApp`);
 
-        console.log(`📊 Found ${groups.length} groups in WhatsApp`);
-
-        // Retry if no groups found
-        if (groups.length === 0 && groupSyncRetryCount < 2) {
+        if (groupList.length === 0 && groupSyncRetryCount < 2) {
             groupSyncRetryCount++;
             console.log(`⚠️ No groups found. Retrying in 10s... (Attempt ${groupSyncRetryCount}/2)`);
             setTimeout(() => syncGroups(), 10000);
             return null;
         }
 
-        if (groups.length > 0) groupSyncRetryCount = 0;
+        if (groupList.length > 0) groupSyncRetryCount = 0;
 
-        const groupData = groups.map(g => ({
-            whatsapp_group_id: g.id._serialized || g.id,
-            name: g.name || g.contact?.name || 'Unnamed Group',
-            description: g.description || null,
-            avatar_url: g.profilePicUrl || null,
-            member_count: g.participants ? g.participants.length : (g.groupMetadata?.participants?.length || 0)
+        const groupData = groupList.map(g => ({
+            whatsapp_group_id: g.id,
+            name: g.subject || 'Unnamed Group',
+            description: g.desc || null,
+            avatar_url: null,
+            member_count: g.participants ? g.participants.length : 0
         }));
 
         if (groupData.length === 0) {
@@ -678,22 +865,19 @@ async function syncGroups() {
     }
 }
 
-/**
- * Set up event listeners for group participant changes
- */
 function setupGroupEventListeners() {
-    if (!clientSession) return;
+    if (!sock) return;
 
-    clientSession.onParticipantsChanged(async (event) => {
+    sock.ev.on('group-participants.update', async (event) => {
         try {
-            console.log('👥 Group participant event:', event.action, event.by);
+            console.log('👥 Group participant event:', event.action, event.id);
 
             if (event.action === 'add') {
-                for (const newMember of event.who) {
-                    await handleMemberJoined(event.chatId, newMember);
+                for (const newMember of event.participants) {
+                    await handleMemberJoined(event.id, newMember);
                 }
             } else if (event.action === 'remove') {
-                console.log(`👋 Member left: ${event.who}`);
+                console.log(`👋 Member(s) left: ${event.participants.join(', ')}`);
             }
         } catch (error) {
             console.error('❌ Error handling participant change:', error);
@@ -703,21 +887,17 @@ function setupGroupEventListeners() {
     console.log('👂 Group event listeners set up');
 }
 
-/**
- * Handle a new member joining a group
- */
 async function handleMemberJoined(groupId, memberId) {
     try {
         console.log(`🆕 New member ${memberId} joined group ${groupId}`);
 
-        const contact = await clientSession.getContact(memberId);
-        const phone = contact.id.user || memberId.replace('@c.us', '');
+        const phone = memberId.replace('@s.whatsapp.net', '').replace('@c.us', '');
 
         const response = await axios.post(
             `${BACKEND_URL}/api/groups/${groupId}/members/joined?code=${CONNECTION_CODE}`,
             {
-                whatsapp_id: memberId,
-                name: contact.pushname || contact.name || 'Unknown',
+                whatsapp_id: memberId.replace('@s.whatsapp.net', '@c.us'),
+                name: 'Unknown',
                 phone: phone,
                 joined_at: new Date().toISOString()
             }
@@ -729,9 +909,6 @@ async function handleMemberJoined(groupId, memberId) {
     }
 }
 
-/**
- * Process welcome queue (send welcome messages to new group members)
- */
 async function processWelcomeQueue() {
     try {
         const { data: welcomes } = await axios.get(
@@ -744,8 +921,10 @@ async function processWelcomeQueue() {
 
         for (const welcome of welcomes) {
             try {
-                const chatId = welcome.phone.includes('@') ? welcome.phone : `${welcome.phone}@c.us`;
-                await clientSession.sendText(chatId, welcome.message);
+                let chatId = welcome.phone.includes('@') ? welcome.phone : `${welcome.phone}@s.whatsapp.net`;
+                chatId = chatId.replace('@c.us', '@s.whatsapp.net');
+
+                await sock.sendMessage(chatId, { text: welcome.message });
                 console.log(`✅ Sent welcome to ${welcome.phone} (${welcome.group_name})`);
 
                 await axios.post(
@@ -765,9 +944,6 @@ async function processWelcomeQueue() {
     }
 }
 
-/**
- * Process pending group messages (broadcasts)
- */
 async function processGroupMessages() {
     try {
         const { data: messages } = await axios.get(
@@ -780,7 +956,7 @@ async function processGroupMessages() {
 
         for (const msg of messages) {
             try {
-                await clientSession.sendText(msg.group_id, msg.content);
+                await sock.sendMessage(msg.group_id, { text: msg.content });
                 console.log(`✅ Sent message to group ${msg.group_id}`);
 
                 await axios.post(
@@ -804,12 +980,11 @@ async function processGroupMessages() {
     }
 }
 
-/**
- * Start polling for group tasks (welcome queue + group broadcasts)
- */
 function startGroupPolling(intervalMs = 10000) {
+    if (groupPollingInterval) clearInterval(groupPollingInterval);
+
     console.log(`🔄 Starting group polling (every ${intervalMs / 1000}s)`);
-    setInterval(async () => {
+    groupPollingInterval = setInterval(async () => {
         await processWelcomeQueue();
         await processGroupMessages();
     }, intervalMs);
@@ -819,7 +994,8 @@ function startGroupPolling(intervalMs = 10000) {
 
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`\n🌐 ===========================================`);
-    console.log(`🐑 Shepherd AI Oracle Cloud Bridge v2.0.0`);
+    console.log(`🐑 Shepherd AI Oracle Cloud Bridge v3.0.0`);
+    console.log(`🧠 Powered by Baileys (No Chromium Required!)`);
     console.log(`===========================================`);
     console.log(`📡 REST API: http://0.0.0.0:${PORT}`);
     console.log(`🔌 WebSocket: ws://0.0.0.0:${WS_PORT}`);
@@ -834,12 +1010,21 @@ app.listen(PORT, '0.0.0.0', () => {
 // Graceful shutdown
 process.on('SIGTERM', async () => {
     console.log('👋 SIGTERM received...');
-    if (clientSession) await clientSession.close();
+    if (sock) sock.end();
     process.exit(0);
 });
 
 process.on('SIGINT', async () => {
     console.log('👋 SIGINT received...');
-    if (clientSession) await clientSession.close();
+    if (sock) sock.end();
     process.exit(0);
+});
+
+// Handle uncaught errors gracefully
+process.on('uncaughtException', (err) => {
+    console.error('❌ Uncaught Exception:', err.message);
+});
+
+process.on('unhandledRejection', (err) => {
+    console.error('❌ Unhandled Rejection:', err.message || err);
 });
