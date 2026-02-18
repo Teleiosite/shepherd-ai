@@ -1,6 +1,4 @@
-# Render Blueprint for Shepherd AI Cloud Bridge
-# Users can deploy this to their own Render account
-
+# Render Blueprint for Shepherd AI Cloud Bridge (Baileys)
 services:
   - type: web
     name: shepherd-whatsapp-bridge
@@ -8,7 +6,7 @@ services:
     plan: free
     rootDir: shepherd-cloud-bridge
     buildCommand: npm install
-    startCommand: npm start
+    startCommand: node index.js
     envVars:
       - key: BACKEND_URL
         value: https://shepherd-ai-backend.onrender.com
@@ -16,4 +14,4 @@ services:
         sync: false
       - key: NODE_ENV
         value: production
-    healthCheckPath: /health
+    healthCheckPath: /api/status

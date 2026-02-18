@@ -1,8 +1,4 @@
 node_modules/
+tokens/
 .env
 *.log
-.wwebjs_auth/
-.wwebjs_cache/
-tokens/
-*.session
-.DS_Store
