@@ -383,21 +383,26 @@ function App() {
           const contact = contacts.find(c => c.id === msg.contactId);
 
           // Send via WhatsApp if bridge is connected and contact has phone
+          let sendSuccess = true;
+          let sendError = '';
           if (waConfig && contact?.phone) {
             const result = await whatsappService.sendMessage(contact.phone, msg.content);
             if (result.success) {
               console.log(`✅ Sent scheduled message to ${contact.name}`);
             } else {
-              console.error(`❌ Failed to send scheduled message to ${contact.name}`);
+              console.error(`❌ Failed to send scheduled message to ${contact.name}:`, result.error);
+              sendSuccess = false;
+              sendError = result.error || 'Failed to send';
             }
           }
 
-          // Update message status regardless of API success (mark as sent)
+          // Update message status accordingly
           setLogs(prev => prev.map(l => {
             if (l.id === msg.id) {
               return {
                 ...l,
-                status: MessageStatus.SENT,
+                status: sendSuccess ? MessageStatus.SENT : MessageStatus.FAILED,
+                error: sendSuccess ? undefined : sendError,
                 timestamp: new Date().toISOString(),
                 scheduledFor: undefined
               };

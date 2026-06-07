@@ -59,7 +59,7 @@ const Settings: React.FC<SettingsProps> = ({
     const [codeCopied, setCodeCopied] = useState(false);
 
     useEffect(() => {
-        // Load AI Config
+        // Load AI Config from local storage first (fallback)
         const storedAiConfig = localStorage.getItem('shepherd_ai_config');
         if (storedAiConfig) {
             setAiConfig(JSON.parse(storedAiConfig));
@@ -75,11 +75,10 @@ const Settings: React.FC<SettingsProps> = ({
             }
         }
 
-        // Load WhatsApp Config
+        // Load WhatsApp Config from local storage first (fallback)
         const wa = localStorage.getItem('shepherd_wa_config');
         if (wa) {
             const parsed = JSON.parse(wa);
-            // Ensure defaults
             setWaConfig({
                 provider: parsed.provider || 'meta',
                 phoneId: parsed.phoneId || '',
@@ -87,6 +86,66 @@ const Settings: React.FC<SettingsProps> = ({
                 bridgeUrl: parsed.bridgeUrl || 'http://localhost:3001'
             });
         }
+
+        // Fetch settings from database
+        const fetchDbSettings = async () => {
+            try {
+                const token = localStorage.getItem('authToken');
+                if (!token) return;
+
+                const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
+
+                // 1. Fetch AI Config
+                const aiRes = await fetch(`${backendUrl}/api/settings/ai-config`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (aiRes.ok) {
+                    const aiData = await aiRes.json();
+                    if (aiData.configured) {
+                        setAiConfig({
+                            provider: aiData.provider,
+                            apiKey: aiData.api_key_masked || '',
+                            model: aiData.model || DEFAULT_MODELS.gemini,
+                            baseUrl: aiData.base_url || ''
+                        });
+                    }
+                }
+
+                // 2. Fetch WhatsApp Meta Config
+                const waMetaRes = await fetch(`${backendUrl}/api/settings/whatsapp-meta`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (waMetaRes.ok) {
+                    const waData = await waMetaRes.json();
+                    if (waData.configured) {
+                        setWaConfig(prev => ({
+                            ...prev,
+                            provider: 'meta',
+                            phoneId: waData.phone_number_id || '',
+                            token: waData.access_token_masked || ''
+                        }));
+                    }
+                }
+
+                // 3. Fetch Bridge Config
+                const bridgeRes = await fetch(`${backendUrl}/api/settings/bridge-config`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (bridgeRes.ok) {
+                    const bridgeData = await bridgeRes.json();
+                    if (bridgeData.configured) {
+                        setWaConfig(prev => ({
+                            ...prev,
+                            bridgeUrl: bridgeData.bridge_url || 'http://localhost:3001'
+                        }));
+                    }
+                }
+            } catch (err) {
+                console.error('Failed to load settings from DB:', err);
+            }
+        };
+
+        fetchDbSettings();
 
         // Fetch Bridge Connection Code
         const fetchBridgeCode = async () => {
@@ -156,38 +215,34 @@ const Settings: React.FC<SettingsProps> = ({
                 const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
                 
                 // 1. Save AI Config
-                if (aiConfig.apiKey) {
-                    await fetch(`${backendUrl}/api/settings/ai-config`, {
+                await fetch(`${backendUrl}/api/settings/ai-config`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        provider: aiConfig.provider,
+                        api_key: aiConfig.apiKey || '',
+                        model: aiConfig.model || 'gemini-pro',
+                        base_url: aiConfig.baseUrl || null
+                    })
+                });
+
+                // 2. Save WhatsApp Config
+                if (waConfig.provider === 'meta') {
+                    await fetch(`${backendUrl}/api/settings/whatsapp-meta`, {
                         method: 'PUT',
                         headers: {
                             'Authorization': `Bearer ${token}`,
                             'Content-Type': 'application/json'
                         },
                         body: JSON.stringify({
-                            provider: aiConfig.provider,
-                            api_key: aiConfig.apiKey,
-                            model: aiConfig.model || 'gemini-pro',
-                            base_url: aiConfig.baseUrl || null
+                            phone_number_id: waConfig.phoneId || '',
+                            business_account_id: '',
+                            access_token: waConfig.token || ''
                         })
                     });
-                }
-
-                // 2. Save WhatsApp Config
-                if (waConfig.provider === 'meta') {
-                    if (waConfig.phoneId && waConfig.token) {
-                        await fetch(`${backendUrl}/api/settings/whatsapp-meta`, {
-                            method: 'PUT',
-                            headers: {
-                                'Authorization': `Bearer ${token}`,
-                                'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify({
-                                phone_number_id: waConfig.phoneId,
-                                business_account_id: '',
-                                access_token: waConfig.token
-                            })
-                        });
-                    }
                 } else {
                     const bridgeUrlParam = encodeURIComponent(waConfig.bridgeUrl || 'http://localhost:3001');
                     await fetch(`${backendUrl}/api/settings/bridge-config?bridge_url=${bridgeUrlParam}`, {

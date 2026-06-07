@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Contact, MessageLog, MessageStatus, MessageAttachment } from '../types';
-import { User, Search, Send, Phone, MessageSquare, Clock, Check, CheckCheck, Paperclip, Smile, X, Image as ImageIcon, Calendar, Edit2, ExternalLink } from 'lucide-react';
+import { User, Search, Send, Phone, MessageSquare, Clock, Check, CheckCheck, Paperclip, Smile, X, Image as ImageIcon, Calendar, Edit2, ExternalLink, AlertCircle } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { whatsappService } from '../services/whatsappService';
 
@@ -142,7 +142,7 @@ const LiveChats: React.FC<LiveChatsProps> = ({ contacts, logs, setLogs }) => {
 
         if (!result.success) {
           console.warn("WhatsApp API failed, logging locally.", result.error);
-          // Message already shown, just log the error
+          setLogs(prev => prev.map(l => l.id === optimisticMessage.id ? { ...l, status: MessageStatus.FAILED, error: result.error } : l));
         }
       }
     } catch (error) {
@@ -418,7 +418,9 @@ const LiveChats: React.FC<LiveChatsProps> = ({ contacts, logs, setLogs }) => {
                   return (
                     <div key={msg.id} className={`flex ${isOutbound ? 'justify-end' : 'justify-start'} group`}>
                       <div className={`relative max-w-[85%] md:max-w-[60%] px-4 py-2 shadow-sm text-sm md:text-base ${isOutbound
-                        ? 'bg-teal-500 text-white rounded-l-2xl rounded-tr-2xl rounded-br-none'
+                        ? msg.status === MessageStatus.FAILED
+                          ? 'bg-rose-500 text-white rounded-l-2xl rounded-tr-2xl rounded-br-none border border-rose-300'
+                          : 'bg-teal-500 text-white rounded-l-2xl rounded-tr-2xl rounded-br-none'
                         : 'bg-white text-slate-800 border border-slate-100 rounded-r-2xl rounded-tl-2xl rounded-bl-none'
                         }`}>
 
@@ -446,6 +448,16 @@ const LiveChats: React.FC<LiveChatsProps> = ({ contacts, logs, setLogs }) => {
                               View Attachment
                             </span>
                           </a>
+                        )}
+
+                        {/* Failed Alert Banner */}
+                        {msg.status === MessageStatus.FAILED && !isEditing && (
+                          <div className={`flex items-start gap-1.5 text-xs mb-1.5 pb-1.5 border-b border-white/20 text-rose-100`}>
+                            <AlertCircle size={13} className="shrink-0 mt-0.5 text-white animate-pulse" />
+                            <span className="font-medium">
+                              {msg.error || 'Failed to deliver message. Check settings.'}
+                            </span>
+                          </div>
                         )}
 
                         {/* Scheduled Banner inside bubble */}
@@ -509,6 +521,7 @@ const LiveChats: React.FC<LiveChatsProps> = ({ contacts, logs, setLogs }) => {
                                   {(msg.status === MessageStatus.SENT || msg.status === MessageStatus.GENERATED) && <Check size={14} strokeWidth={1.5} />}
                                   {msg.status === MessageStatus.RESPONDED && <CheckCheck size={14} strokeWidth={1.5} />}
                                   {(msg.status === MessageStatus.SCHEDULED || msg.status === MessageStatus.PENDING) && <Clock size={12} strokeWidth={1.5} />}
+                                  {msg.status === MessageStatus.FAILED && <AlertCircle size={12} className="text-white shrink-0" />}
                                 </span>
                               )}
 

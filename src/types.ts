@@ -94,4 +94,5 @@ export interface MessageLog {
   status: MessageStatus;
   type: 'Outbound' | 'Inbound';
   attachment?: MessageAttachment;
+  error?: string;
 }

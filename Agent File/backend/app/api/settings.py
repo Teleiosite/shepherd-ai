@@ -81,6 +81,15 @@ async def update_ai_config(
     logger.info(f"User {current_user.id} updating AI config: provider={config.provider}")
     
     try:
+        api_key = config.api_key
+        if api_key and api_key.startswith("***"):
+            existing = db.execute(
+                text("SELECT ai_api_key FROM organizations WHERE id = :org_id"),
+                {"org_id": str(current_user.organization_id)}
+            ).fetchone()
+            if existing and existing[0]:
+                api_key = existing[0]
+
         # Update organization AI config
         db.execute(
             text("""
@@ -91,7 +100,7 @@ async def update_ai_config(
             """),
             {
                 "provider": config.provider,
-                "api_key": config.api_key,
+                "api_key": api_key,
                 "model": config.model,
                 "base_url": config.base_url,
                 "org_id": str(current_user.organization_id)
@@ -205,6 +214,15 @@ async def update_whatsapp_meta_config(
 ):
     """Update WhatsApp Meta Business API configuration"""
     try:
+        access_token = config.access_token
+        if access_token and access_token.startswith("***"):
+            existing = db.execute(
+                text("SELECT whatsapp_access_token FROM organizations WHERE id = :org_id"),
+                {"org_id": str(current_user.organization_id)}
+            ).fetchone()
+            if existing and existing[0]:
+                access_token = existing[0]
+
         db.execute(
             text("""
                 UPDATE organizations
@@ -216,7 +234,7 @@ async def update_whatsapp_meta_config(
             {
                 "phone_id": config.phone_number_id,
                 "business_id": config.business_account_id,
-                "access_token": config.access_token,
+                "access_token": access_token,
                 "org_id": str(current_user.organization_id)
             }
         )
