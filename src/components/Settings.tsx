@@ -140,9 +140,7 @@ const Settings: React.FC<SettingsProps> = ({
         setIsSaving(true);
         setIsSaved(false);
 
-        // Simulate a brief save delay for better UX
-        await new Promise(resolve => setTimeout(resolve, 600));
-
+        // Save locally first for compatibility
         localStorage.setItem('shepherd_ai_config', JSON.stringify(aiConfig));
         if (aiConfig.provider === 'gemini') {
             localStorage.setItem('shepherd_google_api_key', aiConfig.apiKey);
@@ -150,6 +148,60 @@ const Settings: React.FC<SettingsProps> = ({
 
         localStorage.setItem('shepherd_wa_config', JSON.stringify(waConfig));
         localStorage.setItem('shepherd_autorun_enabled', String(autoRunEnabled));
+
+        // Save to backend database via API
+        try {
+            const token = localStorage.getItem('authToken');
+            if (token) {
+                const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
+                
+                // 1. Save AI Config
+                if (aiConfig.apiKey) {
+                    await fetch(`${backendUrl}/api/settings/ai-config`, {
+                        method: 'PUT',
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            provider: aiConfig.provider,
+                            api_key: aiConfig.apiKey,
+                            model: aiConfig.model || 'gemini-pro',
+                            base_url: aiConfig.baseUrl || null
+                        })
+                    });
+                }
+
+                // 2. Save WhatsApp Config
+                if (waConfig.provider === 'meta') {
+                    if (waConfig.phoneId && waConfig.token) {
+                        await fetch(`${backendUrl}/api/settings/whatsapp-meta`, {
+                            method: 'PUT',
+                            headers: {
+                                'Authorization': `Bearer ${token}`,
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                phone_number_id: waConfig.phoneId,
+                                business_account_id: '',
+                                access_token: waConfig.token
+                            })
+                        });
+                    }
+                } else {
+                    const bridgeUrlParam = encodeURIComponent(waConfig.bridgeUrl || 'http://localhost:3001');
+                    await fetch(`${backendUrl}/api/settings/bridge-config?bridge_url=${bridgeUrlParam}`, {
+                        method: 'PUT',
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json'
+                        }
+                    });
+                }
+            }
+        } catch (error) {
+            console.error('Failed to save settings to backend:', error);
+        }
 
         setIsSaving(false);
         setIsSaved(true);
