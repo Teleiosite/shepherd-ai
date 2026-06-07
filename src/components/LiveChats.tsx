@@ -86,31 +86,33 @@ const LiveChats: React.FC<LiveChatsProps> = ({ contacts, logs, setLogs }) => {
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if ((!newMessage.trim() && !pendingAttachment) || !selectedContactId || !selectedContact) return;
+    if (isSending || (!newMessage.trim() && !pendingAttachment) || !selectedContactId || !selectedContact) return;
+
+    // Immediately lock to prevent double-submitting
+    setIsSending(true);
+
+    const messageToSend = newMessage.trim();
+    const attachmentToSend = pendingAttachment;
 
     // ✅ OPTIMISTIC UPDATE: Show message immediately
     const optimisticMessage: MessageLog = {
       id: uuidv4(),
       contactId: selectedContactId,
-      content: newMessage.trim(),
+      content: messageToSend,
       timestamp: new Date().toISOString(),
       status: MessageStatus.SENT,
       type: 'Outbound',
-      attachment: pendingAttachment || undefined
+      attachment: attachmentToSend || undefined
     };
 
     // Add to UI immediately (before API call)
     setLogs(prev => [...prev, optimisticMessage]);
 
     // Clear input immediately for better UX
-    const messageToSend = newMessage.trim();
-    const attachmentToSend = pendingAttachment;
     setNewMessage('');
     setPendingAttachment(null);
     setShowEmojiPicker(false);
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
-
-    setIsSending(true);
 
     // Send via WhatsApp API in background
     try {
@@ -252,6 +254,7 @@ const LiveChats: React.FC<LiveChatsProps> = ({ contacts, logs, setLogs }) => {
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
+      if (isSending || (!newMessage.trim() && !pendingAttachment)) return;
       handleSendMessage(e);
     }
   };
