@@ -207,13 +207,20 @@ export const whatsappService = {
         const data = await response.json();
 
         if (!response.ok || !data.success) {
-          // If it's the last attempt, return the error
+          // Never retry on 4xx errors (auth failures, bad requests etc.)
+          // Retrying would create duplicate DB records on every attempt.
+          if (response.status >= 400 && response.status < 500) {
+            console.log(`❌ Client/auth error (${response.status}), not retrying:`, data.error);
+            return { success: false, error: data.error || 'Send failed' };
+          }
+
+          // If it's the last attempt on a 5xx error, return the error
           if (attempt === maxRetries - 1) {
             console.log(`❌ Failed after ${maxRetries} attempts:`, data.error);
             return { success: false, error: data.error || 'Send failed' };
           }
 
-          // Wait before retrying (exponential backoff)
+          // Wait before retrying (exponential backoff) — only for 5xx / unknown errors
           const waitTime = Math.pow(2, attempt + 1) * 1000;
           console.log(`⏳ Retry attempt ${attempt + 1}/${maxRetries} in ${waitTime}ms...`);
           await new Promise(resolve => setTimeout(resolve, waitTime));

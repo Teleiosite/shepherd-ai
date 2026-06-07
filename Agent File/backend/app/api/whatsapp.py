@@ -150,16 +150,18 @@ async def send_whatsapp_message(
             message=message.message
         )
         
-        # Log to database if contact_id provided
-        if message.contact_id:
+        # Only log to database on SUCCESS — failed sends are shown via optimistic UI only.
+        # Logging failures creates DB records that the 5-second poller would pull back
+        # as new messages, duplicating the already-visible failed bubble.
+        if message.contact_id and result.get("success"):
             try:
                 msg_log = Message(
                     organization_id=current_user.organization_id,
                     contact_id=message.contact_id,
                     content=message.message,
                     type="Outbound",
-                    status="Sent" if result.get("success") else "Failed",
-                    sent_at=datetime.now() if result.get("success") else None,
+                    status="Sent",
+                    sent_at=datetime.now(),
                     whatsapp_message_id=result.get("messageId"),
                     created_by=current_user.id
                 )
@@ -243,8 +245,10 @@ async def send_whatsapp_media(
             filename=media.filename
         )
         
-        # Log to database if contact_id provided
-        if media.contact_id:
+        # Only log to database on SUCCESS — failed sends are shown via optimistic UI only.
+        # Logging failures creates DB records that the 5-second poller would pull back
+        # as new messages, duplicating the already-visible failed bubble.
+        if media.contact_id and result.get("success"):
             try:
                 media_reference = media.media_data[:100] + "..." if len(media.media_data) > 100 else media.media_data
                 
@@ -253,10 +257,10 @@ async def send_whatsapp_media(
                     contact_id=media.contact_id,
                     content=media.caption or f"[{media.media_type}]",
                     type="Outbound",
-                    status="Sent" if result.get("success") else "Failed",
+                    status="Sent",
                     attachment_type=media.media_type,
                     attachment_url=media_reference,
-                    sent_at=datetime.now() if result.get("success") else None,
+                    sent_at=datetime.now(),
                     whatsapp_message_id=result.get("messageId"),
                     created_by=current_user.id
                 )
