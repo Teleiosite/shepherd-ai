@@ -279,25 +279,67 @@ function App() {
         // 2. Poll Messages
         const backendLogs = await storage.refreshLogs();
         setLogs(prev => {
-          const existingIds = new Set(prev.map(l => l.id));
-          const newLogs = backendLogs.filter((l: MessageLog) => !existingIds.has(l.id));
-          
-          let hasStatusChange = false;
+          // Track matched server logs to avoid duplicate additions/pairings
+          const matchedServerLogIds = new Set<string>();
+
+          // Reconcile and update existing local logs
           const updatedLogs = prev.map(localLog => {
-            const serverLog = backendLogs.find((l: MessageLog) => l.id === localLog.id);
-            if (serverLog && serverLog.status !== localLog.status) {
-              hasStatusChange = true;
-              return { ...localLog, status: serverLog.status };
+            // 1. Exact ID match
+            const exactMatch = backendLogs.find((l: MessageLog) => l.id === localLog.id);
+            if (exactMatch) {
+              matchedServerLogIds.add(exactMatch.id);
+              if (exactMatch.status !== localLog.status) {
+                return { ...localLog, status: exactMatch.status };
+              }
+              return localLog;
             }
+
+            // 2. Content-based match for outbound messages (reconciles optimistic client UUID to server ID)
+            if (localLog.type === 'Outbound') {
+              const localTime = new Date(localLog.timestamp).getTime();
+              const contentMatch = backendLogs.find((serverLog: MessageLog) => {
+                if (serverLog.type !== 'Outbound') return false;
+                if (matchedServerLogIds.has(serverLog.id)) return false;
+                if (serverLog.contactId !== localLog.contactId) return false;
+                if (serverLog.content !== localLog.content) return false;
+
+                const serverTime = new Date(serverLog.timestamp).getTime();
+                // Match if sent within 60 seconds of each other (handles clock drift and network lag)
+                return Math.abs(localTime - serverTime) < 60000;
+              });
+
+              if (contentMatch) {
+                matchedServerLogIds.add(contentMatch.id);
+                console.log(`[Poller] Reconciled optimistic message ID: ${localLog.id} -> ${contentMatch.id}`);
+                return {
+                  ...localLog,
+                  id: contentMatch.id,
+                  status: contentMatch.status,
+                  timestamp: contentMatch.timestamp
+                };
+              }
+            }
+
             return localLog;
           });
 
-          if (newLogs.length === 0 && !hasStatusChange) {
-            // If local state is empty but we have server logs (e.g. fresh login/mount), set them
-            if (prev.length === 0 && backendLogs.length > 0) {
-              return backendLogs;
+          // Server logs that were not matched to any local log
+          const newLogs = backendLogs.filter((l: MessageLog) => !matchedServerLogIds.has(l.id));
+
+          if (newLogs.length === 0) {
+            // Check if any log had its status or ID updated
+            const hasChanged = updatedLogs.some((l, idx) => {
+              const prevLog = prev[idx];
+              return l.id !== prevLog.id || l.status !== prevLog.status;
+            });
+
+            if (!hasChanged) {
+              if (prev.length === 0 && backendLogs.length > 0) {
+                return backendLogs;
+              }
+              return prev;
             }
-            return prev;
+            return updatedLogs;
           }
 
           const merged = [...updatedLogs];
