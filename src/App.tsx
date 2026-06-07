@@ -240,6 +240,7 @@ function App() {
       if (!user) {
         setContacts([]);
         setContactsLoaded(false);
+        setLogs([]); // Clear logs on logout
         return;
       }
 
@@ -258,6 +259,63 @@ function App() {
     };
 
     loadContactsFromBackend();
+  }, [user]);
+
+  // Poll backend for new contacts and messages every 5 seconds when user is authenticated
+  useEffect(() => {
+    if (!user) return;
+
+    const pollBackendData = async () => {
+      try {
+        // 1. Poll Contacts
+        const backendContacts = await storage.refreshContacts();
+        setContacts(prev => {
+          const existingIds = new Set(prev.map(c => c.id));
+          const newContacts = backendContacts.filter(c => !existingIds.has(c.id));
+          if (newContacts.length === 0 && backendContacts.length === prev.length) return prev;
+          return backendContacts;
+        });
+
+        // 2. Poll Messages
+        const backendLogs = await storage.refreshLogs();
+        setLogs(prev => {
+          const existingIds = new Set(prev.map(l => l.id));
+          const newLogs = backendLogs.filter((l: MessageLog) => !existingIds.has(l.id));
+          
+          let hasStatusChange = false;
+          const updatedLogs = prev.map(localLog => {
+            const serverLog = backendLogs.find((l: MessageLog) => l.id === localLog.id);
+            if (serverLog && serverLog.status !== localLog.status) {
+              hasStatusChange = true;
+              return { ...localLog, status: serverLog.status };
+            }
+            return localLog;
+          });
+
+          if (newLogs.length === 0 && !hasStatusChange) {
+            // If local state is empty but we have server logs (e.g. fresh login/mount), set them
+            if (prev.length === 0 && backendLogs.length > 0) {
+              return backendLogs;
+            }
+            return prev;
+          }
+
+          const merged = [...updatedLogs];
+          newLogs.forEach((l: MessageLog) => {
+            if (!merged.some(existing => existing.id === l.id)) {
+              merged.push(l);
+            }
+          });
+          return merged;
+        });
+      } catch (error) {
+        console.error('Error polling backend data:', error);
+      }
+    };
+
+    pollBackendData(); // Run immediately on mount/auth
+    const interval = setInterval(pollBackendData, 5000); // Poll every 5 seconds
+    return () => clearInterval(interval);
   }, [user]);
 
   // Persistence - REMOVED contacts localStorage (now using backend)
