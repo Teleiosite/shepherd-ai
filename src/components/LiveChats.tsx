@@ -37,6 +37,7 @@ const LiveChats: React.FC<LiveChatsProps> = ({ contacts, logs, setLogs }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const emojiPickerRef = useRef<HTMLDivElement>(null);
+  const isSendingRef = useRef(false);
 
   const selectedContact = contacts.find(c => c.id === selectedContactId);
   const today = new Date().toISOString().split('T')[0];
@@ -86,9 +87,10 @@ const LiveChats: React.FC<LiveChatsProps> = ({ contacts, logs, setLogs }) => {
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isSending || (!newMessage.trim() && !pendingAttachment) || !selectedContactId || !selectedContact) return;
+    if (isSendingRef.current || (!newMessage.trim() && !pendingAttachment) || !selectedContactId || !selectedContact) return;
 
     // Immediately lock to prevent double-submitting
+    isSendingRef.current = true;
     setIsSending(true);
 
     const messageToSend = newMessage.trim();
@@ -151,6 +153,7 @@ const LiveChats: React.FC<LiveChatsProps> = ({ contacts, logs, setLogs }) => {
       console.error('Send error:', error);
       // Message already shown, error is logged
     } finally {
+      isSendingRef.current = false;
       setIsSending(false);
     }
   };
@@ -254,7 +257,7 @@ const LiveChats: React.FC<LiveChatsProps> = ({ contacts, logs, setLogs }) => {
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      if (isSending || (!newMessage.trim() && !pendingAttachment)) return;
+      if (isSendingRef.current || (!newMessage.trim() && !pendingAttachment)) return;
       handleSendMessage(e);
     }
   };
