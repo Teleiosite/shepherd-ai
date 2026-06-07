@@ -16,6 +16,7 @@ class Contact(Base):
     name = Column(String(255), nullable=False)
     phone = Column(String(50), nullable=False)
     email = Column(String(255), nullable=True)
+    whatsapp_id = Column(String(255), nullable=True)
     category = Column(String(100), nullable=False)
     join_date = Column(DateTime(timezone=True), nullable=False)
     notes = Column(String, nullable=True)
