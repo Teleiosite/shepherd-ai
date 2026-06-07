@@ -4,7 +4,8 @@ Handles WhatsApp messaging via BOTH WPPConnect bridge AND Meta Cloud API
 Routes based on user's configured delivery method
 """
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request, Query
+from fastapi.responses import PlainTextResponse
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional
@@ -301,8 +302,34 @@ async def send_whatsapp_media(
         }
 
 
-@router.post("/webhook")
-async def whatsapp_incoming_webhook(
+@router.get("/webhook")
+async def verify_whatsapp_webhook(
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    """
+    Webhook verification endpoint for Meta WhatsApp Cloud API
+    """
+    params = request.query_params
+    mode = params.get("hub.mode")
+    token = params.get("hub.verify_token")
+    challenge = params.get("hub.challenge")
+    
+    from app.config import settings
+    expected_token = settings.whatsapp_verify_token
+    
+    if mode and token:
+        if mode == "subscribe" and token == expected_token:
+            logger.info("✅ Meta Webhook verified successfully!")
+            return PlainTextResponse(content=challenge)
+        else:
+            logger.warning("❌ Meta Webhook verification failed: token mismatch")
+            raise HTTPException(status_code=403, detail="Verification token mismatch")
+            
+    return {"status": "ok"}
+
+
+async def process_received_message(
     phone: str,
     whatsapp_id: str,
     content: str,
@@ -311,99 +338,176 @@ async def whatsapp_incoming_webhook(
     has_media: Optional[bool] = False,
     media_type: Optional[str] = None,
     media_url: Optional[str] = None,
+    db: Session = None
+):
+    # Clean phone number
+    clean_phone = phone.replace('+', '').replace(' ', '').replace('-', '')
+    
+    # Find or create contact
+    contact = db.query(Contact).filter(Contact.whatsapp_id == whatsapp_id).first()
+    if not contact and clean_phone:
+        contact = db.query(Contact).filter(Contact.phone == clean_phone).first()
+    
+    if not contact:
+        display_name = pushname or contact_name or f"WhatsApp {clean_phone}"
+        logger.info(f"📝 Creating new contact: {display_name} ({clean_phone})")
+        contact = Contact(
+            name=display_name,
+            phone=clean_phone,
+            whatsapp_id=whatsapp_id,
+            tags=["auto-created"],
+            notes=f"Auto-created from incoming message on {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+        )
+        db.add(contact)
+        db.flush()
+    else:
+        if whatsapp_id and not contact.whatsapp_id:
+            contact.whatsapp_id = whatsapp_id
+        if pushname and not contact.name:
+            contact.name = pushname
+
+    message_data = {
+        "contact_id": contact.id,
+        "type": "Inbound",
+        "content": content,
+        "status": "Received",
+        "sent_at": datetime.now(),
+        "created_at": datetime.now()
+    }
+    
+    if hasattr(contact, 'organization_id') and contact.organization_id:
+        message_data['organization_id'] = contact.organization_id
+        
+    message = Message(**message_data)
+    
+    if has_media and media_url:
+        message.attachment_url = media_url
+        message.attachment_type = media_type
+        
+    db.add(message)
+    db.commit()
+    logger.info(f"✅ Incoming message saved for contact {contact.name} (ID: {contact.id})")
+    return contact.id, message.id
+
+
+@router.post("/webhook")
+async def whatsapp_incoming_webhook(
+    request: Request,
+    phone: Optional[str] = None,
+    whatsapp_id: Optional[str] = None,
+    content: Optional[str] = None,
+    contact_name: Optional[str] = None,
+    pushname: Optional[str] = None,
+    has_media: Optional[bool] = False,
+    media_type: Optional[str] = None,
+    media_url: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
     """
-    Webhook for incoming WhatsApp messages
-    Can receive from BOTH WPPConnect bridge AND Meta Cloud API
+    Unified Webhook for incoming WhatsApp messages
+    Supports both WPPConnect format and official Meta JSON payload
     """
     try:
-        logger.info(f"📩 Incoming webhook: {phone} ({whatsapp_id}) Media: {has_media}")
+        body = {}
+        try:
+            body = await request.json()
+        except:
+            pass
+
+        if body and "object" in body and body.get("object") == "whatsapp_business_account":
+            logger.info("📩 Processing incoming message from Meta Webhook")
+            entries = body.get("entry", [])
+            contact_id_str = ""
+            message_id_str = ""
+            for entry in entries:
+                changes = entry.get("changes", [])
+                for change in changes:
+                    value = change.get("value", {})
+                    if "messages" in value:
+                        messages = value.get("messages", [])
+                        contacts_list = value.get("contacts", [])
+                        
+                        sender_name = "WhatsApp User"
+                        if contacts_list:
+                            sender_name = contacts_list[0].get("profile", {}).get("name", "WhatsApp User")
+                            
+                        for msg in messages:
+                            sender_phone = msg.get("from")
+                            msg_id = msg.get("id")
+                            msg_type = msg.get("type")
+                            
+                            msg_content = ""
+                            msg_has_media = False
+                            msg_media_type = None
+                            msg_media_url = None
+                            
+                            if msg_type == "text":
+                                msg_content = msg.get("text", {}).get("body", "")
+                            elif msg_type == "image":
+                                msg_content = msg.get("image", {}).get("caption", "[image]")
+                                msg_has_media = True
+                                msg_media_type = "image"
+                                msg_media_url = f"meta_media_id:{msg.get('image', {}).get('id')}"
+                            elif msg_type == "document":
+                                msg_content = msg.get("document", {}).get("caption", "[document]")
+                                msg_has_media = True
+                                msg_media_type = "document"
+                                msg_media_url = f"meta_media_id:{msg.get('document', {}).get('id')}"
+                            else:
+                                msg_content = f"[{msg_type} message]"
+                                
+                            c_id, m_id = await process_received_message(
+                                phone=sender_phone,
+                                whatsapp_id=sender_phone + "@c.us",
+                                content=msg_content,
+                                contact_name=sender_name,
+                                pushname=sender_name,
+                                has_media=msg_has_media,
+                                media_type=msg_media_type,
+                                media_url=msg_media_url,
+                                db=db
+                            )
+                            contact_id_str = str(c_id)
+                            message_id_str = str(m_id)
+            return {
+                "success": True, 
+                "message": "Message received and saved from Meta",
+                "contact_id": contact_id_str,
+                "message_id": message_id_str
+            }
+
+        final_phone = phone or body.get("phone")
+        final_whatsapp_id = whatsapp_id or body.get("whatsapp_id")
+        final_content = content or body.get("content")
+        final_contact_name = contact_name or body.get("contact_name")
+        final_pushname = pushname or body.get("pushname")
+        final_has_media = has_media or body.get("has_media", False)
+        final_media_type = media_type or body.get("media_type")
+        final_media_url = media_url or body.get("media_url")
         
-        # Clean phone number
-        clean_phone = phone.replace('+', '').replace(' ', '').replace('-', '')
-        
-        # Find or create contact
-        # Try to find by whatsapp_id first
-        contact = db.query(Contact).filter(Contact.whatsapp_id == whatsapp_id).first()
-        
-        # If not found, try by phone
-        if not contact and clean_phone:
-            contact = db.query(Contact).filter(Contact.phone == clean_phone).first()
-        
-        # If still not found, create new contact
-        if not contact:
-            # Determine display name
-            display_name = pushname or contact_name or f"WhatsApp {clean_phone}"
+        if not final_phone:
+            logger.warning("⚠️ Webhook received empty phone parameter")
+            return {"status": "ignored", "reason": "empty phone"}
             
-            logger.info(f"📝 Creating new contact: {display_name} ({clean_phone})")
-            contact = Contact(
-                name=display_name,
-                phone=clean_phone,
-                whatsapp_id=whatsapp_id,
-                tags=["auto-created"],
-                notes=f"Auto-created from incoming message on {datetime.now().strftime('%Y-%m-%d %H:%M')}"
-            )
-            db.add(contact)
-            db.flush()  # Get the contact ID
-        else:
-            # Update contact info if we have better data
-            if whatsapp_id and not contact.whatsapp_id:
-                contact.whatsapp_id = whatsapp_id
-            if pushname and not contact.name:
-                contact.name = pushname
-        
-        # Create incoming message log
-        # Determine organization_id from contact or default user
-        # For now, we assume single organization or need to find a way to associate
-        # Since contact belongs to organization, we should use contact.organization_id?
-        # But contact model might not have organization_id? 
-        # Let's check contact model.
-        
-        # Wait, the Message model requires organization_id. 
-        # If contact is created, it needs organization_id.
-        # The current implementation created contact without organization_id?
-        # Let's check contact definition.
-        
-        # Assuming database handles defaults or we need to fetch organization.
-        # But wait, looking at my previous viewing of whatsapp.py, the Contact creation didn't specify organization_id.
-        # This implies Contact might not require it or there is a default.
-        # Or I missed something.
-        
-        # Let's assume the previous code was working and I just need to add media fields.
-        
-        message_data = {
-            "contact_id": contact.id,
-            "type": "Inbound",
-            "content": content,
-            "status": "Received",
-            "sent_at": datetime.now(),
-            "created_at": datetime.now()
-        }
-        
-        # Add organization_id from contact if available
-        if hasattr(contact, 'organization_id') and contact.organization_id:
-            message_data['organization_id'] = contact.organization_id
-            
-        message = Message(**message_data)
-        
-        if has_media and media_url:
-            message.attachment_url = media_url
-            message.attachment_type = media_type
-            
-        db.add(message)
-        db.commit()
-        
-        logger.info(f"✅ Message saved for contact {contact.name} (ID: {contact.id})")
-        
+        c_id, m_id = await process_received_message(
+            phone=final_phone,
+            whatsapp_id=final_whatsapp_id or (final_phone + "@c.us"),
+            content=final_content or "",
+            contact_name=final_contact_name,
+            pushname=final_pushname,
+            has_media=final_has_media,
+            media_type=final_media_type,
+            media_url=final_media_url,
+            db=db
+        )
         return {
             "success": True, 
-            "message": "Message received and saved",
-            "contact_id": str(contact.id),
-            "message_id": str(message.id)
+            "message": "Message received and saved from bridge",
+            "contact_id": str(c_id),
+            "message_id": str(m_id)
         }
         
     except Exception as e:
-        logger.error(f"❌ Error processing incoming message: {str(e)}")
+        logger.error(f"❌ Error in webhook: {str(e)}")
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
