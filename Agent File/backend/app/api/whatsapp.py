@@ -380,7 +380,6 @@ async def process_received_message(
             whatsapp_id=whatsapp_id,
             category="New Convert",
             join_date=datetime.now(),
-            tags=["auto-created"],
             notes=f"Auto-created from incoming message on {datetime.now().strftime('%Y-%m-%d %H:%M')}"
         )
         db.add(contact)
