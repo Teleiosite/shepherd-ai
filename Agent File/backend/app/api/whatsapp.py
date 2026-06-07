@@ -166,6 +166,8 @@ async def send_whatsapp_message(
                 db.add(msg_log)
                 db.commit()
                 logger.info(f"Message logged to database: {msg_log.id}")
+                # Return the DB record ID so frontend can reconcile its optimistic message
+                result["db_message_id"] = str(msg_log.id)
             except Exception as e:
                 logger.error(f"Error logging message to database: {str(e)}")
                 db.rollback()
@@ -261,6 +263,8 @@ async def send_whatsapp_media(
                 db.add(msg_log)
                 db.commit()
                 logger.info(f"Media message logged to database: {msg_log.id}")
+                # Return the DB record ID so frontend can reconcile its optimistic message
+                result["db_message_id"] = str(msg_log.id)
             except Exception as e:
                 logger.error(f"Error logging media message to database: {str(e)}")
                 db.rollback()
