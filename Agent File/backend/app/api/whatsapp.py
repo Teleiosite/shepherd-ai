@@ -338,35 +338,62 @@ async def process_received_message(
     has_media: Optional[bool] = False,
     media_type: Optional[str] = None,
     media_url: Optional[str] = None,
-    db: Session = None
+    db: Session = None,
+    org_id: Optional[UUID] = None
 ):
     # Clean phone number
     clean_phone = phone.replace('+', '').replace(' ', '').replace('-', '')
     
-    # Find or create contact
-    contact = db.query(Contact).filter(Contact.whatsapp_id == whatsapp_id).first()
-    if not contact and clean_phone:
-        contact = db.query(Contact).filter(Contact.phone == clean_phone).first()
-    
+    # Find contact
+    contact = None
+    if org_id:
+        # Search within the specified organization
+        contact = db.query(Contact).filter(
+            Contact.organization_id == org_id,
+            (Contact.whatsapp_id == whatsapp_id) | 
+            (Contact.phone == clean_phone) | 
+            (Contact.phone == "+" + clean_phone)
+        ).first()
+    else:
+        # Search globally across all organizations
+        contact = db.query(Contact).filter(
+            (Contact.whatsapp_id == whatsapp_id) | 
+            (Contact.phone == clean_phone) | 
+            (Contact.phone == "+" + clean_phone)
+        ).first()
+        if contact:
+            org_id = contact.organization_id
+            
+    # If still no organization ID, resolve to a default
+    if not org_id:
+        org_row = db.execute(text("SELECT id FROM organizations LIMIT 1")).fetchone()
+        if org_row:
+            org_id = org_row[0]
+            
     if not contact:
         display_name = pushname or contact_name or f"WhatsApp {clean_phone}"
-        logger.info(f"📝 Creating new contact: {display_name} ({clean_phone})")
+        logger.info(f"📝 Creating new contact: {display_name} ({clean_phone}) in organization {org_id}")
         contact = Contact(
+            organization_id=org_id,
             name=display_name,
-            phone=clean_phone,
+            phone=clean_phone if clean_phone.startswith('+') else "+" + clean_phone,
             whatsapp_id=whatsapp_id,
+            category="New Convert",
+            join_date=datetime.now(),
             tags=["auto-created"],
             notes=f"Auto-created from incoming message on {datetime.now().strftime('%Y-%m-%d %H:%M')}"
         )
         db.add(contact)
         db.flush()
     else:
+        # Update existing contact missing whatsapp_id or name
         if whatsapp_id and not contact.whatsapp_id:
             contact.whatsapp_id = whatsapp_id
         if pushname and not contact.name:
             contact.name = pushname
 
     message_data = {
+        "organization_id": org_id,
         "contact_id": contact.id,
         "type": "Inbound",
         "content": content,
@@ -375,9 +402,6 @@ async def process_received_message(
         "created_at": datetime.now()
     }
     
-    if hasattr(contact, 'organization_id') and contact.organization_id:
-        message_data['organization_id'] = contact.organization_id
-        
     message = Message(**message_data)
     
     if has_media and media_url:
@@ -386,7 +410,7 @@ async def process_received_message(
         
     db.add(message)
     db.commit()
-    logger.info(f"✅ Incoming message saved for contact {contact.name} (ID: {contact.id})")
+    logger.info(f"✅ Incoming message saved for contact {contact.name} (ID: {contact.id}) in organization {org_id}")
     return contact.id, message.id
 
 
@@ -426,6 +450,18 @@ async def whatsapp_incoming_webhook(
                     if "messages" in value:
                         messages = value.get("messages", [])
                         contacts_list = value.get("contacts", [])
+                        metadata = value.get("metadata", {})
+                        phone_number_id = metadata.get("phone_number_id")
+                        
+                        # Find organization by phone_number_id
+                        org_id = None
+                        if phone_number_id:
+                            org_row = db.execute(
+                                text("SELECT id FROM organizations WHERE whatsapp_phone_id = :phone_id"),
+                                {"phone_id": str(phone_number_id)}
+                            ).fetchone()
+                            if org_row:
+                                org_id = org_row[0]
                         
                         sender_name = "WhatsApp User"
                         if contacts_list:
@@ -465,7 +501,8 @@ async def whatsapp_incoming_webhook(
                                 has_media=msg_has_media,
                                 media_type=msg_media_type,
                                 media_url=msg_media_url,
-                                db=db
+                                db=db,
+                                org_id=org_id
                             )
                             contact_id_str = str(c_id)
                             message_id_str = str(m_id)
