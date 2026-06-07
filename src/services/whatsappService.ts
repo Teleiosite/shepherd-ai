@@ -182,7 +182,7 @@ export const whatsappService = {
   },
 
   // Send message via backend API (automatically routes to WPPConnect or Meta)
-  sendMessage: async (phone: string, text: string, whatsappId?: string, contactId?: string, maxRetries: number = 3): Promise<{ success: boolean; error?: string; provider?: string }> => {
+  sendMessage: async (phone: string, text: string, whatsappId?: string, contactId?: string, maxRetries: number = 3): Promise<{ success: boolean; error?: string; provider?: string; dbMessageId?: string }> => {
     const token = getAuthToken();
     if (!token) {
       return { success: false, error: 'Not authenticated. Please login.' };
@@ -220,8 +220,12 @@ export const whatsappService = {
           continue;
         }
 
-        // Success!
-        return { success: true, provider: data.provider };
+        // Success! Pass back the DB message ID so frontend can reconcile its optimistic message
+        return {
+          success: true,
+          provider: data.provider,
+          dbMessageId: data.db_message_id || data.messageId
+        };
       } catch (e: any) {
         if (attempt === maxRetries - 1) {
           return { success: false, error: `Connection Failed: ${e.message}` };
@@ -236,7 +240,7 @@ export const whatsappService = {
   },
 
   // Send media via backend API
-  sendMedia: async (phone: string, mediaType: string, mediaData: string, caption?: string, filename?: string, whatsappId?: string, contactId?: string): Promise<{ success: boolean; error?: string; provider?: string }> => {
+  sendMedia: async (phone: string, mediaType: string, mediaData: string, caption?: string, filename?: string, whatsappId?: string, contactId?: string): Promise<{ success: boolean; error?: string; provider?: string; dbMessageId?: string }> => {
     const token = getAuthToken();
     if (!token) {
       return { success: false, error: 'Not authenticated. Please login.' };
@@ -264,7 +268,12 @@ export const whatsappService = {
       if (!response.ok || !data.success) {
         return { success: false, error: data.error || 'Media send failed' };
       }
-      return { success: true, provider: data.provider };
+      // Pass back the DB message ID so frontend can reconcile its optimistic message
+      return {
+        success: true,
+        provider: data.provider,
+        dbMessageId: data.db_message_id || data.messageId
+      };
     } catch (e: any) {
       return { success: false, error: `Connection Failed: ${e.message}` };
     }

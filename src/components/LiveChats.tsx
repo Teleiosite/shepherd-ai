@@ -147,6 +147,11 @@ const LiveChats: React.FC<LiveChatsProps> = ({ contacts, logs, setLogs }) => {
         if (!result.success) {
           console.warn("WhatsApp API failed, logging locally.", result.error);
           setLogs(prev => prev.map(l => l.id === optimisticMessage.id ? { ...l, status: MessageStatus.FAILED, error: result.error } : l));
+        } else if (result.dbMessageId) {
+          // ✅ Replace client UUID with server DB ID so the 5-second poller
+          // won't see this as a new/unknown message and add it as a duplicate.
+          console.log('✅ Reconciling optimistic message ID:', optimisticMessage.id, '→', result.dbMessageId);
+          setLogs(prev => prev.map(l => l.id === optimisticMessage.id ? { ...l, id: result.dbMessageId! } : l));
         }
       }
     } catch (error) {
