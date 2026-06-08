@@ -48,11 +48,46 @@ const LiveChats: React.FC<LiveChatsProps> = ({ contacts, logs, setLogs }) => {
     setEditContent('');
   }, [selectedContactId]);
 
-  // Filter contacts based on search
-  const filteredContacts = contacts.filter(c =>
-    c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    c.phone.includes(searchTerm)
-  );
+  // Pre-calculate last message timestamp for each contact to avoid N log N filtering inside sort
+  const contactLastMessageTimes = React.useMemo(() => {
+    const timesMap = new Map<string, number>();
+    logs.forEach(log => {
+      const logTime = new Date(log.timestamp).getTime();
+      const existingTime = timesMap.get(log.contactId) || 0;
+      if (logTime > existingTime) {
+        timesMap.set(log.contactId, logTime);
+      }
+    });
+    return timesMap;
+  }, [logs]);
+
+  // Filter and sort contacts based on search and last message time (newest first)
+  const filteredContacts = React.useMemo(() => {
+    return contacts
+      .filter(c =>
+        c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        c.phone.includes(searchTerm)
+      )
+      .sort((a, b) => {
+        const lastMessageTimeA = contactLastMessageTimes.get(a.id);
+        const lastMessageTimeB = contactLastMessageTimes.get(b.id);
+
+        if (lastMessageTimeA !== undefined && lastMessageTimeB !== undefined) {
+          return lastMessageTimeB - lastMessageTimeA;
+        }
+        if (lastMessageTimeA !== undefined) {
+          return -1; // a has messages, b doesn't -> a comes first
+        }
+        if (lastMessageTimeB !== undefined) {
+          return 1;  // b has messages, a doesn't -> b comes first
+        }
+
+        // Neither has messages, fall back to joinDate
+        const joinTimeA = new Date(a.joinDate).getTime() || 0;
+        const joinTimeB = new Date(b.joinDate).getTime() || 0;
+        return joinTimeB - joinTimeA;
+      });
+  }, [contacts, searchTerm, contactLastMessageTimes]);
 
   // Get messages for selected contact
   const currentMessages = logs

@@ -4,7 +4,7 @@ Handles WhatsApp messaging via BOTH WPPConnect bridge AND Meta Cloud API
 Routes based on user's configured delivery method
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Query
+from fastapi import APIRouter, Depends, HTTPException, Request, Query, Response
 from fastapi.responses import PlainTextResponse
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
@@ -489,16 +489,15 @@ async def whatsapp_incoming_webhook(
                             
                             if msg_type == "text":
                                 msg_content = msg.get("text", {}).get("body", "")
-                            elif msg_type == "image":
-                                msg_content = msg.get("image", {}).get("caption", "[image]")
-                                msg_has_media = True
-                                msg_media_type = "image"
-                                msg_media_url = f"meta_media_id:{msg.get('image', {}).get('id')}"
-                            elif msg_type == "document":
-                                msg_content = msg.get("document", {}).get("caption", "[document]")
-                                msg_has_media = True
-                                msg_media_type = "document"
-                                msg_media_url = f"meta_media_id:{msg.get('document', {}).get('id')}"
+                            elif msg_type in ["image", "video", "audio", "voice", "document", "sticker"]:
+                                media_obj = msg.get(msg_type, {})
+                                media_id = media_obj.get("id")
+                                caption = media_obj.get("caption") or media_obj.get("filename") or f"[{msg_type}]"
+                                msg_content = caption
+                                if media_id:
+                                    msg_has_media = True
+                                    msg_media_type = "audio" if msg_type == "voice" else msg_type
+                                    msg_media_url = f"meta_media_id:{media_id}"
                             else:
                                 msg_content = f"[{msg_type} message]"
                                 
@@ -558,4 +557,79 @@ async def whatsapp_incoming_webhook(
     except Exception as e:
         logger.error(f"❌ Error in webhook: {str(e)}")
         db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/media/{media_id}")
+async def get_whatsapp_media(
+    media_id: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Retrieve and proxy media from Meta WhatsApp API.
+    Resolves the organization access token by looking up the media ID in messages.
+    """
+    logger.info(f"Request to retrieve Meta media ID: {media_id}")
+    
+    # 1. Find the message in the database that references this media ID
+    # Look for meta_media_id:{media_id} in messages table
+    search_str = f"meta_media_id:{media_id}"
+    msg = db.execute(
+        text("SELECT organization_id FROM messages WHERE attachment_url = :url LIMIT 1"),
+        {"url": search_str}
+    ).fetchone()
+    
+    if not msg:
+        logger.warning(f"Media ID {media_id} not found in any message record")
+        raise HTTPException(status_code=404, detail="Media not found")
+        
+    org_id = msg[0]
+    
+    # 2. Get the WhatsApp access token for this organization
+    config = get_organization_whatsapp_config(db, org_id)
+    if config.get("delivery_method") != "meta":
+        logger.warning(f"Organization {org_id} is not configured for Meta Cloud API")
+        raise HTTPException(status_code=400, detail="Meta Cloud API is not configured for this organization")
+        
+    access_token = config.get("access_token")
+    if not access_token:
+        logger.warning(f"No access token found for organization {org_id}")
+        raise HTTPException(status_code=401, detail="Meta Access Token missing")
+        
+    # 3. Request the media metadata from Meta
+    import httpx
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            meta_url = f"https://graph.facebook.com/v18.0/{media_id}"
+            headers = {"Authorization": f"Bearer {access_token}"}
+            
+            res = await client.get(meta_url, headers=headers)
+            if res.status_code != 200:
+                logger.error(f"Meta media info request failed with status {res.status_code}: {res.text}")
+                raise HTTPException(status_code=res.status_code, detail="Failed to fetch media metadata from Meta")
+                
+            media_info = res.json()
+            download_url = media_info.get("url")
+            mime_type = media_info.get("mime_type", "application/octet-stream")
+            
+            if not download_url:
+                logger.error("Meta media info response did not contain a download URL")
+                raise HTTPException(status_code=500, detail="Meta API did not return download URL")
+                
+            # 4. Download the actual binary file from Meta
+            file_res = await client.get(download_url, headers=headers)
+            if file_res.status_code != 200:
+                logger.error(f"Meta media download request failed with status {file_res.status_code}")
+                raise HTTPException(status_code=file_res.status_code, detail="Failed to download file content from Meta")
+                
+            # 5. Return the file content with the correct mime type
+            return Response(content=file_res.content, media_type=mime_type)
+            
+    except httpx.TimeoutException:
+        logger.error("Timeout connecting to Meta WhatsApp API for media download")
+        raise HTTPException(status_code=504, detail="Timeout downloading media from Meta")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error proxying media: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))

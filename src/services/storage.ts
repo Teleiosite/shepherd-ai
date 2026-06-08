@@ -284,7 +284,9 @@ export const storage = {
         type: m.type,
         attachment: m.attachment_url ? {
           type: m.attachment_type?.includes('image') ? 'image' : 'file',
-          url: m.attachment_url,
+          url: m.attachment_url.startsWith('meta_media_id:')
+            ? `${BACKEND_URL}/api/whatsapp/media/${m.attachment_url.split(':')[1]}`
+            : m.attachment_url,
           name: 'attachment'
         } : undefined
       }));
