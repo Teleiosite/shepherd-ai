@@ -9,9 +9,13 @@ venv/
 env/
 ENV/
 
-# Environment variables
+# Environment variables - NEVER commit real credentials
 .env
 .env.local
+.env.render
+.env.template
+.env.production
+.env.staging
 
 # IDE
 .vscode/
