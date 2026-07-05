@@ -146,3 +146,24 @@ COMMENT ON TABLE knowledge_resources IS 'Knowledge base resources (books, sermon
 COMMENT ON TABLE knowledge_embeddings IS 'Vector embeddings for RAG search';
 COMMENT ON TABLE categories IS 'Contact categories';
 COMMENT ON TABLE workflow_steps IS 'Automated follow-up workflow definitions';
+
+-- Bookings table
+CREATE TABLE bookings (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    contact_id UUID NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
+    contact_name VARCHAR(255) NOT NULL,
+    contact_phone VARCHAR(50) NOT NULL,
+    purpose VARCHAR(255) NOT NULL,
+    date VARCHAR(50),
+    time VARCHAR(50),
+    status VARCHAR(50) DEFAULT 'pending',
+    notes TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    confirmed_at TIMESTAMPTZ
+);
+
+CREATE INDEX idx_bookings_contact ON bookings(contact_id);
+CREATE INDEX idx_bookings_status ON bookings(status);
+
+COMMENT ON TABLE bookings IS 'Reservations, appointments and bookings made via AI or manually';
+
