@@ -35,7 +35,7 @@ export const authService = {
           name: data.user.full_name,
           email: data.user.email,
           passwordHash: '',
-          churchName: 'My Organization'  // Backend creates organization automatically
+          organizationName: 'My Organization'  // Backend creates organization automatically
         };
         localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(userInfo));
       }
@@ -74,7 +74,7 @@ export const authService = {
           name: data.user.full_name,
           email: data.user.email,
           passwordHash: '',
-          churchName: data.user.organization_name || 'My Organization'
+          organizationName: data.user.organization_name || 'My Organization'
         };
         localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(userInfo));
         return { success: true, user: userInfo };
@@ -111,7 +111,7 @@ export const authService = {
         name: data.full_name,
         email: data.email,
         passwordHash: '', // Not needed
-        churchName: data.organization_name || 'My Organization'
+        organizationName: data.organization_name || 'My Organization'
       };
 
       return user;

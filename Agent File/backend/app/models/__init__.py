@@ -6,6 +6,7 @@ from app.models.message import Message
 from app.models.knowledge import KnowledgeResource, KnowledgeEmbedding
 from app.models.category import Category
 from app.models.workflow import WorkflowStep
+from app.models.booking import Booking
 
 __all__ = [
     "Organization",
@@ -16,4 +17,5 @@ __all__ = [
     "KnowledgeEmbedding",
     "Category",
     "WorkflowStep",
+    "Booking",
 ]

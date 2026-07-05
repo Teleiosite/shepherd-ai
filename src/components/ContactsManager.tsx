@@ -29,7 +29,7 @@ const ContactsManager: React.FC<ContactsManagerProps> = ({ contacts, setContacts
   const [newContact, setNewContact] = useState({
     name: '',
     phone: '',
-    category: categories[0] || 'New Convert',
+    category: categories[0] || 'Customer',
     notes: ''
   });
 
@@ -466,7 +466,7 @@ const ContactsManager: React.FC<ContactsManagerProps> = ({ contacts, setContacts
                       <p className="text-xs text-slate-400 mb-2">Format: Name, Phone, Category (optional)</p>
                       <textarea
                         className="w-full h-32 border border-slate-300 rounded-lg p-4 font-mono text-sm"
-                        placeholder="John Doe, +2348012345678, New Convert"
+                        placeholder="John Doe, +2348012345678, Customer"
                         value={bulkText}
                         onChange={(e) => setBulkText(e.target.value)}
                       ></textarea>

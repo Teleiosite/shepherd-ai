@@ -1,23 +1,39 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Contact, MessageLog, MessageStatus, MessageAttachment } from '../types';
-import { User, Search, Send, Phone, MessageSquare, Clock, Check, CheckCheck, Paperclip, Smile, X, Image as ImageIcon, Calendar, Edit2, ExternalLink, AlertCircle } from 'lucide-react';
+import { Contact, MessageLog, MessageStatus, MessageAttachment, AgentSuggestion, AgentAction, MediaFile } from '../types';
+import { User, Search, Send, Phone, MessageSquare, Clock, Check, CheckCheck, Paperclip, Smile, X, Image as ImageIcon, Calendar, Edit2, ExternalLink, AlertCircle, Bot, RefreshCw, CheckCircle } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { whatsappService } from '../services/whatsappService';
+import { findFileByName } from '../services/mediaLibraryService';
 
 interface LiveChatsProps {
   contacts: Contact[];
   logs: MessageLog[];
   setLogs: React.Dispatch<React.SetStateAction<MessageLog[]>>;
+  suggestedReplies?: Record<string, AgentSuggestion>; // contactId -> suggestion
+  onClearSuggestion?: (contactId: string) => void;
+  onRegenerateSuggestion?: (contactId: string) => void;
+  organizationName?: string;
+  mediaFiles?: MediaFile[];
 }
 
 const COMMON_EMOJIS = ['👍', '🙏', '❤️', '😂', '🙌', '🔥', '😊', '🎉', '👋', '😢', '🤔', '⛪', '🕊️', '📖', '✨', '✝️'];
 
-const LiveChats: React.FC<LiveChatsProps> = ({ contacts, logs, setLogs }) => {
+const LiveChats: React.FC<LiveChatsProps> = ({
+  contacts, logs, setLogs,
+  suggestedReplies = {},
+  onClearSuggestion,
+  onRegenerateSuggestion,
+  organizationName = '',
+  mediaFiles = []
+}) => {
   const [selectedContactId, setSelectedContactId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [newMessage, setNewMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
+
+  // Fix 1: Track the last messaged contact to pin it at top immediately
+  const [lastMessagedContactId, setLastMessagedContactId] = useState<string | null>(null);
 
   // Attachment & Emoji State
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
@@ -32,6 +48,10 @@ const LiveChats: React.FC<LiveChatsProps> = ({ contacts, logs, setLogs }) => {
   // Edit Sent Message State
   const [editingSentMessageId, setEditingSentMessageId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState('');
+
+  // AI Suggestion editing state
+  const [editedSuggestion, setEditedSuggestion] = useState<string>('');
+  const [activeSuggestionContactId, setActiveSuggestionContactId] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -61,7 +81,7 @@ const LiveChats: React.FC<LiveChatsProps> = ({ contacts, logs, setLogs }) => {
     return timesMap;
   }, [logs]);
 
-  // Filter and sort contacts based on search and last message time (newest first)
+  // Filter and sort contacts: pin lastMessagedContactId first, then sort by last message time (newest first)
   const filteredContacts = React.useMemo(() => {
     return contacts
       .filter(c =>
@@ -69,25 +89,25 @@ const LiveChats: React.FC<LiveChatsProps> = ({ contacts, logs, setLogs }) => {
         c.phone.includes(searchTerm)
       )
       .sort((a, b) => {
+        // Fix 1: Pin the contact we just messaged immediately to top
+        if (a.id === lastMessagedContactId) return -1;
+        if (b.id === lastMessagedContactId) return 1;
+
         const lastMessageTimeA = contactLastMessageTimes.get(a.id);
         const lastMessageTimeB = contactLastMessageTimes.get(b.id);
 
         if (lastMessageTimeA !== undefined && lastMessageTimeB !== undefined) {
           return lastMessageTimeB - lastMessageTimeA;
         }
-        if (lastMessageTimeA !== undefined) {
-          return -1; // a has messages, b doesn't -> a comes first
-        }
-        if (lastMessageTimeB !== undefined) {
-          return 1;  // b has messages, a doesn't -> b comes first
-        }
+        if (lastMessageTimeA !== undefined) return -1;
+        if (lastMessageTimeB !== undefined) return 1;
 
-        // Neither has messages, fall back to joinDate
+        // Neither has messages: fall back to joinDate
         const joinTimeA = new Date(a.joinDate).getTime() || 0;
         const joinTimeB = new Date(b.joinDate).getTime() || 0;
         return joinTimeB - joinTimeA;
       });
-  }, [contacts, searchTerm, contactLastMessageTimes]);
+  }, [contacts, searchTerm, contactLastMessageTimes, lastMessagedContactId]);
 
   // Get messages for selected contact
   const currentMessages = logs
@@ -127,6 +147,9 @@ const LiveChats: React.FC<LiveChatsProps> = ({ contacts, logs, setLogs }) => {
     // Immediately lock to prevent double-submitting
     isSendingRef.current = true;
     setIsSending(true);
+
+    // Fix 1: Pin this contact to top of list immediately
+    setLastMessagedContactId(selectedContactId);
 
     const messageToSend = newMessage.trim();
     const attachmentToSend = pendingAttachment;
@@ -610,8 +633,62 @@ const LiveChats: React.FC<LiveChatsProps> = ({ contacts, logs, setLogs }) => {
                 </div>
               )}
 
+              {/* ===== AI AGENT SUGGESTION PANEL ===== */}
+              {selectedContactId && suggestedReplies[selectedContactId] && (() => {
+                const suggestion = suggestedReplies[selectedContactId];
+                const isEditing = activeSuggestionContactId === selectedContactId;
+                const displayText = isEditing ? editedSuggestion : suggestion.reply;
+                const handleSendSuggestion = async () => {
+                  if (!selectedContact || !displayText.trim()) return;
+                  const messageText = displayText.trim();
+                  if (suggestion.action?.type === 'SEND_DOCUMENT' && suggestion.action.documentName) {
+                    const file = findFileByName(suggestion.action.documentName);
+                    if (file) {
+                      const optimistic: MessageLog = { id: uuidv4(), contactId: selectedContactId, content: `📎 ${file.fileName}`, timestamp: new Date().toISOString(), status: MessageStatus.SENT, type: 'Outbound', attachment: { type: file.type === 'image' ? 'image' : 'file', url: file.url, name: file.fileName } };
+                      setLogs(prev => [...prev, optimistic]);
+                    }
+                  }
+                  const optimistic: MessageLog = { id: uuidv4(), contactId: selectedContactId, content: messageText, timestamp: new Date().toISOString(), status: MessageStatus.SENT, type: 'Outbound' };
+                  setLogs(prev => [...prev, optimistic]);
+                  setLastMessagedContactId(selectedContactId);
+                  try { await whatsappService.sendMessage(selectedContact.phone, messageText, (selectedContact as any).whatsappId, selectedContactId); } catch {}
+                  onClearSuggestion?.(selectedContactId);
+                  setActiveSuggestionContactId(null); setEditedSuggestion('');
+                };
+                return (
+                  <div className="mb-3 rounded-2xl border border-violet-200 bg-gradient-to-br from-violet-50 to-indigo-50 shadow-sm overflow-hidden">
+                    <div className="flex items-center justify-between px-4 py-2.5 bg-violet-100/60 border-b border-violet-200">
+                      <div className="flex items-center gap-2">
+                        <div className="w-6 h-6 rounded-full bg-violet-500 flex items-center justify-center"><Bot size={13} className="text-white" /></div>
+                        <span className="text-sm font-semibold text-violet-800">AI Suggested Reply</span>
+                        {suggestion.action && suggestion.action.type !== 'NONE' && (
+                          <span className="text-xs bg-violet-200 text-violet-700 px-2 py-0.5 rounded-full font-medium">+ {suggestion.action.type.replace(/_/g, ' ')}</span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <button onClick={() => onRegenerateSuggestion?.(selectedContactId)} className="p-1.5 text-violet-500 hover:text-violet-700 hover:bg-violet-100 rounded-full transition-colors" title="Regenerate"><RefreshCw size={14} /></button>
+                        <button onClick={() => { onClearSuggestion?.(selectedContactId); setActiveSuggestionContactId(null); }} className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-violet-100 rounded-full transition-colors" title="Dismiss"><X size={14} /></button>
+                      </div>
+                    </div>
+                    <div className="px-4 pt-3 pb-2">
+                      <textarea className="w-full bg-white/70 border border-violet-100 rounded-xl px-3 py-2.5 text-sm text-slate-800 resize-none focus:ring-2 focus:ring-violet-300 focus:border-violet-300 outline-none transition-all leading-relaxed" rows={3} value={displayText}
+                        onClick={() => { if (!isEditing) { setActiveSuggestionContactId(selectedContactId); setEditedSuggestion(suggestion.reply); } }}
+                        onChange={(e) => { setActiveSuggestionContactId(selectedContactId); setEditedSuggestion(e.target.value); }} placeholder="AI reply..." />
+                    </div>
+                    <div className="flex items-center justify-end gap-2 px-4 pb-3">
+                      <button onClick={() => { onClearSuggestion?.(selectedContactId); setActiveSuggestionContactId(null); }} className="px-3 py-1.5 text-xs font-medium text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors">Dismiss</button>
+                      <button onClick={handleSendSuggestion} disabled={!displayText.trim()} className="flex items-center gap-1.5 px-4 py-1.5 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white text-xs font-semibold rounded-lg shadow-sm hover:shadow-md transition-all">
+                        <CheckCircle size={13} />
+                        Send Reply{suggestion.action?.type === 'SEND_DOCUMENT' ? ' + File' : suggestion.action?.type === 'SEND_IMAGE' ? ' + Image' : suggestion.action?.type === 'SEND_PAYMENT_LINK' ? ' + Link' : ''}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })()}
+
               <div className="max-w-4xl mx-auto flex items-end gap-3 relative">
                 {/* Tools */}
+
                 <div className="flex gap-1 pb-2">
                   <button
                     type="button"

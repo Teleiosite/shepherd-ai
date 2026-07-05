@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { Contact, MessageLog } from '../types';
@@ -8,11 +7,12 @@ interface DashboardProps {
   contacts: Contact[];
   logs: MessageLog[];
   resources: any[];
+  organizationName?: string;
 }
 
 const COLORS = ['#3b82f6', '#14b8a6', '#06b6d4', '#0ea5e9', '#60a5fa', '#22d3ee', '#2dd4bf', '#38bdf8'];
 
-const Dashboard: React.FC<DashboardProps> = ({ contacts, logs, resources }) => {
+const Dashboard: React.FC<DashboardProps> = ({ contacts, logs, resources, organizationName = 'Organization' }) => {
 
   // Dynamically calculate category stats
   const categoryCounts = contacts.reduce((acc, contact) => {
@@ -43,7 +43,7 @@ const Dashboard: React.FC<DashboardProps> = ({ contacts, logs, resources }) => {
     <div className="space-y-6 md:space-y-8 animate-fade-in">
       {/* Mobile Title Card */}
       <div className="md:hidden bg-white p-4 rounded-xl shadow-sm border border-slate-100">
-        <h2 className="text-lg font-semibold text-slate-700">My Local Church Follow-up System</h2>
+        <h2 className="text-lg font-semibold text-slate-700">{organizationName} Follow-up System</h2>
       </div>
 
       {/* Stats Grid */}

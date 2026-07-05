@@ -92,5 +92,37 @@ def init_groups_tables():
         pass
 
 
+def init_bookings_table():
+    """Create Bookings table if it doesn't exist."""
+    create_bookings_sql = """
+    CREATE TABLE IF NOT EXISTS bookings (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        contact_id UUID NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
+        contact_name VARCHAR(255) NOT NULL,
+        contact_phone VARCHAR(50) NOT NULL,
+        purpose VARCHAR(255) NOT NULL,
+        date VARCHAR(50),
+        time VARCHAR(50),
+        status VARCHAR(50) DEFAULT 'pending',
+        notes TEXT,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        confirmed_at TIMESTAMP WITH TIME ZONE
+    );
+    
+    CREATE INDEX IF NOT EXISTS idx_bookings_contact ON bookings(contact_id);
+    CREATE INDEX IF NOT EXISTS idx_bookings_status ON bookings(status);
+    """
+    try:
+        with engine.connect() as conn:
+            conn.execute(text(create_bookings_sql))
+            conn.commit()
+            logger.info("✅ Bookings table ready")
+    except Exception as e:
+        logger.error(f"❌ Error initializing Bookings table: {e}")
+        pass
+
+
 if __name__ == "__main__":
     init_groups_tables()
+    init_bookings_table()
+

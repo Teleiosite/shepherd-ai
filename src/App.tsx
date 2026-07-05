@@ -1,7 +1,7 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef as _useRef } from 'react';
 import { HashRouter, Routes, Route, Link, useLocation, useNavigate, Navigate } from 'react-router-dom';
-import { LayoutDashboard, Users, BookOpen, Send, Menu, Settings as SettingsIcon, MessageCircle, Zap, Loader2, LogOut } from 'lucide-react';
+import { LayoutDashboard, Users, BookOpen, Send, Menu, Settings as SettingsIcon, MessageCircle, Zap, Loader2, LogOut, Calendar, Bot } from 'lucide-react';
 import Dashboard from './components/Dashboard';
 import ContactsManager from './components/ContactsManager';
 import KnowledgeBase from './components/KnowledgeBase';
@@ -11,13 +11,19 @@ import Settings from './components/Settings';
 import Auth from './components/Auth';
 import WorkflowsManager from './components/WorkflowsManager';
 import Groups from './pages/Groups';
-import { Contact, KnowledgeResource, MessageLog, ContactCategory, MessageStatus, DEFAULT_CATEGORIES, WorkflowStep, User } from './types';
+import { Contact, KnowledgeResource, MessageLog, ContactCategory, MessageStatus, DEFAULT_CATEGORIES, WorkflowStep, User, AgentSuggestion, MediaFile } from './types';
 import { v4 as uuidv4 } from 'uuid';
 import { generateMessage } from './services/geminiService';
 import { getRecommendedWorkflowStep } from './utils/workflows';
 import { whatsappService } from './services/whatsappService';
 import { authService } from './services/authService';
 import { storage } from './services/storage';
+import { generateAgentReply, getAgentSettings } from './services/aiAgentService';
+import { getMediaFiles } from './services/mediaLibraryService';
+import { createBooking, formatConfirmationMessage } from './services/bookingService';
+import MediaLibrary from './components/MediaLibrary';
+import Bookings from './pages/Bookings';
+
 
 // Mock Data for Initial Load
 const initialContacts: Contact[] = [
@@ -223,6 +229,15 @@ function App() {
       return DEFAULT_CATEGORIES;
     }
   });
+
+  // Business type (generic — works for any industry)
+  const [businessType, setBusinessType] = useState<string>(() => {
+    return localStorage.getItem('shepherd_business_type') || 'Organization';
+  });
+
+  // AI Agent state
+  const [suggestedReplies, setSuggestedReplies] = useState<Record<string, AgentSuggestion>>({});
+  const [mediaFiles, setMediaFiles] = useState<MediaFile[]>(getMediaFiles);
 
   const [autoRunEnabled, setAutoRunEnabled] = useState<boolean>(() => {
     return localStorage.getItem('shepherd_autorun_enabled') === 'true';
@@ -721,6 +736,78 @@ function App() {
                 icon: '/vite.svg'
               });
             }
+
+            // ===== AI AGENT AUTO-REPLY =====
+            const agentSettings = getAgentSettings();
+            if (agentSettings.enabled) {
+              console.log('[AIAgent] Generating reply for:', contact.name);
+              // Run async without blocking
+              (async () => {
+                try {
+                  const currentHistory = logs.filter(l => l.contactId === contact.id);
+                  const currentMedia = getMediaFiles();
+                  const result = await generateAgentReply(
+                    contact,
+                    messageData.body || '',
+                    currentHistory,
+                    resources,
+                    currentMedia,
+                    aiName,
+                    organizationName
+                  );
+
+                  if (!result.reply) return; // AI failed silently
+
+                  // Handle booking action
+                  if (result.action?.type === 'CREATE_BOOKING') {
+                    const booking = createBooking({
+                      contactId: contact.id,
+                      contactName: contact.name,
+                      contactPhone: contact.phone,
+                      purpose: result.action.purpose || 'Appointment',
+                      date: result.action.preferredDate,
+                      notes: result.action.notes,
+                    });
+                    console.log('[AIAgent] Created booking:', booking.id);
+                    // Append booking confirmation to the reply
+                    const confirmMsg = formatConfirmationMessage(booking, organizationName);
+                    result.reply = result.reply + '\n\n' + confirmMsg;
+                  }
+
+                  const suggestion: AgentSuggestion = {
+                    contactId: contact.id,
+                    reply: result.reply,
+                    action: result.action,
+                    generatedAt: new Date().toISOString(),
+                  };
+
+                  if (agentSettings.mode === 'suggest') {
+                    // Show suggestion in LiveChats for human review
+                    setSuggestedReplies(prev => ({ ...prev, [contact.id]: suggestion }));
+                  } else if (agentSettings.mode === 'auto-send') {
+                    // Auto-send after configured delay
+                    const delay = (agentSettings.replyDelay || 5) * 1000;
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    const sendResult = await whatsappService.sendMessage(
+                      contact.phone, result.reply, (contact as any).whatsappId, contact.id
+                    );
+                    // Add to logs
+                    const autoLog: MessageLog = {
+                      id: (sendResult as any)?.id || uuidv4(),
+                      contactId: contact.id,
+                      content: result.reply,
+                      timestamp: new Date().toISOString(),
+                      status: MessageStatus.SENT,
+                      type: 'Outbound',
+                    };
+                    setLogs(prev => [...prev, autoLog]);
+                    console.log('[AIAgent] Auto-sent reply to:', contact.name);
+                  }
+                } catch (err) {
+                  console.error('[AIAgent] Failed to generate reply:', err);
+                }
+              })();
+            }
           } else {
             // Check one more time if contact already exists (avoid race condition)
             const alreadyExists = contactsRef.current.some(c =>
@@ -932,6 +1019,8 @@ function App() {
             <NavItem to="/" icon={LayoutDashboard} label="Dashboard" />
             <NavItem to="/contacts" icon={Users} label="Contacts" />
             <NavItem to="/chats" icon={MessageCircle} label="Live Chats" />
+            <NavItem to="/bookings" icon={Calendar} label="Bookings" />
+            <NavItem to="/library" icon={Bot} label="Media Library" />
             <NavItem to="/knowledge" icon={BookOpen} label="Knowledge Base" />
             <NavItem to="/workflows" icon={Zap} label="Workflows" />
             <NavItem to="/groups" icon={Users} label="Groups" />
@@ -966,7 +1055,7 @@ function App() {
                 <span className="text-xs text-teal-100">{user?.email || ''}</span>
               </div>
               <div className="bg-teal-400 text-forest-900 px-4 py-1.5 rounded-full text-sm md:text-base font-medium">
-                {contacts.length} Souls
+                {contacts.length} Contacts
               </div>
               <div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center text-slate-600 font-bold text-lg">{(user?.name || 'U').charAt(0).toUpperCase()}</div>
             </div>
@@ -974,9 +1063,30 @@ function App() {
 
           <div className="p-4 md:p-8 pb-20 md:pb-8 max-w-7xl mx-auto">
             <Routes>
-              <Route path="/" element={<Dashboard contacts={contacts} logs={logs} resources={resources} />} />
+              <Route path="/" element={<Dashboard contacts={contacts} logs={logs} resources={resources} organizationName={organizationName} />} />
               <Route path="/contacts" element={<ContactsManager contacts={contacts} setContacts={setContacts} onAddContact={handleContactAdded} categories={categories} onAddCategory={handleAddCategory} />} />
-              <Route path="/chats" element={<LiveChats contacts={contacts} logs={logs} setLogs={setLogs} />} />
+              <Route path="/chats" element={<LiveChats
+                contacts={contacts}
+                logs={logs}
+                setLogs={setLogs}
+                suggestedReplies={suggestedReplies}
+                onClearSuggestion={(contactId) => setSuggestedReplies(prev => { const n = {...prev}; delete n[contactId]; return n; })}
+                onRegenerateSuggestion={(contactId) => {
+                  const contact = contacts.find(c => c.id === contactId);
+                  if (!contact) return;
+                  const history = logs.filter(l => l.contactId === contactId);
+                  const media = getMediaFiles();
+                  setSuggestedReplies(prev => { const n = {...prev}; delete n[contactId]; return n; });
+                  generateAgentReply(contact, '(regenerate)', history, resources, media, aiName, organizationName)
+                    .then(result => {
+                      if (result.reply) setSuggestedReplies(prev => ({ ...prev, [contactId]: { contactId, reply: result.reply, action: result.action, generatedAt: new Date().toISOString() } }));
+                    }).catch(console.error);
+                }}
+                organizationName={organizationName}
+                mediaFiles={mediaFiles}
+              />} />
+              <Route path="/bookings" element={<Bookings />} />
+              <Route path="/library" element={<MediaLibrary />} />
               <Route path="/knowledge" element={<KnowledgeBase resources={resources} setResources={setResources} />} />
               <Route path="/workflows" element={<WorkflowsManager />} />
               <Route path="/groups" element={<Groups />} />
@@ -988,6 +1098,8 @@ function App() {
                 setOrganizationName={setOrganizationName}
                 autoRunEnabled={autoRunEnabled}
                 setAutoRunEnabled={setAutoRunEnabled}
+                businessType={businessType}
+                setBusinessType={(val) => { setBusinessType(val); localStorage.setItem('shepherd_business_type', val); }}
               />} />
             </Routes>
           </div>

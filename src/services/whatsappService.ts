@@ -5,7 +5,6 @@
  * The backend manages wppconnect-server for WhatsApp interactions
  */
 
-import { Message } from '../types';
 import { authService } from './authService';
 import { BACKEND_URL } from './env';
 

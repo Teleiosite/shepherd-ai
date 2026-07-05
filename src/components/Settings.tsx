@@ -1,6 +1,6 @@
 
 import React, { useRef, useState, useEffect } from 'react';
-import { Bot, Building2, Database, Download, Upload, AlertTriangle, Check, Key, MessageCircle, Save, ExternalLink, Cpu, Globe, Settings as SettingsIcon, Zap, Smartphone, Server, RefreshCw, Loader2, HelpCircle, XCircle, Code2 } from 'lucide-react';
+import { Bot, Building2, Database, Download, Upload, AlertTriangle, Check, Key, MessageCircle, Save, ExternalLink, Cpu, Globe, Settings as SettingsIcon, Zap, Smartphone, Server, RefreshCw, Loader2, HelpCircle, XCircle, Code2, BrainCircuit, Clock, CreditCard, Link2 } from 'lucide-react';
 import { storage } from '../services/storage';
 import { AIConfig } from '../types';
 import { whatsappService, WhatsAppConfig } from '../services/whatsappService';
@@ -13,6 +13,8 @@ interface SettingsProps {
     setOrganizationName: (name: string) => void;
     autoRunEnabled: boolean;
     setAutoRunEnabled: (enabled: boolean) => void;
+    businessType?: string;
+    setBusinessType?: (type: string) => void;
 }
 
 const DEFAULT_MODELS = {
@@ -25,11 +27,20 @@ const DEFAULT_MODELS = {
 
 const Settings: React.FC<SettingsProps> = ({
     aiName, setAiName, organizationName, setOrganizationName,
-    autoRunEnabled, setAutoRunEnabled
+    autoRunEnabled, setAutoRunEnabled,
+    businessType = 'Organization', setBusinessType
 }) => {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [restoreStatus, setRestoreStatus] = useState<'idle' | 'success' | 'error'>('idle');
     const [showBridgeModal, setShowBridgeModal] = useState(false);
+
+    // AI Agent settings
+    const [agentEnabled, setAgentEnabled] = useState(() => localStorage.getItem('shepherd_agent_enabled') === 'true');
+    const [agentMode, setAgentMode] = useState<'suggest' | 'auto-send'>(() => (localStorage.getItem('shepherd_agent_mode') as any) || 'suggest');
+    const [agentTone, setAgentTone] = useState(() => localStorage.getItem('shepherd_agent_tone') || 'Warm, professional, and helpful. Use casual WhatsApp-style language.');
+    const [agentDelay, setAgentDelay] = useState(() => parseInt(localStorage.getItem('shepherd_agent_delay') || '5', 10));
+    const [paymentLink, setPaymentLink] = useState(() => localStorage.getItem('shepherd_payment_link') || '');
+    const [agentSaved, setAgentSaved] = useState(false);
 
     // API & Integration State
     const [aiConfig, setAiConfig] = useState<AIConfig>({
@@ -358,7 +369,7 @@ const Settings: React.FC<SettingsProps> = ({
                 <div className="p-8 space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
-                            <label className="block text-base font-medium text-slate-700 mb-2">Organization / Church Name</label>
+                            <label className="block text-base font-medium text-slate-700 mb-2">Organization / Business Name</label>
                             <div className="relative">
                                 <Building2 className="absolute left-3 top-3 text-slate-400" size={20} />
                                 <input
@@ -378,9 +389,154 @@ const Settings: React.FC<SettingsProps> = ({
                                 className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-base focus:ring-2 focus:ring-primary-500 outline-none"
                             />
                         </div>
+                        <div className="col-span-1 md:col-span-2">
+                            <label className="block text-base font-medium text-slate-700 mb-2">Business / Organization Type</label>
+                            <input
+                                type="text"
+                                value={businessType}
+                                onChange={(e) => setBusinessType?.(e.target.value)}
+                                placeholder="e.g. Church, Restaurant, Hair Salon, Real Estate, E-commerce"
+                                className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-base focus:ring-2 focus:ring-primary-500 outline-none"
+                            />
+                            <p className="text-xs text-slate-400 mt-1">This helps the AI agent adapt its vocabulary and tone to suit your industry.</p>
+                        </div>
                     </div>
                 </div>
             </div>
+
+            {/* AI Agent Configuration Section */}
+            <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+                <div className="p-6 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+                    <h3 className="font-semibold text-xl text-slate-800 flex items-center gap-2">
+                        <BrainCircuit className="text-violet-600" />
+                        AI Agent Auto-Reply Settings
+                    </h3>
+                    {agentSaved && <span className="text-green-600 font-bold flex items-center gap-2 text-sm animate-fade-in"><Check size={18} /> Settings Saved</span>}
+                </div>
+                <div className="p-8 space-y-6">
+                    <div className="flex items-start justify-between gap-4 p-4 bg-violet-50/50 border border-violet-100 rounded-xl">
+                        <div className="flex-1">
+                            <label className="flex items-center gap-3 cursor-pointer group">
+                                <div className="relative">
+                                    <input
+                                        type="checkbox"
+                                        checked={agentEnabled}
+                                        onChange={(e) => {
+                                            const val = e.target.checked;
+                                            setAgentEnabled(val);
+                                            localStorage.setItem('shepherd_agent_enabled', String(val));
+                                        }}
+                                        className="sr-only peer"
+                                    />
+                                    <div className="w-14 h-8 bg-slate-300 rounded-full peer peer-checked:bg-violet-600 transition-colors"></div>
+                                    <div className="absolute left-1 top-1 w-6 h-6 bg-white rounded-full transition-transform peer-checked:translate-x-6 shadow-sm"></div>
+                                </div>
+                                <div>
+                                    <span className="font-semibold text-slate-800 group-hover:text-slate-900">
+                                        {agentEnabled ? 'AI Auto-Reply Enabled' : 'AI Auto-Reply Disabled'}
+                                    </span>
+                                    <p className="text-xs text-slate-500 mt-0.5">
+                                        Let AI suggest or automatically send replies to incoming WhatsApp messages
+                                    </p>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+
+                    {agentEnabled && (
+                        <div className="space-y-6 animate-fade-in">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div>
+                                    <label className="block text-sm font-bold text-slate-700 mb-2 flex items-center gap-2">
+                                        <Bot size={16} /> Reply Mode
+                                    </label>
+                                    <div className="flex bg-slate-100 p-1 rounded-lg">
+                                        <button
+                                            type="button"
+                                            onClick={() => setAgentMode('suggest')}
+                                            className={`flex-1 py-2 text-center rounded-md text-sm font-medium transition-colors ${agentMode === 'suggest' ? 'bg-white shadow text-slate-800' : 'text-slate-500'}`}
+                                        >
+                                            Suggest (Review First)
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setAgentMode('auto-send')}
+                                            className={`flex-1 py-2 text-center rounded-md text-sm font-medium transition-colors ${agentMode === 'auto-send' ? 'bg-white shadow text-slate-800' : 'text-slate-500'}`}
+                                        >
+                                            Auto-Send Immediately
+                                        </button>
+                                    </div>
+                                    <p className="text-xs text-slate-400 mt-1">
+                                        {agentMode === 'suggest' 
+                                            ? 'AI drafts suggestions for you to review & edit in Live Chats.' 
+                                            : 'AI sends responses directly to contacts without waiting.'}
+                                    </p>
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-bold text-slate-700 mb-2 flex items-center gap-2">
+                                        <Clock size={16} /> Auto-Send Delay (seconds)
+                                    </label>
+                                    <input
+                                        type="number"
+                                        min={0}
+                                        max={120}
+                                        value={agentDelay}
+                                        onChange={(e) => setAgentDelay(parseInt(e.target.value, 10) || 0)}
+                                        className="w-full border border-slate-300 rounded-lg px-4 py-2 text-base focus:ring-2 focus:ring-violet-500 outline-none"
+                                    />
+                                    <p className="text-xs text-slate-400 mt-1">Delay before auto-reply to make responses feel more human.</p>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-bold text-slate-700 mb-2 flex items-center gap-2">
+                                    <MessageCircle size={16} /> AI Tone & Instructions
+                                </label>
+                                <textarea
+                                    rows={4}
+                                    value={agentTone}
+                                    onChange={(e) => setAgentTone(e.target.value)}
+                                    placeholder="Describe your tone. E.g. Warm and friendly, casual Nigerian pastor tone, or professional client success manager tone."
+                                    className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-base focus:ring-2 focus:ring-violet-500 outline-none leading-relaxed"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-bold text-slate-700 mb-2 flex items-center gap-2">
+                                    <Link2 size={16} /> Payment Link URL
+                                </label>
+                                <input
+                                    type="text"
+                                    value={paymentLink}
+                                    onChange={(e) => setPaymentLink(e.target.value)}
+                                    placeholder="https://paystack.com/pay/your-link"
+                                    className="w-full border border-slate-300 rounded-lg px-4 py-2 text-base focus:ring-2 focus:ring-violet-500 outline-none"
+                                />
+                                <p className="text-xs text-slate-400 mt-1">AI will automatically paste this link when contacts ask how to pay, give, or buy.</p>
+                            </div>
+
+                            <div>
+                                <button
+                                    onClick={() => {
+                                        localStorage.setItem('shepherd_agent_enabled', String(agentEnabled));
+                                        localStorage.setItem('shepherd_agent_mode', agentMode);
+                                        localStorage.setItem('shepherd_agent_tone', agentTone);
+                                        localStorage.setItem('shepherd_agent_delay', String(agentDelay));
+                                        localStorage.setItem('shepherd_payment_link', paymentLink);
+                                        setAgentSaved(true);
+                                        setTimeout(() => setAgentSaved(false), 2000);
+                                    }}
+                                    className="bg-violet-600 text-white px-6 py-2.5 rounded-lg hover:bg-violet-700 font-bold transition-all shadow-sm active:scale-95"
+                                >
+                                    Save Agent Settings
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </div>
+
 
             {/* Backend Architecture Section */}
             <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
