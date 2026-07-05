@@ -104,6 +104,13 @@ class GroupMessageUpdate(BaseModel):
     error_message: Optional[str] = None
 
 
+class GroupMessageEdit(BaseModel):
+    """Schema for editing a group message."""
+    content: str
+    scheduled_for: Optional[datetime] = None
+
+
+
 # Sync Schemas
 class GroupSyncData(BaseModel):
     """Data from bridge for group sync."""

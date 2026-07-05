@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Users, Settings, UserPlus, MessageCircle, Calendar } from 'lucide-react';
+import { X, Users, Settings, UserPlus, MessageCircle, Calendar, Clock } from 'lucide-react';
 import { BACKEND_URL } from '../services/env';
 
 interface Group {
@@ -30,7 +30,7 @@ interface Props {
 }
 
 export default function GroupDetailsModal({ group, onClose }: Props) {
-    const [activeTab, setActiveTab] = useState<'settings' | 'members'>('settings');
+    const [activeTab, setActiveTab] = useState<'settings' | 'members' | 'scheduled'>('settings');
     const [members, setMembers] = useState<GroupMember[]>([]);
     const [settings, setSettings] = useState({
         auto_welcome_enabled: group.auto_welcome_enabled,
@@ -41,9 +41,20 @@ export default function GroupDetailsModal({ group, onClose }: Props) {
     const [saving, setSaving] = useState(false);
     const [loadingMembers, setLoadingMembers] = useState(false);
 
+    // Scheduled messages states
+    const [scheduledMessages, setScheduledMessages] = useState<any[]>([]);
+    const [loadingMessages, setLoadingMessages] = useState(false);
+    const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+    const [editContent, setEditContent] = useState('');
+    const [editDate, setEditDate] = useState('');
+    const [editTime, setEditTime] = useState('');
+    const [savingEdit, setSavingEdit] = useState(false);
+
     useEffect(() => {
         if (activeTab === 'members') {
             loadMembers();
+        } else if (activeTab === 'scheduled') {
+            loadScheduledMessages();
         }
     }, [activeTab]);
 
@@ -69,6 +80,93 @@ export default function GroupDetailsModal({ group, onClose }: Props) {
             console.error('Error loading members:', error);
         } finally {
             setLoadingMembers(false);
+        }
+    };
+
+    const loadScheduledMessages = async () => {
+        try {
+            setLoadingMessages(true);
+            const token = localStorage.getItem('authToken');
+            const response = await fetch(
+                `${BACKEND_URL}/api/groups/${group.id}/messages`,
+                {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                }
+            );
+
+            if (!response.ok) throw new Error('Failed to load messages');
+
+            const data = await response.json();
+            // Filter only pending/scheduled messages
+            const pending = data.filter((msg: any) => msg.status === 'pending');
+            setScheduledMessages(pending);
+        } catch (error) {
+            console.error('Error loading scheduled messages:', error);
+        } finally {
+            setLoadingMessages(false);
+        }
+    };
+
+    const handleSaveMessageEdit = async (messageId: string) => {
+        try {
+            setSavingEdit(true);
+            const token = localStorage.getItem('authToken');
+            
+            let scheduledFor = null;
+            if (editDate && editTime) {
+                scheduledFor = new Date(`${editDate}T${editTime}`).toISOString();
+            }
+
+            const response = await fetch(`${BACKEND_URL}/api/groups/messages/${messageId}`, {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    content: editContent,
+                    scheduled_for: scheduledFor
+                })
+            });
+
+            if (!response.ok) throw new Error('Failed to update message');
+
+            alert('Message updated successfully!');
+            setEditingMessageId(null);
+            loadScheduledMessages();
+        } catch (error) {
+            console.error('Error updating message:', error);
+            alert('Failed to update message');
+        } finally {
+            setSavingEdit(false);
+        }
+    };
+
+    const handleCancelMessage = async (messageId: string) => {
+        if (!window.confirm('Are you sure you want to cancel and delete this scheduled message?')) {
+            return;
+        }
+
+        try {
+            const token = localStorage.getItem('authToken');
+            const response = await fetch(`${BACKEND_URL}/api/groups/messages/${messageId}`, {
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            if (!response.ok) throw new Error('Failed to delete message');
+
+            alert('Scheduled message cancelled successfully!');
+            loadScheduledMessages();
+        } catch (error) {
+            console.error('Error deleting message:', error);
+            alert('Failed to delete message');
         }
     };
 
@@ -141,6 +239,16 @@ export default function GroupDetailsModal({ group, onClose }: Props) {
                     >
                         <Users className="w-5 h-5 inline mr-2" />
                         Members
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('scheduled')}
+                        className={`flex-1 px-6 py-3 font-medium transition ${activeTab === 'scheduled'
+                            ? 'text-teal-600 border-b-2 border-teal-600'
+                            : 'text-gray-600 hover:text-gray-900'
+                            }`}
+                    >
+                        <Calendar className="w-5 h-5 inline mr-2" />
+                        Queue / Scheduled
                     </button>
                 </div>
 
@@ -264,6 +372,119 @@ export default function GroupDetailsModal({ group, onClose }: Props) {
                                                 <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-medium">
                                                     {member.contact_category}
                                                 </span>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {activeTab === 'scheduled' && (
+                        <div>
+                            {loadingMessages ? (
+                                <div className="text-center py-12">
+                                    <div className="animate-spin w-8 h-8 border-4 border-teal-500 border-t-transparent rounded-full mx-auto mb-4"></div>
+                                    <p className="text-gray-600">Loading scheduled messages...</p>
+                                </div>
+                            ) : scheduledMessages.length === 0 ? (
+                                <div className="text-center py-12 text-gray-500">
+                                    <Calendar className="w-16 h-16 mx-auto mb-4 opacity-50 text-slate-400" />
+                                    <p className="font-semibold text-slate-600">No scheduled messages</p>
+                                    <p className="text-sm mt-1">Use the Send button on a group to schedule a message.</p>
+                                </div>
+                            ) : (
+                                <div className="space-y-4">
+                                    {scheduledMessages.map((msg) => (
+                                        <div key={msg.id} className="p-4 bg-gray-50 rounded-xl border border-gray-200 shadow-sm space-y-3">
+                                            {editingMessageId === msg.id ? (
+                                                <div className="space-y-3 animate-fade-in">
+                                                    <div>
+                                                        <label className="block text-xs font-semibold text-slate-600 mb-1">Message Content</label>
+                                                        <textarea
+                                                            value={editContent}
+                                                            onChange={(e) => setEditContent(e.target.value)}
+                                                            rows={3}
+                                                            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none text-sm bg-white"
+                                                        />
+                                                    </div>
+                                                    <div className="flex gap-3">
+                                                        <div className="flex-1">
+                                                            <label className="block text-xs font-semibold text-slate-600 mb-1">Date</label>
+                                                            <input
+                                                                type="date"
+                                                                value={editDate}
+                                                                onChange={(e) => setEditDate(e.target.value)}
+                                                                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs bg-white"
+                                                            />
+                                                        </div>
+                                                        <div className="flex-1">
+                                                            <label className="block text-xs font-semibold text-slate-600 mb-1">Time</label>
+                                                            <input
+                                                                type="time"
+                                                                value={editTime}
+                                                                onChange={(e) => setEditTime(e.target.value)}
+                                                                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs bg-white"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex justify-end gap-2 pt-1">
+                                                        <button
+                                                            onClick={() => setEditingMessageId(null)}
+                                                            className="px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-medium text-slate-700 hover:bg-slate-100 bg-white"
+                                                        >
+                                                            Cancel
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleSaveMessageEdit(msg.id)}
+                                                            disabled={savingEdit || !editContent.trim()}
+                                                            className="px-3 py-1.5 bg-teal-500 hover:bg-teal-600 text-white rounded-lg text-xs font-medium disabled:opacity-50"
+                                                        >
+                                                            {savingEdit ? 'Saving...' : 'Save Changes'}
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <div className="flex items-start justify-between gap-4">
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="text-sm text-slate-800 whitespace-pre-wrap font-medium">{msg.content}</p>
+                                                        <div className="flex items-center gap-1.5 text-xs text-slate-500 mt-2">
+                                                            <Clock size={12} />
+                                                            <span>
+                                                                Scheduled for: {msg.scheduled_for ? new Date(msg.scheduled_for).toLocaleString() : 'Immediate'}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex items-center gap-1 shrink-0">
+                                                        <button
+                                                            onClick={() => {
+                                                                setEditingMessageId(msg.id);
+                                                                setEditContent(msg.content);
+                                                                if (msg.scheduled_for) {
+                                                                    const dt = new Date(msg.scheduled_for);
+                                                                    setEditDate(dt.toISOString().split('T')[0]);
+                                                                    const hrs = String(dt.getHours()).padStart(2, '0');
+                                                                    const mins = String(dt.getMinutes()).padStart(2, '0');
+                                                                    setEditTime(`${hrs}:${mins}`);
+                                                                } else {
+                                                                    setEditDate('');
+                                                                    setEditTime('');
+                                                                }
+                                                            }}
+                                                            className="p-1.5 text-slate-400 hover:text-teal-600 hover:bg-teal-50 rounded-lg transition"
+                                                            title="Edit message / schedule"
+                                                        >
+                                                            <Settings className="w-4 h-4" />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleCancelMessage(msg.id)}
+                                                            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
+                                                            title="Cancel message"
+                                                        >
+                                                            <X className="w-4 h-4" />
+                                                        </button>
+                                                    </div>
+                                                </div>
                                             )}
                                         </div>
                                     ))}

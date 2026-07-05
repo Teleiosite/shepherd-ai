@@ -12,7 +12,7 @@ from app.models.user import User
 from app.schemas.group import (
     GroupResponse, GroupCreate, GroupUpdate,
     GroupMemberResponse,  GroupMemberWithContact, MemberJoinedEvent,
-    GroupMessageCreate, GroupMessageResponse, GroupMessageUpdate,
+    GroupMessageCreate, GroupMessageResponse, GroupMessageUpdate, GroupMessageEdit,
     GroupSyncRequest, GroupSyncResponse, WelcomeQueueItem
 )
 from app.dependencies import get_current_active_user, get_current_user_optional
@@ -515,3 +515,70 @@ async def mark_welcome_sent(
     # In a production system, you'd track this in a separate table
     # For now, we'll just return success
     return {"success": True}
+
+
+@router.put("/messages/{message_id}", response_model=GroupMessageResponse)
+async def edit_group_message(
+    message_id: str,
+    message_edit: GroupMessageEdit,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Edit a pending/scheduled group message."""
+    import uuid
+    message = db.query(GroupMessage).filter(
+        GroupMessage.id == uuid.UUID(message_id),
+        GroupMessage.organization_id == current_user.organization_id
+    ).first()
+    
+    if not message:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Message not found"
+        )
+        
+    if message.status != "pending":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only pending/scheduled messages can be edited"
+        )
+        
+    message.content = message_edit.content
+    message.scheduled_for = message_edit.scheduled_for
+    
+    db.commit()
+    db.refresh(message)
+    
+    return message
+
+
+@router.delete("/messages/{message_id}")
+async def delete_group_message(
+    message_id: str,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Delete/Cancel a pending/scheduled group message."""
+    import uuid
+    message = db.query(GroupMessage).filter(
+        GroupMessage.id == uuid.UUID(message_id),
+        GroupMessage.organization_id == current_user.organization_id
+    ).first()
+    
+    if not message:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Message not found"
+        )
+        
+    if message.status != "pending":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only pending/scheduled messages can be deleted"
+        )
+        
+    db.delete(message)
+    db.commit()
+    
+    return {"success": True}
+
