@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Query
 import httpx
 from bs4 import BeautifulSoup
+from urllib.parse import quote_plus
 import re
 
 router = APIRouter()
@@ -20,7 +21,7 @@ async def browse_url(
         url = q
     else:
         # Search query -> use DuckDuckGo HTML search
-        url = f"https://html.duckduckgo.com/html/?q={httpx.encode_query_param(q)}"
+        url = f"https://html.duckduckgo.com/html/?q={quote_plus(q)}"
 
     try:
         async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
