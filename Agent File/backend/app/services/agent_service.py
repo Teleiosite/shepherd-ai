@@ -239,7 +239,14 @@ Your task: Continue this flow naturally. Ask for whatever is still missing.
 
         available_files_str = ", ".join(available_files_list) if available_files_list else "None uploaded yet."
 
-        # 7. Build system prompt
+        # 7. Build real-time calendar & clock context
+        today_day_name = now.strftime("%A")
+        today_date_str = now.strftime("%Y-%m-%d")
+        tomorrow_dt = now + timedelta(days=1)
+        tomorrow_day_name = tomorrow_dt.strftime("%A")
+        tomorrow_date_str = tomorrow_dt.strftime("%Y-%m-%d")
+        current_time_str = now.strftime("%I:%M %p").lstrip("0")
+
         ai_name = org.ai_name or "Shepherd AI"
         org_name = org.name or "Our Organization"
         biz_type = org.ai_business_type or "Organization"
@@ -247,6 +254,11 @@ Your task: Continue this flow naturally. Ask for whatever is still missing.
         payment_link = org.ai_payment_link or "Not configured"
 
         system_prompt = f"""You are {ai_name}, the AI representative for {org_name} ({biz_type}).
+
+CURRENT CALENDAR & CLOCK CONTEXT:
+- Today is: {today_day_name}, {now.strftime('%B %d, %Y')} ({today_date_str})
+- Current Time: {current_time_str}
+- Tomorrow is: {tomorrow_day_name}, {tomorrow_dt.strftime('%B %d, %Y')} ({tomorrow_date_str})
 
 CONTACT DETAILS:
 - Name: {contact.name}
@@ -256,7 +268,7 @@ CONTACT DETAILS:
 
 TONE & STYLE:
 {tone}
-Write WhatsApp-appropriate messages (concise, friendly, helpful, natural). Never sound like an emotionless robot.
+Write WhatsApp-appropriate messages (concise, warm, attentive, helpful, natural). Never sound like an emotionless robot. Always answer greetings, check-ins ("are you there", "hello"), and continue conversations seamlessly.
 
 KNOWLEDGE BASE:
 {kb_context}
@@ -271,6 +283,15 @@ PAYMENT LINK:
 
 CONVERSATION HISTORY:
 {history_text}
+
+APPOINTMENT & BOOKING RULES:
+1. When a contact wants to book, find out: (1) Purpose/Topic, (2) Date, (3) Time.
+2. When the contact gives relative dates like "tomorrow", "this time tomorrow", "Friday at 2pm", ALWAYS convert:
+   - "preferredDate": Exact ISO date format "{tomorrow_date_str}" (YYYY-MM-DD). NEVER return relative words.
+   - "preferredTime": Standard 12-hour format "{current_time_str}" (e.g. "10:30 PM", "03:00 PM").
+3. When confirming an appointment or when the contact says "yes", "correct", or confirms details:
+   - Set "type": "CREATE_BOOKING" with finalized "purpose", "preferredDate" (YYYY-MM-DD), and "preferredTime" (HH:MM AM/PM).
+   - Your "reply" MUST explicitly confirm the booking to the contact (e.g. "🎉 Awesome, {contact.name}! Your appointment for [Topic] is booked for tomorrow, {tomorrow_dt.strftime('%B %d, %Y')} at {current_time_str}. Looking forward to speaking with you!").
 
 RESPONSE FORMAT — You must return ONLY a JSON object:
 {{
@@ -288,13 +309,13 @@ RESPONSE FORMAT — You must return ONLY a JSON object:
 }}
 
 ACTION TYPE GUIDE:
-- NONE: standard conversational reply
-- CREATE_BOOKING: customer wants to book/schedule an appointment
+- NONE: standard conversational reply / answering greetings and questions
+- CREATE_BOOKING: customer wants to book/schedule an appointment (include purpose, preferredDate YYYY-MM-DD, preferredTime HH:MM AM/PM)
 - SEND_DOCUMENT: customer asks for a document, price list, menu, PDF, or form
 - SEND_IMAGE: customer asks for a photo, map, or picture
 - SEND_PAYMENT_LINK: customer asks how to pay, fees, pricing, or purchase
 - WEB_SEARCH: customer asks factual/timely question not in knowledge base
-- FLAG_FOR_HUMAN: customer is angry, in crisis, or asks for a human manager
+- FLAG_FOR_HUMAN: customer is in crisis, angry, or asks for a human manager
 """
 
         user_turn = f"New message from {contact.name}:\n\"{incoming_text}\"\n\nGenerate your JSON response."
@@ -324,50 +345,50 @@ ACTION TYPE GUIDE:
             contact.ai_paused_until = now + timedelta(hours=12)
             db.commit()
             logger.info(f"🚩 Chat with {contact.name} flagged for human triage.")
-            # Still send a compassionate acknowledging message if provided
             if not reply_text:
                 reply_text = "I've escalated your message to our leadership team. A representative will reach out to you shortly."
 
         elif action_type == "CREATE_BOOKING":
-            purpose = action.get("purpose") or "Appointment"
-            pref_date = action.get("preferredDate") or ""
-            pref_time = action.get("preferredTime") or ""
+            purpose = action.get("purpose") or (collected_data.get("purpose") if session else None) or "Appointment"
+            raw_date = (action.get("preferredDate") or (collected_data.get("date") if session else None) or "").strip().lower()
+            raw_time = (action.get("preferredTime") or (collected_data.get("time") if session else None) or "").strip()
 
-            # If date/time specified, create booking in DB
-            if pref_date or pref_time:
-                booking = Booking(
-                    contact_id=contact.id,
-                    contact_name=contact.name,
-                    contact_phone=contact.phone,
-                    purpose=purpose,
-                    date=pref_date,
-                    time=pref_time,
-                    notes=f"Auto-created by AI Agent on {now.strftime('%Y-%m-%d %H:%M')}",
-                    status="pending"
-                )
-                db.add(booking)
-                db.commit()
-                logger.info(f"📅 Booking created automatically for {contact.name}: {purpose} on {pref_date} {pref_time}")
-                # Clear session if active
-                if session:
-                    db.delete(session)
-                    db.commit()
+            # Resolve relative dates (tomorrow / today / ISO)
+            import re
+            resolved_date = ""
+            if "tomorrow" in raw_date:
+                resolved_date = (now + timedelta(days=1)).strftime("%Y-%m-%d")
+            elif "today" in raw_date:
+                resolved_date = now.strftime("%Y-%m-%d")
+            elif re.search(r"\b\d{4}-\d{2}-\d{2}\b", raw_date):
+                resolved_date = re.search(r"\b\d{4}-\d{2}-\d{2}\b", raw_date).group(0)
             else:
-                # Start or update booking session for slot filling
-                if not session:
-                    session = ConversationSession(
-                        contact_id=contact.id,
-                        organization_id=org_id,
-                        active_flow="booking",
-                        collected_slots=json.dumps({"purpose": purpose}),
-                        turn_count=1,
-                        expires_at=now + timedelta(minutes=30)
-                    )
-                    db.add(session)
-                else:
-                    collected_data["purpose"] = purpose
-                    session.collected_slots = json.dumps(collected_data)
-                    session.turn_count += 1
+                resolved_date = (now + timedelta(days=1)).strftime("%Y-%m-%d")
+
+            # Resolve time
+            resolved_time = ""
+            if not raw_time or "this time" in raw_time.lower() or "around" in raw_time.lower() or raw_time.lower() == "now":
+                resolved_time = now.strftime("%I:%M %p").lstrip("0")
+            else:
+                resolved_time = raw_time
+
+            # Create confirmed booking in DB
+            booking = Booking(
+                contact_id=contact.id,
+                contact_name=contact.name,
+                contact_phone=contact.phone,
+                purpose=purpose,
+                date=resolved_date,
+                time=resolved_time,
+                notes=f"Auto-created by AI Agent on {now.strftime('%Y-%m-%d %H:%M')}",
+                status="confirmed"
+            )
+            db.add(booking)
+            db.commit()
+            logger.info(f"📅 Booking confirmed for {contact.name}: {purpose} on {resolved_date} at {resolved_time}")
+
+            if session:
+                db.delete(session)
                 db.commit()
 
         # 10. Deliver reply to customer via WhatsApp

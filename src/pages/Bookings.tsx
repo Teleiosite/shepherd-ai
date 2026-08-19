@@ -110,7 +110,12 @@ const Bookings: React.FC = () => {
                         <div className="space-y-0.5">
                           <p className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
                             <Calendar size={12} className="text-slate-400" />
-                            {new Date(booking.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                            {(() => {
+                              const d = new Date(booking.date);
+                              return !isNaN(d.getTime())
+                                ? d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+                                : booking.date;
+                            })()}
                           </p>
                           {booking.time && (
                             <p className="text-[11px] text-slate-500 flex items-center gap-1.5">

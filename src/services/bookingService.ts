@@ -141,9 +141,15 @@ export const refreshFromBackend = async (): Promise<Booking[]> => {
  * Format a booking confirmation message to send to the contact via WhatsApp.
  */
 export const formatConfirmationMessage = (booking: Booking, organizationName: string): string => {
-  const dateStr = booking.date
-    ? new Date(booking.date).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
-    : 'date to be confirmed';
+  let dateStr = 'date to be confirmed';
+  if (booking.date) {
+    const d = new Date(booking.date);
+    if (!isNaN(d.getTime())) {
+      dateStr = d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    } else {
+      dateStr = booking.date;
+    }
+  }
   const timeStr = booking.time ? ` at ${booking.time}` : '';
   return `✅ Booking Confirmed!\n\nHi ${booking.contactName}, your booking with ${organizationName} has been confirmed:\n\n📌 Purpose: ${booking.purpose}\n📅 Date: ${dateStr}${timeStr}\n🔖 Reference: ${booking.id.slice(0, 8).toUpperCase()}\n\nWe look forward to seeing you! Reply here if you need to reschedule.`;
 };
