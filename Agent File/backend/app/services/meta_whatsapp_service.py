@@ -124,24 +124,75 @@ class MetaWhatsAppService:
                 # Media is already a URL
                 media_payload = {"link": media_data}
             else:
-                # Need to upload base64 to Meta first
-                # For now, return error - users should provide URLs or we implement upload
-                return {
-                    "success": False,
-                    "error": "Base64 media upload not yet implemented. Please provide media URL or use WPPConnect.",
-                    "provider": "meta"
-                }
+                # Upload base64 directly to Meta's /media endpoint
+                import base64
+                import re
+
+                file_bytes = None
+                content_type = "application/octet-stream"
+
+                if media_data.startswith("data:"):
+                    # Format: data:<mime_type>;base64,<data>
+                    header, b64_content = media_data.split(",", 1)
+                    mime_match = re.search(r"data:([^;]+);", header)
+                    if mime_match:
+                        content_type = mime_match.group(1)
+                    file_bytes = base64.b64decode(b64_content)
+                else:
+                    file_bytes = base64.b64decode(media_data)
+                    if meta_media_type == "image":
+                        content_type = "image/jpeg"
+                    elif meta_media_type == "video":
+                        content_type = "video/mp4"
+                    else:
+                        content_type = "application/pdf"
+
+                upload_filename = filename or (
+                    "image.png" if "png" in content_type else (
+                        "image.jpg" if meta_media_type == "image" else (
+                            "video.mp4" if meta_media_type == "video" else "document.pdf"
+                        )
+                    )
+                )
+
+                async with httpx.AsyncClient(timeout=60.0) as client:
+                    upload_response = await client.post(
+                        f"{self.base_url}/{self.phone_number_id}/media",
+                        headers={
+                            "Authorization": f"Bearer {self.access_token}"
+                        },
+                        data={
+                            "messaging_product": "whatsapp",
+                            "type": content_type
+                        },
+                        files={
+                            "file": (upload_filename, file_bytes, content_type)
+                        }
+                    )
+
+                    if upload_response.status_code != 200:
+                        err_json = upload_response.json()
+                        logger.error(f"Meta Media Upload failed: {err_json}")
+                        return {
+                            "success": False,
+                            "error": err_json.get("error", {}).get("message", f"Media upload failed (HTTP {upload_response.status_code})"),
+                            "provider": "meta"
+                        }
+
+                    media_id = upload_response.json().get("id")
+                    media_payload = {"id": media_id}
             
             # Build message payload
             message_payload = {
                 "messaging_product": "whatsapp",
+                "recipient_type": "individual",
                 "to": to_phone,
                 "type": meta_media_type,
                 meta_media_type: media_payload
             }
             
-            # Add caption if provided (only for image/video)
-            if caption and meta_media_type in ["image", "video"]:
+            # Add caption if provided (only for image/video/document)
+            if caption and meta_media_type in ["image", "video", "document"]:
                 message_payload[meta_media_type]["caption"] = caption
             
             # Add filename for documents

@@ -310,3 +310,88 @@ async def update_bridge_config(
         db.rollback()
         logger.error(f"Error updating bridge URL: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to update bridge URL: {str(e)}")
+
+
+@router.get("/ai-autopilot")
+async def get_ai_autopilot_settings(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Get AI auto-reply and autopilot configuration for the organization"""
+    result = db.execute(
+        text("""
+            SELECT ai_auto_reply_enabled, ai_reply_mode, ai_reply_delay_seconds, ai_tone, ai_payment_link, ai_business_type
+            FROM organizations
+            WHERE id = :org_id
+        """),
+        {"org_id": str(current_user.organization_id)}
+    ).fetchone()
+
+    if not result:
+        return {
+            "enabled": False,
+            "mode": "suggest",
+            "reply_delay": 5,
+            "tone": "Warm, professional, and helpful. Use casual WhatsApp-style language.",
+            "payment_link": "",
+            "business_type": "Organization"
+        }
+
+    return {
+        "enabled": str(result[0]).lower() == "true",
+        "mode": result[1] or "suggest",
+        "reply_delay": result[2] or 5,
+        "tone": result[3] or "Warm, professional, and helpful. Use casual WhatsApp-style language.",
+        "payment_link": result[4] or "",
+        "business_type": result[5] or "Organization"
+    }
+
+
+@router.put("/ai-autopilot")
+async def update_ai_autopilot_settings(
+    settings_data: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Update AI auto-reply and autopilot configuration for the organization"""
+    try:
+        enabled = "true" if settings_data.get("enabled") in [True, "true", "True", 1] else "false"
+        mode = settings_data.get("mode", "suggest")
+        reply_delay = int(settings_data.get("reply_delay", 5))
+        tone = settings_data.get("tone", "Warm, professional, and helpful.")
+        payment_link = settings_data.get("payment_link", "")
+        business_type = settings_data.get("business_type", "Organization")
+
+        db.execute(
+            text("""
+                UPDATE organizations
+                SET ai_auto_reply_enabled = :enabled,
+                    ai_reply_mode = :mode,
+                    ai_reply_delay_seconds = :delay,
+                    ai_tone = :tone,
+                    ai_payment_link = :payment_link,
+                    ai_business_type = :business_type
+                WHERE id = :org_id
+            """),
+            {
+                "enabled": enabled,
+                "mode": mode,
+                "delay": reply_delay,
+                "tone": tone,
+                "payment_link": payment_link,
+                "business_type": business_type,
+                "org_id": str(current_user.organization_id)
+            }
+        )
+        db.commit()
+
+        return {
+            "success": True,
+            "message": "AI autopilot settings updated successfully",
+            "enabled": enabled == "true",
+            "mode": mode
+        }
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error updating AI autopilot settings: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

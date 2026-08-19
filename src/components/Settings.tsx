@@ -151,6 +151,21 @@ const Settings: React.FC<SettingsProps> = ({
                         }));
                     }
                 }
+
+                // 4. Fetch AI Autopilot Settings
+                const autoRes = await fetch(`${backendUrl}/api/settings/ai-autopilot`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (autoRes.ok) {
+                    const autoData = await autoRes.json();
+                    setAgentEnabled(autoData.enabled);
+                    setAgentMode(autoData.mode || 'auto-send');
+                    setAgentDelay(autoData.reply_delay || 5);
+                    if (autoData.tone) setAgentTone(autoData.tone);
+                    if (autoData.payment_link) setPaymentLink(autoData.payment_link);
+                    localStorage.setItem('shepherd_agent_enabled', String(autoData.enabled));
+                    localStorage.setItem('shepherd_agent_mode', autoData.mode || 'auto-send');
+                }
             } catch (err) {
                 console.error('Failed to load settings from DB:', err);
             }
@@ -518,12 +533,36 @@ const Settings: React.FC<SettingsProps> = ({
 
                             <div>
                                 <button
-                                    onClick={() => {
+                                    onClick={async () => {
                                         localStorage.setItem('shepherd_agent_enabled', String(agentEnabled));
                                         localStorage.setItem('shepherd_agent_mode', agentMode);
                                         localStorage.setItem('shepherd_agent_tone', agentTone);
                                         localStorage.setItem('shepherd_agent_delay', String(agentDelay));
                                         localStorage.setItem('shepherd_payment_link', paymentLink);
+
+                                        try {
+                                            const token = localStorage.getItem('authToken');
+                                            const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
+                                            if (token) {
+                                                await fetch(`${backendUrl}/api/settings/ai-autopilot`, {
+                                                    method: 'PUT',
+                                                    headers: {
+                                                        'Content-Type': 'application/json',
+                                                        'Authorization': `Bearer ${token}`
+                                                    },
+                                                    body: JSON.stringify({
+                                                        enabled: agentEnabled,
+                                                        mode: agentMode,
+                                                        reply_delay: agentDelay,
+                                                        tone: agentTone,
+                                                        payment_link: paymentLink
+                                                    })
+                                                });
+                                            }
+                                        } catch (e) {
+                                            console.error('Error saving AI autopilot to backend:', e);
+                                        }
+
                                         setAgentSaved(true);
                                         setTimeout(() => setAgentSaved(false), 2000);
                                     }}

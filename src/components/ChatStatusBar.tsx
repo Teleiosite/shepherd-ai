@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Bot, UserCheck, AlertTriangle, CheckCircle, Clock, ShieldAlert, ChevronDown } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Bot, UserCheck, AlertTriangle, CheckCircle, Clock, ShieldAlert, ChevronDown, Zap, Lightbulb } from 'lucide-react';
 import { BACKEND_URL } from '../services/env';
 
 interface ChatStatusBarProps {
@@ -23,7 +23,18 @@ export const ChatStatusBar: React.FC<ChatStatusBarProps> = ({
 }) => {
   const [currentStatus, setCurrentStatus] = useState(conversationStatus);
   const [isAiPaused, setIsAiPaused] = useState(aiPaused);
+  const [agentMode, setAgentMode] = useState<'auto-send' | 'suggest'>(() => {
+    return (localStorage.getItem('shepherd_agent_mode') as any) || 'auto-send';
+  });
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    setIsAiPaused(aiPaused);
+  }, [aiPaused]);
+
+  useEffect(() => {
+    setCurrentStatus(conversationStatus);
+  }, [conversationStatus]);
 
   const handleStatusUpdate = async (newStatus: string) => {
     try {
@@ -71,36 +82,83 @@ export const ChatStatusBar: React.FC<ChatStatusBarProps> = ({
     }
   };
 
+  const handleModeChange = async (newMode: 'auto-send' | 'suggest') => {
+    setAgentMode(newMode);
+    localStorage.setItem('shepherd_agent_enabled', 'true');
+    localStorage.setItem('shepherd_agent_mode', newMode);
+
+    // If AI was paused for this contact, resume it
+    if (isAiPaused) {
+      handleAiToggle(false);
+    }
+
+    try {
+      const token = localStorage.getItem('authToken');
+      if (token) {
+        await fetch(`${BACKEND_URL}/api/settings/ai-autopilot`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            enabled: true,
+            mode: newMode
+          })
+        });
+      }
+    } catch (e) {
+      console.error('Failed to sync AI autopilot mode:', e);
+    }
+  };
+
   return (
     <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2 bg-slate-50 border-b border-slate-200 text-xs">
       {/* AI Autopilot Control */}
       <div className="flex items-center gap-2">
         <span className="text-slate-500 font-medium flex items-center gap-1">
           <Bot size={14} className={isAiPaused ? "text-amber-500" : "text-teal-600"} />
-          AI Auto-Reply:
+          AI Mode:
         </span>
+
         {isAiPaused ? (
-          <button
-            onClick={() => handleAiToggle(false)}
-            disabled={loading}
-            className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 border border-amber-300 font-medium hover:bg-amber-200 transition-colors"
-            title="AI is paused for this contact. Click to resume."
-          >
-            <Clock size={12} />
-            <span>Paused (Human Handover)</span>
-            <span className="underline ml-1">Resume</span>
-          </button>
+          <div className="flex items-center gap-1.5">
+            <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 border border-amber-300 font-medium flex items-center gap-1">
+              <Clock size={12} />
+              <span>Paused (Human Handover)</span>
+            </span>
+            <button
+              onClick={() => handleAiToggle(false)}
+              disabled={loading}
+              className="text-[11px] font-semibold text-teal-700 bg-teal-50 border border-teal-300 hover:bg-teal-100 px-2 py-0.5 rounded transition-colors"
+            >
+              Resume AI
+            </button>
+          </div>
         ) : (
-          <button
-            onClick={() => handleAiToggle(true)}
-            disabled={loading}
-            className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-teal-100 text-teal-800 border border-teal-300 font-medium hover:bg-teal-200 transition-colors"
-            title="AI is responding autonomously. Click to pause for 2 hours while you chat."
-          >
-            <span className="w-1.5 h-1.5 rounded-full bg-teal-500 animate-pulse"></span>
-            <span>Active</span>
-            <span className="text-[10px] text-teal-700 bg-white/70 px-1 rounded ml-1">Take over</span>
-          </button>
+          <div className="flex items-center gap-1.5">
+            <select
+              value={agentMode}
+              onChange={(e) => handleModeChange(e.target.value as any)}
+              className={`px-2 py-0.5 rounded text-xs font-semibold border focus:outline-none transition-colors ${
+                agentMode === 'auto-send'
+                  ? 'bg-teal-50 text-teal-800 border-teal-300'
+                  : 'bg-indigo-50 text-indigo-800 border-indigo-300'
+              }`}
+            >
+              <option value="auto-send">🟢 Auto-Reply (Autonomous)</option>
+              <option value="suggest">💡 Suggest Mode (Co-pilot)</option>
+            </select>
+
+            <button
+              onClick={() => handleAiToggle(true)}
+              disabled={loading}
+              className="text-[10px] text-slate-600 hover:text-slate-900 bg-white border border-slate-300 hover:bg-slate-100 px-1.5 py-0.5 rounded transition-colors"
+              title="Pause AI for 2 hours to chat manually"
+            >
+              Take over
+            </button>
+          </div>
         )}
       </div>
 
