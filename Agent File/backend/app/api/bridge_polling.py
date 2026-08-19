@@ -65,12 +65,17 @@ async def get_pending_messages(
         )
     
     # Get pending messages for this organization with contact details
+    # Only return messages with no scheduled time OR whose scheduled time has already passed.
+    # This prevents the bridge from sending future-scheduled messages early.
+    from sqlalchemy import or_
+    now = datetime.utcnow()
     pending = db.query(Message, Contact).join(
         Contact, Message.contact_id == Contact.id
     ).filter(
         Message.organization_id == user.organization_id,
         Message.type == "Outbound",
-        Message.status == "Pending"
+        Message.status == "Pending",
+        or_(Message.scheduled_for == None, Message.scheduled_for <= now)
     ).order_by(Message.created_at).limit(50).all()
     
     messages = []

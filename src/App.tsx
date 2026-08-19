@@ -4,7 +4,7 @@ import { HashRouter, Routes, Route, Link, useLocation, useNavigate, Navigate } f
 import { LayoutDashboard, Users, BookOpen, Send, Menu, Settings as SettingsIcon, MessageCircle, Zap, Loader2, LogOut, Calendar, Bot } from 'lucide-react';
 import Dashboard from './components/Dashboard';
 import ContactsManager from './components/ContactsManager';
-import KnowledgeBase from './components/KnowledgeBase';
+import KnowledgeBase from './components/KnowledgeBase-enhanced';
 import CampaignScheduler from './components/CampaignScheduler';
 import LiveChats from './components/LiveChats';
 import Settings from './components/Settings';
@@ -954,13 +954,13 @@ function App() {
     setUser(null);
   };
 
-  const NavItem = ({ to, icon: Icon, label }: { to: string, icon: any, label: string }) => {
+  const NavItem = ({ to, icon: Icon, label, badge }: { to: string, icon: any, label: string, badge?: number }) => {
     const location = useLocation();
     const isActive = location.pathname === to;
     return (
       <Link
         to={to}
-        className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 text-base ${isActive
+        className={`flex items-center justify-between px-4 py-3 rounded-xl transition-all duration-200 text-base ${isActive
           ? 'font-medium'
           : 'hover:bg-white/10'
           }`}
@@ -969,8 +969,15 @@ function App() {
           color: isActive ? 'white' : 'var(--teal-100)'
         }}
       >
-        <Icon size={22} />
-        {isSidebarOpen && <span>{label}</span>}
+        <div className="flex items-center gap-3">
+          <Icon size={22} />
+          {isSidebarOpen && <span>{label}</span>}
+        </div>
+        {badge && badge > 0 ? (
+          <span className="bg-teal-300 text-forest-900 text-xs font-bold px-2 py-0.5 rounded-full">
+            {badge}
+          </span>
+        ) : null}
       </Link>
     );
   };
@@ -1018,7 +1025,7 @@ function App() {
           <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
             <NavItem to="/" icon={LayoutDashboard} label="Dashboard" />
             <NavItem to="/contacts" icon={Users} label="Contacts" />
-            <NavItem to="/chats" icon={MessageCircle} label="Live Chats" />
+            <NavItem to="/chats" icon={MessageCircle} label="Live Chats" badge={logs.filter(l => l.type === 'Inbound' && l.status !== MessageStatus.RESPONDED).length} />
             <NavItem to="/bookings" icon={Calendar} label="Bookings" />
             <NavItem to="/library" icon={Bot} label="Media Library" />
             <NavItem to="/knowledge" icon={BookOpen} label="Knowledge Base" />

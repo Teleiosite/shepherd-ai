@@ -50,7 +50,12 @@ async def create_resource(
     db.commit()
     db.refresh(new_resource)
     
-    # TODO: Trigger background task to generate embeddings
+    # Trigger RAG embedding generation
+    try:
+        from app.services.rag_service import index_resource
+        await index_resource(db, str(new_resource.id))
+    except Exception as rag_err:
+        print(f"Error indexing resource: {rag_err}")
     
     return KnowledgeResourceResponse.model_validate(new_resource)
 

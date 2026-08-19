@@ -122,7 +122,84 @@ def init_bookings_table():
         pass
 
 
+def init_chat_tables():
+    """Ensure chat status columns on contacts, organization AI fields, and conversation_sessions exist."""
+    chat_sql = """
+    -- Add AI agent settings to organizations if not present
+    ALTER TABLE organizations ADD COLUMN IF NOT EXISTS wppconnect_bridge_url VARCHAR(500) DEFAULT 'http://localhost:3001';
+    ALTER TABLE organizations ADD COLUMN IF NOT EXISTS ai_provider VARCHAR(50) DEFAULT 'gemini';
+    ALTER TABLE organizations ADD COLUMN IF NOT EXISTS ai_api_key TEXT;
+    ALTER TABLE organizations ADD COLUMN IF NOT EXISTS ai_model VARCHAR(100) DEFAULT 'gemini-2.0-flash';
+    ALTER TABLE organizations ADD COLUMN IF NOT EXISTS ai_base_url TEXT;
+    ALTER TABLE organizations ADD COLUMN IF NOT EXISTS ai_auto_reply_enabled VARCHAR(10) DEFAULT 'false';
+    ALTER TABLE organizations ADD COLUMN IF NOT EXISTS ai_reply_mode VARCHAR(50) DEFAULT 'suggest';
+    ALTER TABLE organizations ADD COLUMN IF NOT EXISTS ai_reply_delay_seconds VARCHAR(10) DEFAULT '5';
+    ALTER TABLE organizations ADD COLUMN IF NOT EXISTS ai_tone TEXT DEFAULT 'Warm, professional, and helpful.';
+    ALTER TABLE organizations ADD COLUMN IF NOT EXISTS ai_payment_link TEXT;
+    ALTER TABLE organizations ADD COLUMN IF NOT EXISTS ai_business_type VARCHAR(100) DEFAULT 'Organization';
+
+    -- Add chat handover & triage columns to contacts if not present
+    ALTER TABLE contacts ADD COLUMN IF NOT EXISTS conversation_status VARCHAR(50) DEFAULT 'open';
+    ALTER TABLE contacts ADD COLUMN IF NOT EXISTS ai_paused_until TIMESTAMP WITH TIME ZONE;
+
+    -- Create conversation_sessions table for multi-turn booking/qualification flows
+    CREATE TABLE IF NOT EXISTS conversation_sessions (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        contact_id UUID NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
+        organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        active_flow VARCHAR(50) NOT NULL,
+        collected_slots TEXT DEFAULT '{}',
+        turn_count INTEGER DEFAULT 0,
+        expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_sessions_contact ON conversation_sessions(contact_id);
+    CREATE INDEX IF NOT EXISTS idx_sessions_expiry ON conversation_sessions(expires_at);
+    """
+    try:
+        with engine.connect() as conn:
+            conn.execute(text(chat_sql))
+            conn.commit()
+            logger.info("✅ Chat and session tables/columns ready")
+    except Exception as e:
+        logger.error(f"❌ Error initializing Chat/Session schema: {e}")
+        pass
+
+
+def init_media_table():
+    """Create Media Library table if it doesn't exist."""
+    media_sql = """
+    CREATE TABLE IF NOT EXISTS media_library (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        name VARCHAR(255) NOT NULL,
+        description TEXT,
+        type VARCHAR(50) NOT NULL,
+        mime_type VARCHAR(100) NOT NULL,
+        file_key VARCHAR(500),
+        url TEXT NOT NULL,
+        file_name VARCHAR(255) NOT NULL,
+        file_size INTEGER DEFAULT 0,
+        upload_date TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_media_org ON media_library(organization_id);
+    """
+    try:
+        with engine.connect() as conn:
+            conn.execute(text(media_sql))
+            conn.commit()
+            logger.info("✅ Media Library table ready")
+    except Exception as e:
+        logger.error(f"❌ Error initializing Media Library table: {e}")
+        pass
+
+
 if __name__ == "__main__":
     init_groups_tables()
     init_bookings_table()
+    init_chat_tables()
+    init_media_table()
 

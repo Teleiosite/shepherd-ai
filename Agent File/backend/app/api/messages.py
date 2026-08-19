@@ -21,6 +21,7 @@ async def list_messages(
     contact_id: Optional[str] = None,
     status: Optional[str] = None,
     type: Optional[str] = None,
+    since: Optional[datetime] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
@@ -35,6 +36,9 @@ async def list_messages(
         
     if type:
         query = query.filter(Message.type == type)
+
+    if since:
+        query = query.filter(Message.created_at > since)
         
     # Order by created_at desc
     messages = query.order_by(desc(Message.created_at)).offset(skip).limit(limit).all()

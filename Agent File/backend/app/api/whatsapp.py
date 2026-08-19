@@ -419,6 +419,19 @@ async def process_received_message(
     db.add(message)
     db.commit()
     logger.info(f"✅ Incoming message saved for contact {contact.name} (ID: {contact.id}) in organization {org_id}")
+
+    # Trigger 24/7 Cloud AI Agent auto-reply in background
+    try:
+        from app.services.agent_service import trigger_ai_agent_reply
+        await trigger_ai_agent_reply(
+            contact_id=contact.id,
+            incoming_text=content,
+            org_id=org_id,
+            db=db
+        )
+    except Exception as agent_err:
+        logger.error(f"Error in backend AI agent auto-reply: {agent_err}")
+
     return contact.id, message.id
 
 
@@ -464,14 +477,16 @@ async def whatsapp_incoming_webhook(
                         # Find organization by phone_number_id
                         org_id = None
                         allowed_org_ids = None
+                        org_row_data = None
                         if phone_number_id:
                             org_rows = db.execute(
-                                text("SELECT id FROM organizations WHERE whatsapp_phone_id = :phone_id"),
+                                text("SELECT id, ai_api_key, whatsapp_access_token FROM organizations WHERE whatsapp_phone_id = :phone_id"),
                                 {"phone_id": str(phone_number_id)}
                             ).fetchall()
                             if org_rows:
                                 allowed_org_ids = [row[0] for row in org_rows]
                                 org_id = allowed_org_ids[0]
+                                org_row_data = org_rows[0]
                         
                         sender_name = "WhatsApp User"
                         if contacts_list:
@@ -489,14 +504,48 @@ async def whatsapp_incoming_webhook(
                             
                             if msg_type == "text":
                                 msg_content = msg.get("text", {}).get("body", "")
-                            elif msg_type in ["image", "video", "audio", "voice", "document", "sticker"]:
+                            elif msg_type in ["audio", "voice"]:
+                                media_obj = msg.get(msg_type, {})
+                                media_id = media_obj.get("id")
+                                msg_has_media = True
+                                msg_media_type = "audio"
+                                msg_media_url = f"meta_media_id:{media_id}"
+                                msg_content = "[Voice message]"
+                                
+                                # Voice note transcription using Google Gemini Multimodal API
+                                if media_id and org_row_data and org_row_data[2]:
+                                    try:
+                                        import httpx
+                                        from app.services.agent_service import transcribe_voice_note
+                                        meta_token = org_row_data[2]
+                                        async with httpx.AsyncClient(timeout=15.0) as client:
+                                            info_res = await client.get(
+                                                f"https://graph.facebook.com/v18.0/{media_id}",
+                                                headers={"Authorization": f"Bearer {meta_token}"}
+                                            )
+                                            if info_res.status_code == 200:
+                                                down_url = info_res.json().get("url")
+                                                mime = info_res.json().get("mime_type", "audio/ogg")
+                                                if down_url:
+                                                    bin_res = await client.get(down_url, headers={"Authorization": f"Bearer {meta_token}"})
+                                                    if bin_res.status_code == 200:
+                                                        transcript = await transcribe_voice_note(
+                                                            audio_bytes=bin_res.content,
+                                                            mime_type=mime,
+                                                            api_key=org_row_data[1]
+                                                        )
+                                                        if transcript and not transcript.startswith("["):
+                                                            msg_content = f"[Voice Note]: {transcript}"
+                                    except Exception as tr_err:
+                                        logger.warning(f"Failed to transcribe voice note: {tr_err}")
+                            elif msg_type in ["image", "video", "document", "sticker"]:
                                 media_obj = msg.get(msg_type, {})
                                 media_id = media_obj.get("id")
                                 caption = media_obj.get("caption") or media_obj.get("filename") or f"[{msg_type}]"
                                 msg_content = caption
                                 if media_id:
                                     msg_has_media = True
-                                    msg_media_type = "audio" if msg_type == "voice" else msg_type
+                                    msg_media_type = msg_type
                                     msg_media_url = f"meta_media_id:{media_id}"
                             else:
                                 msg_content = f"[{msg_type} message]"
@@ -518,7 +567,7 @@ async def whatsapp_incoming_webhook(
                             message_id_str = str(m_id)
             return {
                 "success": True, 
-                "message": "Message received and saved from Meta",
+                "message": "Message received and processed from Meta",
                 "contact_id": contact_id_str,
                 "message_id": message_id_str
             }

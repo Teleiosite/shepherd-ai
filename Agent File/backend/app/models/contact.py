@@ -21,6 +21,8 @@ class Contact(Base):
     join_date = Column(DateTime(timezone=True), nullable=False)
     notes = Column(String, nullable=True)
     status = Column(String(50), default="Active")
+    conversation_status = Column(String(50), default="open")  # open, escalated, resolved
+    ai_paused_until = Column(DateTime(timezone=True), nullable=True)
     last_contacted = Column(DateTime(timezone=True), nullable=True)
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

@@ -26,34 +26,79 @@ async def run_daily_workflows():
 
 
 async def process_scheduled_messages():
-    """Job to process scheduled messages."""
-    # This runs frequently (e.g. every minute) to check for messages due to be sent
+    """
+    Job to process scheduled messages that are now due.
+    Runs every minute via APScheduler.
+
+    For Meta Cloud API orgs: sends directly via HTTP.
+    For WPPConnect orgs: Fix 1 (bridge_polling date filter) handles delivery —
+    the bridge will now see these messages since their scheduled_for has passed.
+    """
     db = SessionLocal()
     try:
-        # Find messages that are pending and scheduled for now or earlier
-        now = datetime.now()
+        now = datetime.utcnow()
+
+        # Find Pending messages whose scheduled time has now passed
+        from sqlalchemy import or_
+        from app.models.contact import Contact
         messages = db.query(Message).filter(
-            Message.status == "Pending",  # Capitalized to match workflow/message creation
+            Message.status == "Pending",
+            Message.scheduled_for != None,
             Message.scheduled_for <= now
         ).all()
-        
+
         if not messages:
             return
-            
-        print(f"[{now}] Found {len(messages)} scheduled messages to send.")
-        
+
+        print(f"[{now}] Found {len(messages)} scheduled messages due for delivery.")
+
+        # Import here to avoid circular imports
+        from app.api.whatsapp import get_organization_whatsapp_config
+        from app.services.meta_whatsapp_service import get_meta_whatsapp_service
+
         for message in messages:
-            # Update status to Sent (bridge will actually send via WhatsApp)
-            message.status = "Sent"
-            message.sent_at = now
-            
-            # TODO: Call WhatsApp service to actually send
-            # await whatsapp_service.send_message(message)
-            
+            try:
+                contact = db.query(Contact).filter(Contact.id == message.contact_id).first()
+                if not contact:
+                    print(f"  ⚠ Skipping message {message.id} — contact not found")
+                    message.status = "Failed"
+                    continue
+
+                config = get_organization_whatsapp_config(db, message.organization_id)
+
+                if config["delivery_method"] == "meta":
+                    # Send immediately via Meta Cloud API
+                    meta_service = get_meta_whatsapp_service(
+                        config["phone_number_id"],
+                        config["access_token"]
+                    )
+                    result = await meta_service.send_message(
+                        to_phone=contact.phone,
+                        message=message.content
+                    )
+                    if result.get("success"):
+                        message.status = "Sent"
+                        message.sent_at = now
+                        message.whatsapp_message_id = result.get("messageId")
+                        print(f"  ✅ Sent scheduled message {message.id} to {contact.phone} via Meta")
+                    else:
+                        message.status = "Failed"
+                        print(f"  ❌ Failed to send {message.id}: {result.get('error')}")
+                else:
+                    # WPPConnect bridge delivery:
+                    # Fix 1 already ensures the bridge will now pick this up
+                    # because scheduled_for <= now. No action needed here.
+                    print(f"  ↗ Message {message.id} now visible to WPPConnect bridge poller")
+
+            except Exception as msg_err:
+                print(f"  ❌ Error processing message {message.id}: {msg_err}")
+                message.status = "Failed"
+
         db.commit()
-        
+
     except Exception as e:
-        print(f"[{datetime.now()}] Error processing scheduled messages: {e}")
+        print(f"[{datetime.utcnow()}] Error in process_scheduled_messages: {e}")
+        db.rollback()
     finally:
         db.close()
 

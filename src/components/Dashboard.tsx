@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { Contact, MessageLog } from '../types';
 import { Users, UserPlus, BookOpen, MessageCircle } from 'lucide-react';
@@ -26,18 +26,33 @@ const Dashboard: React.FC<DashboardProps> = ({ contacts, logs, resources, organi
     { label: 'Total Contacts', value: contacts.length, icon: Users, color: 'bg-blue-500' },
     { label: 'Categories', value: categoryData.length, icon: UserPlus, color: 'bg-green-500' },
     { label: 'Resources', value: resources.length, icon: BookOpen, color: 'bg-purple-500' },
-    { label: 'Messages Sent', value: logs.filter(l => l.status === 'Sent').length, icon: MessageCircle, color: 'bg-orange-500' },
+    { label: 'Messages Sent', value: logs.filter(l => l.status === 'Sent' || l.type === 'Outbound').length, icon: MessageCircle, color: 'bg-orange-500' },
   ];
 
-  const activityData = [
-    { name: 'Mon', sent: 12 },
-    { name: 'Tue', sent: 19 },
-    { name: 'Wed', sent: 3 },
-    { name: 'Thu', sent: 5 },
-    { name: 'Fri', sent: 2 },
-    { name: 'Sat', sent: 10 },
-    { name: 'Sun', sent: 25 },
-  ];
+  // Dynamically calculate weekly activity from message logs for the last 7 days
+  const activityData = useMemo(() => {
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const counts = Array(7).fill(0);
+    const now = new Date();
+
+    logs.forEach(log => {
+      if (log.type === 'Outbound' && log.timestamp) {
+        const logDate = new Date(log.timestamp);
+        if (!isNaN(logDate.getTime())) {
+          const daysDiff = Math.floor((now.getTime() - logDate.getTime()) / (1000 * 60 * 60 * 24));
+          if (daysDiff >= 0 && daysDiff < 7) {
+            counts[logDate.getDay()]++;
+          }
+        }
+      }
+    });
+
+    // Return in order starting from Monday to Sunday or based on days of the week
+    return ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(name => {
+      const idx = name === 'Sun' ? 0 : dayNames.indexOf(name);
+      return { name, sent: counts[idx] };
+    });
+  }, [logs]);
 
   return (
     <div className="space-y-6 md:space-y-8 animate-fade-in">

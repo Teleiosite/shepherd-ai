@@ -32,6 +32,35 @@ const saveMediaFiles = (files: MediaFile[]): void => {
   }
 };
 
+import { BACKEND_URL } from './env';
+
+export const fetchMediaFilesFromBackend = async (): Promise<MediaFile[]> => {
+  try {
+    const token = localStorage.getItem('authToken');
+    if (!token) return getMediaFiles();
+    const res = await fetch(`${BACKEND_URL}/api/media-library/`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!res.ok) return getMediaFiles();
+    const data = await res.json();
+    const mapped: MediaFile[] = data.map((item: any) => ({
+      id: item.id,
+      name: item.name,
+      type: item.type,
+      mimeType: item.mime_type,
+      url: item.url,
+      fileName: item.file_name,
+      uploadDate: item.upload_date,
+      description: item.description
+    }));
+    saveMediaFiles(mapped);
+    return mapped;
+  } catch (e) {
+    console.warn('Could not sync media from backend, using local:', e);
+    return getMediaFiles();
+  }
+};
+
 export const addMediaFile = (data: {
   name: string;
   type: MediaFile['type'];
@@ -60,6 +89,51 @@ export const removeMediaFile = (fileId: string): void => {
 export const updateMediaFile = (fileId: string, updates: Partial<Pick<MediaFile, 'name' | 'description'>>): void => {
   const files = getMediaFiles().map(f => f.id === fileId ? { ...f, ...updates } : f);
   saveMediaFiles(files);
+};
+
+export const addMediaFileAsync = async (data: {
+  name: string;
+  type: MediaFile['type'];
+  mimeType: string;
+  url: string;
+  fileName: string;
+  file?: File;
+  description?: string;
+}): Promise<MediaFile> => {
+  const localFile = addMediaFile({
+    name: data.name,
+    type: data.type,
+    mimeType: data.mimeType,
+    url: data.url,
+    fileName: data.fileName,
+    description: data.description
+  });
+
+  try {
+    const token = localStorage.getItem('authToken');
+    if (token && data.file) {
+      const formData = new FormData();
+      formData.append('file', data.file);
+      formData.append('name', data.name);
+      if (data.description) formData.append('description', data.description);
+      formData.append('media_type', data.type);
+
+      const res = await fetch(`${BACKEND_URL}/api/media-library/upload`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formData
+      });
+      if (res.ok) {
+        const serverData = await res.json();
+        localFile.id = serverData.id;
+        localFile.url = serverData.url;
+      }
+    }
+  } catch (e) {
+    console.warn('Backend media upload error, saved locally:', e);
+  }
+
+  return localFile;
 };
 
 /**

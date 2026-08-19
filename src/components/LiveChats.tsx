@@ -1,10 +1,11 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Contact, MessageLog, MessageStatus, MessageAttachment, AgentSuggestion, AgentAction, MediaFile } from '../types';
-import { User, Search, Send, Phone, MessageSquare, Clock, Check, CheckCheck, Paperclip, Smile, X, Image as ImageIcon, Calendar, Edit2, ExternalLink, AlertCircle, Bot, RefreshCw, CheckCircle } from 'lucide-react';
+import { User, Search, Send, Phone, MessageSquare, Clock, Check, CheckCheck, Paperclip, Smile, X, Image as ImageIcon, Calendar, Edit2, ExternalLink, AlertCircle, Bot, RefreshCw, CheckCircle, Flag, Filter } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { whatsappService } from '../services/whatsappService';
 import { findFileByName } from '../services/mediaLibraryService';
+import { ChatStatusBar } from './ChatStatusBar';
 
 interface LiveChatsProps {
   contacts: Contact[];
@@ -29,6 +30,8 @@ const LiveChats: React.FC<LiveChatsProps> = ({
 }) => {
   const [selectedContactId, setSelectedContactId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'open' | 'escalated'>('all');
+  const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
   const [newMessage, setNewMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
 
@@ -84,10 +87,13 @@ const LiveChats: React.FC<LiveChatsProps> = ({
   // Filter and sort contacts: pin lastMessagedContactId first, then sort by last message time (newest first)
   const filteredContacts = React.useMemo(() => {
     return contacts
-      .filter(c =>
-        c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        c.phone.includes(searchTerm)
-      )
+      .filter(c => {
+        const matchesSearch = c.name.toLowerCase().includes(searchTerm.toLowerCase()) || c.phone.includes(searchTerm);
+        if (!matchesSearch) return false;
+        if (statusFilter === 'all') return true;
+        const convStatus = (c as any).conversation_status || 'open';
+        return convStatus === statusFilter;
+      })
       .sort((a, b) => {
         // Fix 1: Pin the contact we just messaged immediately to top
         if (a.id === lastMessagedContactId) return -1;
@@ -107,7 +113,7 @@ const LiveChats: React.FC<LiveChatsProps> = ({
         const joinTimeB = new Date(b.joinDate).getTime() || 0;
         return joinTimeB - joinTimeA;
       });
-  }, [contacts, searchTerm, contactLastMessageTimes, lastMessagedContactId]);
+  }, [contacts, searchTerm, statusFilter, contactLastMessageTimes, lastMessagedContactId]);
 
   // Get messages for selected contact
   const currentMessages = logs
@@ -372,13 +378,36 @@ const LiveChats: React.FC<LiveChatsProps> = ({
     <div className="flex h-[calc(100vh-140px)] bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
       {/* Sidebar: Contact List */}
       <div className={`w-full md:w-96 border-r border-slate-100 flex flex-col ${selectedContactId ? 'hidden md:flex' : 'flex'}`}>
-        <div className="p-5 border-b border-slate-100">
+        <div className="p-4 border-b border-slate-100 space-y-2">
+          {/* Status Filter Chips */}
+          <div className="flex gap-1.5 p-1 bg-slate-100 rounded-lg text-xs font-medium">
+            <button
+              onClick={() => setStatusFilter('all')}
+              className={`flex-1 py-1.5 rounded-md transition-colors ${statusFilter === 'all' ? 'bg-white text-slate-800 shadow-xs font-semibold' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+              All
+            </button>
+            <button
+              onClick={() => setStatusFilter('open')}
+              className={`flex-1 py-1.5 rounded-md transition-colors ${statusFilter === 'open' ? 'bg-white text-green-700 shadow-xs font-semibold' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+              Open
+            </button>
+            <button
+              onClick={() => setStatusFilter('escalated')}
+              className={`flex-1 py-1.5 rounded-md transition-colors flex items-center justify-center gap-1 ${statusFilter === 'escalated' ? 'bg-white text-red-700 shadow-xs font-semibold' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+              <Flag size={12} className="text-red-500" />
+              <span>Flagged</span>
+            </button>
+          </div>
+
           <div className="relative">
-            <Search className="absolute left-3 top-3 text-slate-400" size={20} />
+            <Search className="absolute left-3 top-2.5 text-slate-400" size={18} />
             <input
               type="text"
               placeholder="Search contacts..."
-              className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-full text-base focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 transition-all"
+              className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 transition-all"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
@@ -389,37 +418,62 @@ const LiveChats: React.FC<LiveChatsProps> = ({
           {filteredContacts.map(contact => {
             const lastMsg = getLastMessage(contact.id);
             const isSelected = selectedContactId === contact.id;
+            const convStatus = (contact as any).conversation_status || 'open';
+            const unread = unreadCounts[contact.id] || 0;
 
             return (
               <div
                 key={contact.id}
-                onClick={() => setSelectedContactId(contact.id)}
-                className={`p-5 flex gap-4 cursor-pointer transition-colors border-b border-slate-50 hover:bg-slate-50 ${isSelected ? 'bg-primary-50 border-primary-100' : 'bg-white'}`}
+                onClick={() => {
+                  setSelectedContactId(contact.id);
+                  setUnreadCounts(prev => {
+                    const next = { ...prev };
+                    delete next[contact.id];
+                    return next;
+                  });
+                }}
+                className={`p-4 flex gap-3 cursor-pointer transition-colors border-b border-slate-50 hover:bg-slate-50 ${isSelected ? 'bg-primary-50 border-primary-100' : 'bg-white'}`}
               >
                 <div className="relative shrink-0">
-                  <div className="w-12 h-12 rounded-full bg-slate-200 flex items-center justify-center text-slate-600 font-bold text-lg">
+                  <div className="w-11 h-11 rounded-full bg-slate-200 flex items-center justify-center text-slate-600 font-bold text-base">
                     {contact.name.charAt(0)}
                   </div>
-                  <div className={`absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full border-2 border-white ${contact.status === 'Active' ? 'bg-green-500' : 'bg-slate-400'}`}></div>
+                  {convStatus === 'escalated' ? (
+                    <div className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white flex items-center justify-center text-[10px] font-bold" title="Flagged for human">!</div>
+                  ) : (
+                    <div className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white ${contact.status === 'Active' ? 'bg-green-500' : 'bg-slate-400'}`}></div>
+                  )}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex justify-between items-baseline mb-1">
-                    <h4 className={`font-semibold text-base truncate ${isSelected ? 'text-primary-900' : 'text-slate-800'}`}>
-                      {contact.name}
-                    </h4>
+                    <div className="flex items-center gap-1.5 truncate">
+                      <h4 className={`font-semibold text-sm truncate ${isSelected ? 'text-primary-900' : 'text-slate-800'}`}>
+                        {contact.name}
+                      </h4>
+                      {convStatus === 'escalated' && (
+                        <span className="text-[10px] bg-red-100 text-red-700 px-1 rounded font-bold">FLAGGED</span>
+                      )}
+                    </div>
                     {lastMsg && (
-                      <span className="text-xs text-slate-400 shrink-0 ml-2">
+                      <span className="text-[11px] text-slate-400 shrink-0 ml-1">
                         {new Date(lastMsg.timestamp).toLocaleDateString() === new Date().toLocaleDateString()
                           ? formatTime(lastMsg.timestamp)
                           : new Date(lastMsg.timestamp).toLocaleDateString()}
                       </span>
                     )}
                   </div>
-                  <p className="text-sm text-slate-500 truncate">
-                    {lastMsg ? (
-                      lastMsg.attachment ? <span className="flex items-center gap-1"><ImageIcon size={14} /> Photo</span> : lastMsg.content
-                    ) : <span className="italic opacity-50">No messages yet</span>}
-                  </p>
+                  <div className="flex justify-between items-center">
+                    <p className="text-xs text-slate-500 truncate">
+                      {lastMsg ? (
+                        lastMsg.attachment ? <span className="flex items-center gap-1"><ImageIcon size={12} /> Photo</span> : lastMsg.content
+                      ) : <span className="italic opacity-50">No messages yet</span>}
+                    </p>
+                    {unread > 0 && (
+                      <span className="ml-1 shrink-0 bg-teal-500 text-white text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
+                        {unread}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
             );
@@ -432,22 +486,22 @@ const LiveChats: React.FC<LiveChatsProps> = ({
         {selectedContact ? (
           <>
             {/* Chat Header */}
-            <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-white shrink-0 shadow-sm z-10">
-              <div className="flex items-center gap-4">
+            <div className="px-6 py-3 border-b border-slate-100 flex justify-between items-center bg-white shrink-0 shadow-xs z-10">
+              <div className="flex items-center gap-3">
                 <button
                   onClick={() => setSelectedContactId(null)}
-                  className="md:hidden text-slate-500 hover:text-slate-700 mr-2"
+                  className="md:hidden text-slate-500 hover:text-slate-700 mr-1"
                 >
                   ←
                 </button>
-                <div className="w-11 h-11 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center font-bold text-lg">
+                <div className="w-10 h-10 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center font-bold text-base">
                   {selectedContact.name.charAt(0)}
                 </div>
                 <div>
-                  <h3 className="font-bold text-lg text-slate-800 leading-tight">{selectedContact.name}</h3>
-                  <div className="flex items-center gap-2 text-sm text-slate-500">
-                    <span className="bg-slate-100 px-2 py-0.5 rounded-md font-medium text-xs uppercase tracking-wide">{selectedContact.category}</span>
-                    <span className="text-xs">• {selectedContact.phone}</span>
+                  <h3 className="font-bold text-base text-slate-800 leading-tight">{selectedContact.name}</h3>
+                  <div className="flex items-center gap-2 text-xs text-slate-500">
+                    <span className="bg-slate-100 px-1.5 py-0.5 rounded font-medium text-[10px] uppercase tracking-wide">{selectedContact.category}</span>
+                    <span>• {selectedContact.phone}</span>
                   </div>
                 </div>
               </div>
@@ -455,17 +509,32 @@ const LiveChats: React.FC<LiveChatsProps> = ({
                 <button
                   type="button"
                   onClick={handleOpenWhatsApp}
-                  className="p-2.5 text-green-600 bg-green-50 hover:bg-green-100 rounded-full transition-colors flex items-center gap-2"
+                  className="p-2 text-green-600 bg-green-50 hover:bg-green-100 rounded-full transition-colors flex items-center gap-1.5"
                   title="Open in WhatsApp App"
                 >
-                  <ExternalLink size={20} />
-                  <span className="text-sm font-bold hidden md:inline">Open App</span>
+                  <ExternalLink size={16} />
+                  <span className="text-xs font-bold hidden md:inline">Open App</span>
                 </button>
-                <button type="button" className="p-2.5 text-slate-400 hover:text-green-600 hover:bg-slate-50 rounded-full transition-colors" title="Call">
-                  <Phone size={22} />
+                <button type="button" className="p-2 text-slate-400 hover:text-green-600 hover:bg-slate-50 rounded-full transition-colors" title="Call">
+                  <Phone size={18} />
                 </button>
               </div>
             </div>
+
+            {/* AI Control & Conversation Status Toolbar */}
+            <ChatStatusBar
+              contactId={selectedContact.id}
+              contactName={selectedContact.name}
+              conversationStatus={(selectedContact as any).conversation_status || 'open'}
+              aiPaused={Boolean((selectedContact as any).ai_paused_until && new Date((selectedContact as any).ai_paused_until).getTime() > Date.now())}
+              aiPausedUntil={(selectedContact as any).ai_paused_until}
+              onStatusChange={(newStatus) => {
+                (selectedContact as any).conversation_status = newStatus;
+              }}
+              onAiPauseToggle={(isPaused) => {
+                (selectedContact as any).ai_paused_until = isPaused ? new Date(Date.now() + 7200000).toISOString() : undefined;
+              }}
+            />
 
             {/* Messages List */}
             <div className="flex-1 overflow-y-auto p-4 md:p-6 bg-slate-50/50 space-y-3">

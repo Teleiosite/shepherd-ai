@@ -1,12 +1,13 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Contact, KnowledgeResource, MessageLog, MessageStatus, WorkflowStep } from '../types';
 import { generateMessage } from '../services/geminiService';
 import { whatsappService } from '../services/whatsappService';
+import { storage } from '../services/storage';
 import { BACKEND_URL } from '../services/env';
 import { Send, RefreshCw, MessageSquare, AlertCircle, Calendar, Clock, CheckCircle, Users, CheckSquare, Square, Zap, Play, Trash2, X, Check, Loader2 } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
-import { getRecommendedWorkflowStep } from '../utils/workflows';
+import { getRecommendedWorkflowStep, WORKFLOWS } from '../utils/workflows';
 
 interface CampaignSchedulerProps {
     contacts: Contact[];
@@ -19,6 +20,44 @@ interface CampaignSchedulerProps {
 }
 
 const CampaignScheduler: React.FC<CampaignSchedulerProps> = ({ contacts, resources, logs, setLogs, aiName, organizationName, categories }) => {
+    // Dynamic Workflows State
+    const [dynamicWorkflows, setDynamicWorkflows] = useState<Record<string, WorkflowStep[]>>({});
+
+    useEffect(() => {
+        storage.getWorkflowSteps().then(steps => {
+            if (Array.isArray(steps)) {
+                const grouped = steps.reduce((acc: any, step: any) => {
+                    if (!acc[step.category]) acc[step.category] = [];
+                    acc[step.category].push({
+                        day: Number(step.day),
+                        title: step.title,
+                        prompt: step.prompt
+                    });
+                    return acc;
+                }, {});
+                setDynamicWorkflows(grouped);
+            }
+        }).catch(err => {
+            console.warn('Could not fetch custom workflow steps from backend, falling back to local workflows:', err);
+        });
+    }, []);
+
+    // Helper to get matching workflow step (user-uploaded custom workflows prioritized over built-in defaults)
+    const getSmartStep = (joinDate: string, category: string): WorkflowStep | null => {
+        const steps = dynamicWorkflows[category] || WORKFLOWS[category];
+        if (!steps || steps.length === 0) return null;
+        
+        const joinDateMidnight = new Date(joinDate);
+        joinDateMidnight.setHours(0, 0, 0, 0);
+        const nowMidnight = new Date();
+        nowMidnight.setHours(0, 0, 0, 0);
+        const diffDays = Math.ceil((nowMidnight.getTime() - joinDateMidnight.getTime()) / (1000 * 60 * 60 * 24));
+
+        return steps.find(s => s.day === diffDays)
+            || steps.find(s => s.day === diffDays - 1)
+            || steps.find(s => s.day === diffDays - 2)
+            || null;
+    };
     // Selection State
     const [selectedContactIds, setSelectedContactIds] = useState<Set<string>>(new Set());
 
@@ -82,7 +121,7 @@ const CampaignScheduler: React.FC<CampaignSchedulerProps> = ({ contacts, resourc
 
                 // If smart flow override is missing (manual mode), use dropdown
                 if (!overridePrompt && activeTab === 'smart') {
-                    const step = getRecommendedWorkflowStep(contact.joinDate, contact.category);
+                    const step = getSmartStep(contact.joinDate, contact.category);
                     finalPrompt = step ? step.prompt : "General check-in";
                 }
 
@@ -280,7 +319,7 @@ const CampaignScheduler: React.FC<CampaignSchedulerProps> = ({ contacts, resourc
 
     const getDueContacts = () => {
         return contacts.map(c => {
-            const step = getRecommendedWorkflowStep(c.joinDate, c.category);
+            const step = getSmartStep(c.joinDate, c.category);
             return { contact: c, step };
         })
             .filter((item): item is { contact: Contact, step: WorkflowStep } => item.step !== null)
