@@ -8,6 +8,9 @@ import json
 import logging
 import re
 import base64
+import asyncio
+import tempfile
+import os
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, Tuple
 from uuid import UUID, uuid4
@@ -150,11 +153,10 @@ async def transcribe_voice_note(
     if clean_mime in ("audio/ogg", "audio/oga", "audio/opus"):
         try:
             import imageio_ffmpeg
-            import asyncio, tempfile, os as _os
             ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
             with tempfile.TemporaryDirectory() as tmpdir:
-                ogg_path = _os.path.join(tmpdir, "input.ogg")
-                mp3_path = _os.path.join(tmpdir, "output.mp3")
+                ogg_path = os.path.join(tmpdir, "input.ogg")
+                mp3_path = os.path.join(tmpdir, "output.mp3")
                 with open(ogg_path, "wb") as f:
                     f.write(audio_bytes)
                 proc = await asyncio.create_subprocess_exec(
@@ -163,13 +165,13 @@ async def transcribe_voice_note(
                     stderr=asyncio.subprocess.PIPE
                 )
                 _, stderr_out = await proc.communicate()
-                if _os.path.exists(mp3_path):
+                if proc.returncode == 0 and os.path.exists(mp3_path):
                     with open(mp3_path, "rb") as f:
                         audio_bytes = f.read()
                     clean_mime = "audio/mp3"
                     logger.info(f"🎙️ Converted OGG/Opus → MP3 ({len(audio_bytes)} bytes) for Gemini")
                 else:
-                    logger.warning(f"🎙️ OGG→MP3 conversion failed: {stderr_out.decode()[:200]}")
+                    logger.warning(f"🎙️ OGG→MP3 conversion failed (rc={proc.returncode}): {stderr_out.decode()[:200]}")
         except Exception as conv_err:
             logger.warning(f"🎙️ OGG→MP3 conversion exception (will try OGG anyway): {conv_err}")
 
@@ -344,7 +346,6 @@ async def synthesize_voice_note(text: str, voice: str = "en-NG-EzinneNeural") ->
             return b""
 
         # Convert MP3 → OGG (opus) using the imageio-ffmpeg bundled binary
-        import asyncio, tempfile, os
         import imageio_ffmpeg
         ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
         with tempfile.TemporaryDirectory() as tmpdir:
