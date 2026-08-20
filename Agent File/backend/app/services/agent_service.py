@@ -92,6 +92,24 @@ async def call_ai_provider(
         return data["choices"][0]["message"]["content"].strip()
 
 
+def strip_emojis(text: str) -> str:
+    """Remove all emoji characters and symbols from text so TTS does not pronounce emoji names."""
+    if not text:
+        return ""
+    pattern = re.compile(
+        "["
+        "\U00010000-\U0010ffff"
+        "\u2600-\u27bf"
+        "\u2300-\u23ff"
+        "\u2b50\u2b55"
+        "\u200d\ufe0f\ufe0e"
+        "]+",
+        flags=re.UNICODE
+    )
+    cleaned = pattern.sub("", text)
+    return re.sub(r" +", " ", cleaned).strip()
+
+
 def parse_agent_response(raw_text: str) -> Dict[str, Any]:
     """Parse JSON reply and action from AI response."""
     try:
@@ -99,8 +117,9 @@ def parse_agent_response(raw_text: str) -> Dict[str, Any]:
         json_match = re.search(r"\{[\s\S]*\}", raw_text)
         if json_match:
             data = json.loads(json_match.group(0))
+            reply = strip_emojis(data.get("reply", "").strip())
             return {
-                "reply": data.get("reply", "").strip(),
+                "reply": reply,
                 "action": data.get("action") or {"type": "NONE"}
             }
     except Exception as e:
@@ -108,7 +127,9 @@ def parse_agent_response(raw_text: str) -> Dict[str, Any]:
 
     # Fallback to plain text cleaning
     clean = re.sub(r"```(json)?|```", "", raw_text).strip()
+    clean = strip_emojis(clean)
     return {"reply": clean, "action": {"type": "NONE"}}
+
 
 
 async def transcribe_voice_note(
@@ -219,10 +240,11 @@ async def synthesize_voice_note(text: str, voice: str = "en-NG-EzinneNeural") ->
     import edge_tts
     try:
         import re, io
-        clean_text = re.sub(r"[\*\_~`#]", "", text)
+        clean_text = strip_emojis(text)
+        clean_text = re.sub(r"[\*\_~`#]", "", clean_text)
         clean_text = re.sub(r"\[.*?\]", "", clean_text).strip()
         if not clean_text:
-            clean_text = text.strip()
+            clean_text = strip_emojis(text).strip()
 
         # edge-tts produces MP3 by default. Collect MP3 bytes then convert to OGG.
         communicate = edge_tts.Communicate(clean_text, voice or "en-NG-EzinneNeural")
@@ -490,13 +512,18 @@ APPOINTMENT & BOOKING RULES:
    - "preferredTime": Standard 12-hour format "{current_time_str}" (e.g. "10:30 PM", "03:00 PM").
 3. When confirming an appointment or when the contact says "yes", "correct", or confirms details:
    - Set "type": "CREATE_BOOKING" with finalized "purpose", "preferredDate" (YYYY-MM-DD), and "preferredTime" (HH:MM AM/PM).
-   - Your "reply" MUST explicitly confirm the booking to the contact (e.g. "🎉 Awesome, {contact.name}! Your appointment for [Topic] is booked for tomorrow, {tomorrow_dt.strftime('%B %d, %Y')} at {current_time_str}. Looking forward to speaking with you!").
+   - Your "reply" MUST explicitly confirm the booking to the contact (e.g. "Awesome, {contact.name}! Your appointment for [Topic] is booked for tomorrow, {tomorrow_dt.strftime('%B %d, %Y')} at {current_time_str}. Looking forward to speaking with you!").
+
+NO EMOJIS RULE:
+- NEVER use emojis, smileys, or emoticons in your replies (do NOT use emojis like 😊, 🙌, 🎉, etc.).
+- Keep all responses completely free of emojis in both text and voice notes.
 
 VOICE NOTE RULES:
 - When a customer sends a voice message that was successfully transcribed, it appears as "[Voice Note]: <transcription>". Answer their message directly, warmly, and helpfully as if they spoke to you.
-- If the message is exactly "[Voice message]" (NOT "[Voice Note]: ..."), it means the audio could NOT be transcribed. In this case, politely let them know you heard their voice message but couldn't make it out clearly, and ask them to send it again or type it out. Example: "Hey, I got your voice message but couldn't quite make it out! Could you type it out or try sending it again? 😊"
+- If the message is exactly "[Voice message]" (NOT "[Voice Note]: ..."), it means the audio could NOT be transcribed. In this case, politely let them know you heard their voice message but couldn't make it out clearly, and ask them to send it again or type it out. Example: "Hey, I got your voice message but couldn't quite make it out! Could you type it out or try sending it again?"
 - NEVER say "Thanks for your voice message, I'm here and ready to listen. What's on your mind?" — this sounds robotic.
 - NEVER say "I cannot listen to voice notes" — you CAN listen to them most of the time.
+
 
 
 RESPONSE FORMAT — You must return ONLY a JSON object:
