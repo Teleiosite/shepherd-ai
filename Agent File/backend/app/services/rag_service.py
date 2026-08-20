@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 from app.services.ai_service import generate_embedding
 from app.models.knowledge import KnowledgeResource, KnowledgeEmbedding
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 
 
 async def search_knowledge_base(
