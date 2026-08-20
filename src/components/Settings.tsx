@@ -377,21 +377,21 @@ const Settings: React.FC<SettingsProps> = ({
     };
 
     return (
-        <div className="max-w-4xl mx-auto space-y-8 animate-fade-in pb-10">
+        <div className="max-w-4xl mx-auto space-y-6 sm:space-y-8 animate-fade-in pb-10 px-2 sm:px-0">
             <div>
-                <h2 className="text-3xl font-bold text-slate-800">Settings</h2>
-                <p className="text-slate-500 text-lg mt-1">Configure your system, integrations, and manage data.</p>
+                <h2 className="text-2xl sm:text-3xl font-bold text-slate-800">Settings</h2>
+                <p className="text-slate-500 text-sm sm:text-lg mt-1">Configure your system, integrations, and manage data.</p>
             </div>
 
             {/* Identity Section */}
             <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
-                <div className="p-6 border-b border-slate-100 bg-slate-50">
-                    <h3 className="font-semibold text-xl text-slate-800 flex items-center gap-2">
+                <div className="p-4 sm:p-6 border-b border-slate-100 bg-slate-50">
+                    <h3 className="font-semibold text-lg sm:text-xl text-slate-800 flex items-center gap-2">
                         <Bot className="text-primary-600" />
                         Identity & Persona
                     </h3>
                 </div>
-                <div className="p-8 space-y-6">
+                <div className="p-4 sm:p-6 md:p-8 space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
                             <label className="block text-base font-medium text-slate-700 mb-2">Organization / Business Name</label>
@@ -431,14 +431,14 @@ const Settings: React.FC<SettingsProps> = ({
 
             {/* AI Agent Configuration Section */}
             <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
-                <div className="p-6 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
-                    <h3 className="font-semibold text-xl text-slate-800 flex items-center gap-2">
+                <div className="p-4 sm:p-6 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+                    <h3 className="font-semibold text-lg sm:text-xl text-slate-800 flex items-center gap-2">
                         <BrainCircuit className="text-violet-600" />
                         AI Agent Auto-Reply Settings
                     </h3>
                     {agentSaved && <span className="text-green-600 font-bold flex items-center gap-2 text-sm animate-fade-in"><Check size={18} /> Settings Saved</span>}
                 </div>
-                <div className="p-8 space-y-6">
+                <div className="p-4 sm:p-6 md:p-8 space-y-6">
                     <div className="flex items-start justify-between gap-4 p-4 bg-violet-50/50 border border-violet-100 rounded-xl">
                         <div className="flex-1">
                             <label className="flex items-center gap-3 cursor-pointer group">

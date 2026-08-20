@@ -960,6 +960,11 @@ function App() {
     return (
       <Link
         to={to}
+        onClick={() => {
+          if (window.innerWidth < 768) {
+            setSidebarOpen(false);
+          }
+        }}
         className={`flex items-center justify-between px-4 py-3 rounded-xl transition-all duration-200 text-base ${isActive
           ? 'font-medium'
           : 'hover:bg-white/10'
@@ -1000,24 +1005,27 @@ function App() {
 
   return (
     <HashRouter>
-      <div className="flex h-screen bg-gray-50 font-sans text-gray-900">
+      <div className="flex h-screen bg-gray-50 font-sans text-gray-900 overflow-hidden">
 
         {/* Mobile Overlay */}
         {isSidebarOpen && (
           <div
-            className="fixed inset-0 bg-black/50 z-10 md:hidden"
+            className="fixed inset-0 bg-black/60 z-40 md:hidden backdrop-blur-xs transition-opacity"
             onClick={() => setSidebarOpen(false)}
           />
         )}
 
         {/* Sidebar */}
         <aside
-          className={`${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 ${isSidebarOpen ? 'w-72' : 'md:w-24 w-72'} transition-all duration-300 flex flex-col z-20 fixed md:relative h-full`}
+          className={`${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 ${isSidebarOpen ? 'w-72' : 'md:w-24 w-72'} transition-all duration-300 flex flex-col z-50 fixed md:relative h-full shadow-2xl md:shadow-none`}
           style={{ backgroundColor: 'var(--forest-500)', color: 'white' }}
         >
-          <div className="p-6 h-20 flex items-center justify-between" style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-            {isSidebarOpen && <h1 className="text-2xl font-bold flex items-center gap-2" style={{ color: 'var(--teal-300)' }}>Shepherd AI</h1>}
-            <button onClick={() => setSidebarOpen(!isSidebarOpen)} className="p-2 rounded-lg" style={{ color: 'var(--teal-200)', transition: 'background-color 200ms' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.1)'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}>
+          <div className="p-5 h-20 flex items-center justify-between" style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+            <h1 className="text-2xl font-bold flex items-center gap-2" style={{ color: 'var(--teal-300)' }}>Shepherd AI</h1>
+            <button
+              onClick={() => setSidebarOpen(!isSidebarOpen)}
+              className="p-2 rounded-lg text-teal-200 hover:bg-white/10 transition-colors"
+            >
               <Menu size={24} />
             </button>
           </div>
@@ -1036,7 +1044,7 @@ function App() {
           </nav>
 
           <div className="p-4" style={{ borderTop: '1px solid rgba(255,255,255,0.1)' }}>
-            <button onClick={handleLogout} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors text-base text-red-600 hover:bg-red-50`}>
+            <button onClick={handleLogout} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors text-base text-red-400 hover:bg-white/10`}>
               <LogOut size={22} />
               {isSidebarOpen && <span>Sign Out</span>}
             </button>
