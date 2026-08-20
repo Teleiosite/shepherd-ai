@@ -1,6 +1,6 @@
 
 import React, { useRef, useState, useEffect } from 'react';
-import { Bot, Building2, Database, Download, Upload, AlertTriangle, Check, Key, MessageCircle, Save, ExternalLink, Cpu, Globe, Settings as SettingsIcon, Zap, Smartphone, Server, RefreshCw, Loader2, HelpCircle, XCircle, Code2, BrainCircuit, Clock, CreditCard, Link2 } from 'lucide-react';
+import { Bot, Building2, Database, Download, Upload, AlertTriangle, Check, Key, MessageCircle, Save, ExternalLink, Cpu, Globe, Settings as SettingsIcon, Zap, Smartphone, Server, RefreshCw, Loader2, HelpCircle, XCircle, Code2, BrainCircuit, Clock, CreditCard, Link2, Volume2 } from 'lucide-react';
 import { storage } from '../services/storage';
 import { AIConfig } from '../types';
 import { whatsappService, WhatsAppConfig } from '../services/whatsappService';

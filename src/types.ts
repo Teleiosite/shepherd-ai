@@ -116,6 +116,7 @@ export interface AgentAction {
   imageName?: string;     // for SEND_IMAGE
   purpose?: string;       // for CREATE_BOOKING / SEND_PAYMENT_LINK
   preferredDate?: string; // for CREATE_BOOKING
+  preferredTime?: string; // for CREATE_BOOKING
   notes?: string;         // for CREATE_BOOKING
   query?: string;         // for WEB_SEARCH
   reason?: string;        // for FLAG_FOR_HUMAN
