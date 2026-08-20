@@ -15,6 +15,7 @@ sudo chown -R $USER:$USER $INSTALL_DIR
 echo "[2/5] Copying service files..."
 cp transcribe_service.py $INSTALL_DIR/
 cp requirements.txt $INSTALL_DIR/
+cp shepherd-transcribe.service $INSTALL_DIR/
 
 echo "[3/5] Setting up Python virtual environment..."
 cd $INSTALL_DIR
@@ -27,10 +28,9 @@ pip install --upgrade pip
 pip install -r requirements.txt
 
 echo "[4/5] Installing and configuring systemd service..."
-sudo cp /opt/shepherd-transcribe/shepherd-transcribe.service /etc/systemd/system/ || true
-if [ -f "$(dirname "$0")/shepherd-transcribe.service" ]; then
-    sudo cp "$(dirname "$0")/shepherd-transcribe.service" /etc/systemd/system/
-fi
+# Update User in service file to match current user (e.g. opc or ubuntu)
+sed -i "s/User=.*/User=$USER/g" $INSTALL_DIR/shepherd-transcribe.service
+sudo cp $INSTALL_DIR/shepherd-transcribe.service /etc/systemd/system/
 
 sudo systemctl daemon-reload
 sudo systemctl enable $SERVICE_NAME
