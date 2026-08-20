@@ -419,7 +419,7 @@ async def trigger_ai_agent_reply(
         # 4. RAG semantic knowledge retrieval
         kb_chunks = []
         try:
-            results = await search_knowledge_base(db, str(org_id), incoming_text, limit=3)
+            results = await search_knowledge_base(db, str(org_id), incoming_text, limit=3, api_key=ai_api_key)
             for res, sim in results:
                 kb_chunks.append(f"--- {res.title} ---\n{res.content[:500]}")
         except Exception as rag_err:
