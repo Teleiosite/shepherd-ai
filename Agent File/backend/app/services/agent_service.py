@@ -137,8 +137,8 @@ async def transcribe_voice_note(
     logger.info(f"🎙️ TRANSCRIBE START: {len(audio_bytes)} bytes | magic={first_4_str} (is_ogg={is_ogg}) | mime={mime_type}")
 
     # Read self-hosted faster-whisper microservice configuration
-    transcribe_url = os.getenv("TRANSCRIBE_SERVICE_URL", "").strip()
-    transcribe_key = os.getenv("TRANSCRIBE_SERVICE_KEY", "").strip() or "17f187c37b8164bc2f038779fa9ebe886ef771e3f721793e584bd816bf1a8ac5"
+    transcribe_url = (os.getenv("TRANSCRIBE_SERVICE_URL", "").strip() or "https://shepherdai.duckdns.org/transcribe")
+    transcribe_key = (os.getenv("TRANSCRIBE_SERVICE_KEY", "").strip() or "17f187c37b8164bc2f038779fa9ebe886ef771e3f721793e584bd816bf1a8ac5")
 
     if transcribe_url:
         # Automatically ensure /transcribe path is present
@@ -171,7 +171,7 @@ async def transcribe_voice_note(
             elapsed = time.time() - start_t
             logger.error(f"🎙️ Whisper microservice request failed after {elapsed:.2f}s: {e}", exc_info=True)
     else:
-        logger.warning("⚠️ TRANSCRIBE_SERVICE_URL is not set in environment variables.")
+        logger.warning("⚠️ TRANSCRIBE_SERVICE_URL is not set.")
 
     # Secondary fallback if OpenAI/Groq keys are available or provided directly
     if api_key and (provider == "groq" or (base_url and "groq.com" in base_url) or api_key.startswith("sk-") or api_key.startswith("gsk_")):
@@ -295,13 +295,25 @@ async def trigger_ai_agent_reply(
             logger.warning(f"No AI API key configured for org {org.name}.")
             return None
 
-        # 1b. If a voice note media_id was passed, transcribe it NOW
-        # (org.ai_api_key and org.whatsapp_access_token are both confirmed available here)
-        if audio_media_id and incoming_text in ("[Voice message]", ""):
-            logger.info(f"🎙️ Transcribing voice note {audio_media_id} inside agent service (guaranteed key access)")
+        # 1b. If a voice note was sent, transcribe it NOW
+        from app.api.whatsapp import get_organization_whatsapp_config
+        wa_config = get_organization_whatsapp_config(db, org_id)
+        _meta_token = getattr(org, "whatsapp_access_token", None) or getattr(org, "access_token", None) or wa_config.get("access_token")
+
+        if not audio_media_id and incoming_text in ("[Voice message]", "[Voice note]", ""):
+            # Try to find attachment_url from the latest inbound message for this contact
+            latest_msg = db.query(Message).filter(
+                Message.contact_id == contact_id,
+                Message.type == "Inbound"
+            ).order_by(Message.created_at.desc()).first()
+            if latest_msg and latest_msg.attachment_url and latest_msg.attachment_url.startswith("meta_media_id:"):
+                audio_media_id = latest_msg.attachment_url.replace("meta_media_id:", "").strip()
+                logger.info(f"🎙️ Extracted audio_media_id '{audio_media_id}' from latest inbound message attachment_url")
+
+        if audio_media_id and incoming_text in ("[Voice message]", "[Voice note]", ""):
+            logger.info(f"🎙️ Transcribing voice note {audio_media_id} inside agent service")
             try:
                 import httpx as _httpx
-                _meta_token = getattr(org, "whatsapp_access_token", None) or getattr(org, "access_token", None)
                 if _meta_token:
                     _dl_headers = {
                         "Authorization": f"Bearer {_meta_token}",
@@ -345,11 +357,15 @@ async def trigger_ai_agent_reply(
                                     else:
                                         incoming_text = "[Voice message — transcription failed]"
                                         logger.warning(f"🎙️ Transcription returned empty for {audio_media_id}")
+                        else:
+                            incoming_text = "[Voice message — transcription failed]"
+                            logger.warning(f"Failed to fetch media metadata from Meta: HTTP {_info.status_code}")
                 else:
                     logger.warning("🎙️ No WhatsApp access token on org — cannot download audio")
             except Exception as _te:
                 incoming_text = "[Voice message — transcription failed]"
                 logger.error(f"🎙️ Voice transcription inside agent failed: {_te}", exc_info=True)
+
 
 
         # 2. Check contact and human handover state
