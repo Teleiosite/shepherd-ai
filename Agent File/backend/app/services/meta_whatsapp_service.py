@@ -116,6 +116,8 @@ class MetaWhatsAppService:
                 meta_media_type = "image"
             elif media_type == "video":
                 meta_media_type = "video"
+            elif media_type in ["audio", "voice", "ptt"]:
+                meta_media_type = "audio"
             else:
                 meta_media_type = "document"
             
@@ -234,6 +236,69 @@ class MetaWhatsAppService:
             return {"success": False, "error": "Timeout sending media", "provider": "meta"}
         except Exception as e:
             logger.error(f"Error sending media via Meta: {str(e)}")
+            return {"success": False, "error": str(e), "provider": "meta"}
+
+    async def send_voice_note(
+        self,
+        to_phone: str,
+        audio_bytes: bytes,
+        mime_type: str = "audio/ogg; codecs=opus"
+    ) -> Dict[str, Any]:
+        """
+        Send a native WhatsApp voice note (green waveform bubble, not a file download).
+        Must be OGG/OPUS format to render as a voice note.
+        """
+        import base64
+        to_phone = to_phone.replace("+", "").replace(" ", "").replace("-", "")
+        try:
+            # Step 1: Upload the audio binary to Meta's /media endpoint
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                upload_response = await client.post(
+                    f"{self.base_url}/{self.phone_number_id}/media",
+                    headers={"Authorization": f"Bearer {self.access_token}"},
+                    data={"messaging_product": "whatsapp", "type": mime_type},
+                    files={"file": ("voice_note.ogg", audio_bytes, mime_type)}
+                )
+
+                if upload_response.status_code != 200:
+                    err = upload_response.json()
+                    logger.error(f"Voice note media upload failed: {err}")
+                    return {"success": False, "error": err.get("error", {}).get("message", "Upload failed"), "provider": "meta"}
+
+                media_id = upload_response.json().get("id")
+                logger.info(f"🎙️ Voice note uploaded to Meta, media_id={media_id}")
+
+            # Step 2: Send as native audio/voice note (NOT document)
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                message_payload = {
+                    "messaging_product": "whatsapp",
+                    "recipient_type": "individual",
+                    "to": to_phone,
+                    "type": "audio",
+                    "audio": {"id": media_id}
+                }
+                response = await client.post(
+                    f"{self.base_url}/{self.phone_number_id}/messages",
+                    headers={
+                        "Authorization": f"Bearer {self.access_token}",
+                        "Content-Type": "application/json"
+                    },
+                    json=message_payload
+                )
+                if response.status_code == 200:
+                    data = response.json()
+                    return {
+                        "success": True,
+                        "messageId": data.get("messages", [{}])[0].get("id"),
+                        "provider": "meta"
+                    }
+                else:
+                    error_data = response.json()
+                    logger.error(f"Voice note send failed: {error_data}")
+                    return {"success": False, "error": error_data.get("error", {}).get("message", f"HTTP {response.status_code}"), "provider": "meta"}
+
+        except Exception as e:
+            logger.error(f"Error sending voice note via Meta: {str(e)}")
             return {"success": False, "error": str(e), "provider": "meta"}
     
     async def get_status(self) -> Dict[str, Any]:

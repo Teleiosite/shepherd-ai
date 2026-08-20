@@ -533,21 +533,28 @@ async def whatsapp_incoming_webhook(
                                         ai_prov = org_row_data[3] or "gemini"
                                         ai_base = org_row_data[4]
 
+                                        # 🔍 DEBUG: log what we have
+                                        logger.info(f"🔍 VOICE DEBUG: media_id={media_id}, ai_key_present={bool(ai_key)}, ai_key_prefix={ai_key[:8] if ai_key else 'NONE'}, ai_prov={ai_prov}, meta_token_present={bool(meta_token)}")
+
                                         download_headers = {
                                             "Authorization": f"Bearer {meta_token}",
                                             "User-Agent": "curl/7.64.1"
                                         }
 
-                                        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+                                        async with httpx.AsyncClient(timeout=45.0, follow_redirects=True) as client:
+                                            logger.info(f"🔍 VOICE DEBUG: Fetching Meta media info for media_id={media_id}")
                                             info_res = await client.get(
                                                 f"https://graph.facebook.com/v18.0/{media_id}",
                                                 headers=download_headers
                                             )
+                                            logger.info(f"🔍 VOICE DEBUG: Meta media info HTTP {info_res.status_code}: {info_res.text[:300]}")
                                             if info_res.status_code == 200:
                                                 down_url = info_res.json().get("url")
                                                 mime = info_res.json().get("mime_type", "audio/ogg")
+                                                logger.info(f"🔍 VOICE DEBUG: mime_type={mime}, download_url_present={bool(down_url)}")
                                                 if down_url:
                                                     bin_res = await client.get(down_url, headers=download_headers)
+                                                    logger.info(f"🔍 VOICE DEBUG: Audio binary download HTTP {bin_res.status_code}, bytes={len(bin_res.content) if bin_res.content else 0}")
                                                     if bin_res.status_code == 200 and bin_res.content:
                                                         transcript = await transcribe_voice_note(
                                                             audio_bytes=bin_res.content,
@@ -556,6 +563,7 @@ async def whatsapp_incoming_webhook(
                                                             provider=ai_prov,
                                                             base_url=ai_base
                                                         )
+                                                        logger.info(f"🔍 VOICE DEBUG: transcription result='{transcript[:100] if transcript else 'EMPTY'}'")
                                                         if transcript and not transcript.startswith("["):
                                                             msg_content = f"[Voice Note]: {transcript}"
                                                             logger.info(f"🎙️ Successfully processed voice note into text: '{msg_content}'")
@@ -567,6 +575,8 @@ async def whatsapp_incoming_webhook(
                                                 logger.warning(f"Failed to fetch media metadata from Meta (HTTP {info_res.status_code}): {info_res.text}")
                                     except Exception as tr_err:
                                         logger.warning(f"Failed to transcribe voice note: {tr_err}", exc_info=True)
+                                else:
+                                    logger.warning(f"🔍 VOICE DEBUG: Skipping transcription — media_id={bool(media_id)}, org_row_data={bool(org_row_data)}, has_whatsapp_token={bool(org_row_data[2]) if org_row_data else False}")
                             elif msg_type in ["image", "video", "document", "sticker"]:
                                 media_obj = msg.get(msg_type, {})
                                 media_id = media_obj.get("id")

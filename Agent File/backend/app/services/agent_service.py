@@ -204,6 +204,7 @@ async def transcribe_voice_note(
 async def synthesize_voice_note(text: str, voice: str = "en-NG-EzinneNeural") -> bytes:
     """
     Synthesize natural speech for WhatsApp voice notes (100% free, zero API cost via edge-tts).
+    Returns OGG/OPUS bytes which WhatsApp renders as the native green voice note bubble.
     Voices supported:
     - en-NG-EzinneNeural (Nigerian English - Female)
     - en-NG-AbeoNeural (Nigerian English - Male)
@@ -213,18 +214,45 @@ async def synthesize_voice_note(text: str, voice: str = "en-NG-EzinneNeural") ->
     """
     import edge_tts
     try:
-        import re
+        import re, io
         clean_text = re.sub(r"[\*\_~`#]", "", text)
         clean_text = re.sub(r"\[.*?\]", "", clean_text).strip()
         if not clean_text:
             clean_text = text.strip()
 
+        # edge-tts produces MP3 by default. Collect MP3 bytes then convert to OGG.
         communicate = edge_tts.Communicate(clean_text, voice or "en-NG-EzinneNeural")
-        audio_chunks = []
+        mp3_chunks = []
         async for chunk in communicate.stream():
             if chunk["type"] == "audio":
-                audio_chunks.append(chunk["data"])
-        return b"".join(audio_chunks)
+                mp3_chunks.append(chunk["data"])
+        mp3_bytes = b"".join(mp3_chunks)
+        if not mp3_bytes:
+            return b""
+
+        # Convert MP3 → OGG (opus) using ffmpeg subprocess (zero extra packages)
+        import asyncio, subprocess, tempfile, os
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mp3_path = os.path.join(tmpdir, "voice.mp3")
+            ogg_path = os.path.join(tmpdir, "voice.ogg")
+            with open(mp3_path, "wb") as f:
+                f.write(mp3_bytes)
+            proc = await asyncio.create_subprocess_exec(
+                "ffmpeg", "-y", "-i", mp3_path,
+                "-c:a", "libopus", "-b:a", "64k",
+                "-vbr", "on", ogg_path,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            await proc.communicate()
+            if os.path.exists(ogg_path):
+                with open(ogg_path, "rb") as f:
+                    ogg_bytes = f.read()
+                logger.info(f"🎙️ Synthesized {len(ogg_bytes)} bytes of OGG/OPUS audio for WhatsApp voice note")
+                return ogg_bytes
+            else:
+                logger.warning("ffmpeg OGG conversion failed, falling back to raw MP3 bytes")
+                return mp3_bytes
     except Exception as e:
         logger.error(f"Voice synthesis error: {e}")
         return b""
@@ -503,16 +531,15 @@ ACTION TYPE GUIDE:
             logger.info(f"🎙️ Synthesizing voice note response using voice: {voice_name}")
             voice_bytes = await synthesize_voice_note(reply_text, voice_name)
             if voice_bytes:
-                b64_audio = "data:audio/mpeg;base64," + base64.b64encode(voice_bytes).decode("utf-8")
                 meta_service = get_meta_whatsapp_service(
                     config["phone_number_id"],
                     config["access_token"]
                 )
-                send_result = await meta_service.send_media(
+                # Use send_voice_note to get native green WhatsApp voice bubble (OGG/OPUS)
+                send_result = await meta_service.send_voice_note(
                     to_phone=contact.phone,
-                    media_type="audio",
-                    media_data=b64_audio,
-                    filename="voice_note.mp3"
+                    audio_bytes=voice_bytes,
+                    mime_type="audio/ogg; codecs=opus"
                 )
                 out_msg = Message(
                     organization_id=org_id,
