@@ -337,6 +337,32 @@ async def verify_whatsapp_webhook(
     return {"status": "ok"}
 
 
+async def _async_trigger_reply(
+    contact_id: UUID,
+    content: str,
+    org_id: UUID,
+    audio_media_id: Optional[str] = None,
+    audio_mime_type: str = "audio/ogg"
+):
+    """Background task to run AI agent auto-reply so Meta webhook responds immediately."""
+    from app.database import SessionLocal
+    from app.services.agent_service import trigger_ai_agent_reply
+    db_bg = SessionLocal()
+    try:
+        await trigger_ai_agent_reply(
+            contact_id=contact_id,
+            incoming_text=content,
+            org_id=org_id,
+            db=db_bg,
+            audio_media_id=audio_media_id,
+            audio_mime_type=audio_mime_type
+        )
+    except Exception as agent_err:
+        logger.error(f"Error in background AI agent auto-reply: {agent_err}", exc_info=True)
+    finally:
+        db_bg.close()
+
+
 async def process_received_message(
     phone: str,
     whatsapp_id: str,
@@ -350,8 +376,18 @@ async def process_received_message(
     org_id: Optional[UUID] = None,
     allowed_org_ids: Optional[list] = None,
     audio_media_id: Optional[str] = None,
-    audio_mime_type: str = "audio/ogg"
+    audio_mime_type: str = "audio/ogg",
+    whatsapp_message_id: Optional[str] = None
 ):
+    # Deduplication check: ignore if this exact WhatsApp message ID was already received
+    if whatsapp_message_id:
+        existing_msg = db.query(Message).filter(
+            Message.whatsapp_message_id == whatsapp_message_id
+        ).first()
+        if existing_msg:
+            logger.info(f"⏭️ Skipping duplicate WhatsApp message {whatsapp_message_id} (already processed)")
+            return existing_msg.contact_id, existing_msg.id
+
     # Clean phone number
     clean_phone = phone.replace('+', '').replace(' ', '').replace('-', '')
     
@@ -408,6 +444,7 @@ async def process_received_message(
         "type": "Inbound",
         "content": content,
         "status": "Received",
+        "whatsapp_message_id": whatsapp_message_id,
         "sent_at": datetime.now(),
         "created_at": datetime.now()
     }
@@ -422,21 +459,21 @@ async def process_received_message(
     db.commit()
     logger.info(f"✅ Incoming message saved for contact {contact.name} (ID: {contact.id}) in organization {org_id}")
 
-    # Trigger 24/7 Cloud AI Agent auto-reply in background
-    try:
-        from app.services.agent_service import trigger_ai_agent_reply
-        await trigger_ai_agent_reply(
+    # Trigger 24/7 Cloud AI Agent auto-reply in background as async task
+    # so Meta Webhook immediately gets HTTP 200 and never retries in a loop
+    import asyncio
+    asyncio.create_task(
+        _async_trigger_reply(
             contact_id=contact.id,
-            incoming_text=content,
+            content=content,
             org_id=org_id,
-            db=db,
             audio_media_id=audio_media_id,
             audio_mime_type=audio_mime_type
         )
-    except Exception as agent_err:
-        logger.error(f"Error in backend AI agent auto-reply: {agent_err}")
+    )
 
     return contact.id, message.id
+
 
 
 @router.post("/webhook")
@@ -554,9 +591,9 @@ async def whatsapp_incoming_webhook(
                                 media_url=msg_media_url,
                                 db=db,
                                 org_id=org_id,
-                                allowed_org_ids=allowed_org_ids,
                                 audio_media_id=msg_audio_media_id,
-                                audio_mime_type=msg_audio_mime
+                                audio_mime_type=msg_audio_mime,
+                                whatsapp_message_id=msg_id
                             )
                             contact_id_str = str(c_id)
                             message_id_str = str(m_id)
@@ -580,6 +617,7 @@ async def whatsapp_incoming_webhook(
             logger.warning("⚠️ Webhook received empty phone parameter")
             return {"status": "ignored", "reason": "empty phone"}
             
+        body_msg_id = body.get("id") or body.get("message_id")
         c_id, m_id = await process_received_message(
             phone=final_phone,
             whatsapp_id=final_whatsapp_id or (final_phone + "@c.us"),
@@ -589,7 +627,8 @@ async def whatsapp_incoming_webhook(
             has_media=final_has_media,
             media_type=final_media_type,
             media_url=final_media_url,
-            db=db
+            db=db,
+            whatsapp_message_id=body_msg_id
         )
         return {
             "success": True, 
