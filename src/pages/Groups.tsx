@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Settings as SettingsIcon, Send, RefreshCw, Plus, MessageCircle, UserPlus } from 'lucide-react';
+import { Users, Settings as SettingsIcon, Send, RefreshCw, Plus, MessageCircle, UserPlus, AlertTriangle } from 'lucide-react';
 import { BACKEND_URL } from '../services/env';
 import GroupDetailsModal from '../components/GroupDetailsModal';
 import SendGroupMessageModal from '../components/SendGroupMessageModal';
@@ -29,8 +29,16 @@ export default function Groups() {
     const [showSendModal, setShowSendModal] = useState(false);
     const [error, setError] = useState('');
 
+    // Detect if user is on Meta Cloud API (which doesn't support groups)
+    const waConfig = (() => {
+        try { return JSON.parse(localStorage.getItem('shepherd_wa_config') || '{}'); } catch { return {}; }
+    })();
+    const isMetaProvider = !waConfig.provider || waConfig.provider === 'meta';
+    const bridgeUrl = waConfig.bridgeUrl || 'http://localhost:3001';
+
     useEffect(() => {
-        loadGroups();
+        if (!isMetaProvider) loadGroups();
+        else setLoading(false);
     }, []);
 
     const loadGroups = async () => {
@@ -63,14 +71,24 @@ export default function Groups() {
         setError('');
 
         try {
-            // This would trigger the bridge to sync
-            // For now, just refresh the list after a delay
+            // Ask the bridge to sync groups from WhatsApp now
+            const response = await fetch(`${bridgeUrl}/api/groups/sync-now`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+
+            if (!response.ok) {
+                const data = await response.json().catch(() => ({}));
+                throw new Error(data.error || 'Sync request failed');
+            }
+
+            // Give the bridge a moment to push data to the backend, then refresh
             setTimeout(async () => {
                 await loadGroups();
                 setSyncing(false);
             }, 2000);
         } catch (err: any) {
-            setError('Sync failed. Make sure your bridge is connected.');
+            setError('Sync failed: ' + (err.message || 'Make sure your bridge is connected.'));
             setSyncing(false);
         }
     };
@@ -91,6 +109,34 @@ export default function Groups() {
         setSelectedGroup(null);
         loadGroups(); // Refresh after changes
     };
+
+    if (isMetaProvider) {
+        return (
+            <div className="p-6">
+                <div className="flex justify-between items-center mb-6">
+                    <div>
+                        <h1 className="text-2xl font-bold text-gray-900">WhatsApp Groups</h1>
+                        <p className="text-gray-600 mt-1">Manage your WhatsApp group communications</p>
+                    </div>
+                </div>
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-6 flex gap-4 items-start">
+                    <AlertTriangle className="w-8 h-8 text-amber-500 flex-shrink-0 mt-0.5" />
+                    <div>
+                        <h3 className="text-lg font-semibold text-amber-900 mb-2">Groups Not Supported with WhatsApp Cloud API</h3>
+                        <p className="text-amber-800 mb-3">
+                            You are currently connected via the <strong>Meta WhatsApp Cloud API</strong>. This official
+                            business API does not support WhatsApp groups — you can only send and receive messages with
+                            individual phone numbers.
+                        </p>
+                        <p className="text-amber-800">
+                            To use group features (sync groups, send group messages, auto-welcome new members), switch to
+                            the <strong>WhatsApp Bridge (Venom/Baileys)</strong> in <strong>Settings → WhatsApp Connection</strong>.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     if (loading) {
         return (

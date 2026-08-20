@@ -8,6 +8,9 @@ import json
 import logging
 import re
 import base64
+import asyncio
+import tempfile
+import os
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, Tuple
 from uuid import UUID, uuid4
@@ -143,6 +146,34 @@ async def transcribe_voice_note(
         clean_mime = "audio/wav"
 
     logger.info(f"🎙️ TRANSCRIBE START: {len(audio_bytes)} bytes, raw_mime={raw_mime}, clean_mime={clean_mime}, provider={provider}")
+
+    # Convert OGG/Opus → MP3 using the bundled imageio-ffmpeg binary.
+    # Gemini does not reliably support OGG/Opus (audio/ogg) — it only handles OGG/Vorbis.
+    # imageio-ffmpeg ships a pre-compiled ffmpeg binary that works on Vercel (Linux).
+    if clean_mime in ("audio/ogg", "audio/oga", "audio/opus"):
+        try:
+            import imageio_ffmpeg
+            ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+            with tempfile.TemporaryDirectory() as tmpdir:
+                ogg_path = os.path.join(tmpdir, "input.ogg")
+                mp3_path = os.path.join(tmpdir, "output.mp3")
+                with open(ogg_path, "wb") as f:
+                    f.write(audio_bytes)
+                proc = await asyncio.create_subprocess_exec(
+                    ffmpeg_exe, "-y", "-i", ogg_path, mp3_path,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+                _, stderr_out = await proc.communicate()
+                if proc.returncode == 0 and os.path.exists(mp3_path):
+                    with open(mp3_path, "rb") as f:
+                        audio_bytes = f.read()
+                    clean_mime = "audio/mp3"
+                    logger.info(f"🎙️ Converted OGG/Opus → MP3 ({len(audio_bytes)} bytes) for Gemini")
+                else:
+                    logger.warning(f"🎙️ OGG→MP3 conversion failed (rc={proc.returncode}): {stderr_out.decode()[:200]}")
+        except Exception as conv_err:
+            logger.warning(f"🎙️ OGG→MP3 conversion exception (will try OGG anyway): {conv_err}")
 
     is_gemini = provider == "gemini" or (api_key and api_key.startswith("AIza"))
 
@@ -314,15 +345,16 @@ async def synthesize_voice_note(text: str, voice: str = "en-NG-EzinneNeural") ->
         if not mp3_bytes:
             return b""
 
-        # Convert MP3 → OGG (opus) using ffmpeg subprocess (zero extra packages)
-        import asyncio, subprocess, tempfile, os
+        # Convert MP3 → OGG (opus) using the imageio-ffmpeg bundled binary
+        import imageio_ffmpeg
+        ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
         with tempfile.TemporaryDirectory() as tmpdir:
             mp3_path = os.path.join(tmpdir, "voice.mp3")
             ogg_path = os.path.join(tmpdir, "voice.ogg")
             with open(mp3_path, "wb") as f:
                 f.write(mp3_bytes)
             proc = await asyncio.create_subprocess_exec(
-                "ffmpeg", "-y", "-i", mp3_path,
+                ffmpeg_exe, "-y", "-i", mp3_path,
                 "-c:a", "libopus", "-b:a", "64k",
                 "-vbr", "on", ogg_path,
                 stdout=asyncio.subprocess.PIPE,
