@@ -348,7 +348,9 @@ async def process_received_message(
     media_url: Optional[str] = None,
     db: Session = None,
     org_id: Optional[UUID] = None,
-    allowed_org_ids: Optional[list] = None
+    allowed_org_ids: Optional[list] = None,
+    audio_media_id: Optional[str] = None,
+    audio_mime_type: str = "audio/ogg"
 ):
     # Clean phone number
     clean_phone = phone.replace('+', '').replace(' ', '').replace('-', '')
@@ -427,7 +429,9 @@ async def process_received_message(
             contact_id=contact.id,
             incoming_text=content,
             org_id=org_id,
-            db=db
+            db=db,
+            audio_media_id=audio_media_id,
+            audio_mime_type=audio_mime_type
         )
     except Exception as agent_err:
         logger.error(f"Error in backend AI agent auto-reply: {agent_err}")
@@ -512,6 +516,8 @@ async def whatsapp_incoming_webhook(
                             msg_has_media = False
                             msg_media_type = None
                             msg_media_url = None
+                            msg_audio_media_id = None
+                            msg_audio_mime = "audio/ogg"
                             
                             if msg_type == "text":
                                 msg_content = msg.get("text", {}).get("body", "")
@@ -522,61 +528,9 @@ async def whatsapp_incoming_webhook(
                                 msg_media_type = "audio"
                                 msg_media_url = f"meta_media_id:{media_id}"
                                 msg_content = "[Voice message]"
-                                
-                                # Voice note transcription using Google Gemini / Whisper
-                                if media_id and org_row_data and org_row_data[2]:
-                                    try:
-                                        import httpx, os
-                                        from app.services.agent_service import transcribe_voice_note
-                                        meta_token = org_row_data[2]
-                                        ai_key = org_row_data[1] or os.getenv("GEMINI_API_KEY")
-                                        ai_prov = org_row_data[3] or "gemini"
-                                        ai_base = org_row_data[4]
+                                msg_audio_media_id = media_id  # pass to agent for transcription
+                                logger.info(f"🎙️ Voice note received, media_id={media_id} — will transcribe in agent")
 
-                                        # 🔍 DEBUG: log what we have
-                                        logger.info(f"🔍 VOICE DEBUG: media_id={media_id}, ai_key_present={bool(ai_key)}, ai_key_prefix={ai_key[:8] if ai_key else 'NONE'}, ai_prov={ai_prov}, meta_token_present={bool(meta_token)}")
-
-                                        download_headers = {
-                                            "Authorization": f"Bearer {meta_token}",
-                                            "User-Agent": "curl/7.64.1"
-                                        }
-
-                                        async with httpx.AsyncClient(timeout=45.0, follow_redirects=True) as client:
-                                            logger.info(f"🔍 VOICE DEBUG: Fetching Meta media info for media_id={media_id}")
-                                            info_res = await client.get(
-                                                f"https://graph.facebook.com/v18.0/{media_id}",
-                                                headers=download_headers
-                                            )
-                                            logger.info(f"🔍 VOICE DEBUG: Meta media info HTTP {info_res.status_code}: {info_res.text[:300]}")
-                                            if info_res.status_code == 200:
-                                                down_url = info_res.json().get("url")
-                                                mime = info_res.json().get("mime_type", "audio/ogg")
-                                                logger.info(f"🔍 VOICE DEBUG: mime_type={mime}, download_url_present={bool(down_url)}")
-                                                if down_url:
-                                                    bin_res = await client.get(down_url, headers=download_headers)
-                                                    logger.info(f"🔍 VOICE DEBUG: Audio binary download HTTP {bin_res.status_code}, bytes={len(bin_res.content) if bin_res.content else 0}")
-                                                    if bin_res.status_code == 200 and bin_res.content:
-                                                        transcript = await transcribe_voice_note(
-                                                            audio_bytes=bin_res.content,
-                                                            mime_type=mime,
-                                                            api_key=ai_key,
-                                                            provider=ai_prov,
-                                                            base_url=ai_base
-                                                        )
-                                                        logger.info(f"🔍 VOICE DEBUG: transcription result='{transcript[:100] if transcript else 'EMPTY'}'")
-                                                        if transcript and not transcript.startswith("["):
-                                                            msg_content = f"[Voice Note]: {transcript}"
-                                                            logger.info(f"🎙️ Successfully processed voice note into text: '{msg_content}'")
-                                                        else:
-                                                            logger.warning(f"Voice note transcription returned empty for media {media_id}")
-                                                    else:
-                                                        logger.warning(f"Failed to download audio binary (HTTP {bin_res.status_code}) from Meta")
-                                            else:
-                                                logger.warning(f"Failed to fetch media metadata from Meta (HTTP {info_res.status_code}): {info_res.text}")
-                                    except Exception as tr_err:
-                                        logger.warning(f"Failed to transcribe voice note: {tr_err}", exc_info=True)
-                                else:
-                                    logger.warning(f"🔍 VOICE DEBUG: Skipping transcription — media_id={bool(media_id)}, org_row_data={bool(org_row_data)}, has_whatsapp_token={bool(org_row_data[2]) if org_row_data else False}")
                             elif msg_type in ["image", "video", "document", "sticker"]:
                                 media_obj = msg.get(msg_type, {})
                                 media_id = media_obj.get("id")
@@ -600,7 +554,9 @@ async def whatsapp_incoming_webhook(
                                 media_url=msg_media_url,
                                 db=db,
                                 org_id=org_id,
-                                allowed_org_ids=allowed_org_ids
+                                allowed_org_ids=allowed_org_ids,
+                                audio_media_id=msg_audio_media_id,
+                                audio_mime_type=msg_audio_mime
                             )
                             contact_id_str = str(c_id)
                             message_id_str = str(m_id)

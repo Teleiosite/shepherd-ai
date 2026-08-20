@@ -346,11 +346,15 @@ async def trigger_ai_agent_reply(
     contact_id: UUID,
     incoming_text: str,
     org_id: UUID,
-    db: Session
+    db: Session,
+    audio_media_id: Optional[str] = None,
+    audio_mime_type: str = "audio/ogg"
 ) -> Optional[Dict[str, Any]]:
     """
     Main 24/7 backend agent orchestrator.
     Called on every incoming message.
+    If audio_media_id is provided, downloads and transcribes the voice note
+    using the org's API key (guaranteed available here via ORM).
     """
     try:
         # 1. Fetch organization settings
@@ -369,6 +373,49 @@ async def trigger_ai_agent_reply(
         if not ai_api_key:
             logger.warning(f"No AI API key configured for org {org.name}.")
             return None
+
+        # 1b. If a voice note media_id was passed, transcribe it NOW
+        # (org.ai_api_key and org.whatsapp_access_token are both confirmed available here)
+        if audio_media_id and incoming_text in ("[Voice message]", ""):
+            logger.info(f"🎙️ Transcribing voice note {audio_media_id} inside agent service (guaranteed key access)")
+            try:
+                import httpx as _httpx
+                _meta_token = getattr(org, "whatsapp_access_token", None) or getattr(org, "access_token", None)
+                if _meta_token:
+                    _dl_headers = {
+                        "Authorization": f"Bearer {_meta_token}",
+                        "User-Agent": "curl/7.64.1"
+                    }
+                    async with _httpx.AsyncClient(timeout=30.0, follow_redirects=True) as _client:
+                        _info = await _client.get(
+                            f"https://graph.facebook.com/v18.0/{audio_media_id}",
+                            headers=_dl_headers
+                        )
+                        logger.info(f"🎙️ Meta media info HTTP {_info.status_code}: {_info.text[:300]}")
+                        if _info.status_code == 200:
+                            _down_url = _info.json().get("url")
+                            _mime = _info.json().get("mime_type", audio_mime_type)
+                            if _down_url:
+                                _bin = await _client.get(_down_url, headers=_dl_headers)
+                                logger.info(f"🎙️ Audio download HTTP {_bin.status_code}, bytes={len(_bin.content)}")
+                                if _bin.status_code == 200 and _bin.content:
+                                    _transcript = await transcribe_voice_note(
+                                        audio_bytes=_bin.content,
+                                        mime_type=_mime,
+                                        api_key=ai_api_key,
+                                        provider=getattr(org, "ai_provider", "gemini") or "gemini",
+                                        base_url=getattr(org, "ai_base_url", None)
+                                    )
+                                    if _transcript and len(_transcript) > 2:
+                                        incoming_text = f"[Voice Note]: {_transcript}"
+                                        logger.info(f"🎙️ ✅ Transcription SUCCESS: '{_transcript[:100]}'")
+                                    else:
+                                        logger.warning(f"🎙️ Transcription returned empty for {audio_media_id}")
+                else:
+                    logger.warning("🎙️ No WhatsApp access token on org — cannot download audio")
+            except Exception as _te:
+                logger.error(f"🎙️ Voice transcription inside agent failed: {_te}", exc_info=True)
+
 
         # 2. Check contact and human handover state
         contact = db.query(Contact).filter(Contact.id == contact_id).first()
