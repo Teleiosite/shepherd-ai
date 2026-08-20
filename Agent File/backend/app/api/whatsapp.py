@@ -474,19 +474,30 @@ async def whatsapp_incoming_webhook(
                         metadata = value.get("metadata", {})
                         phone_number_id = metadata.get("phone_number_id")
                         
-                        # Find organization by phone_number_id
+                        # Find organization by phone_number_id with graceful fallbacks
                         org_id = None
                         allowed_org_ids = None
                         org_row_data = None
                         if phone_number_id:
+                            clean_pid = str(phone_number_id).strip()
                             org_rows = db.execute(
-                                text("SELECT id, ai_api_key, whatsapp_access_token FROM organizations WHERE whatsapp_phone_id = :phone_id"),
-                                {"phone_id": str(phone_number_id)}
+                                text("SELECT id, ai_api_key, whatsapp_access_token, ai_provider, ai_base_url FROM organizations WHERE whatsapp_phone_id = :phone_id"),
+                                {"phone_id": clean_pid}
                             ).fetchall()
                             if org_rows:
                                 allowed_org_ids = [row[0] for row in org_rows]
                                 org_id = allowed_org_ids[0]
                                 org_row_data = org_rows[0]
+
+                        if not org_row_data:
+                            # Fallback: query organization with configured WhatsApp token or AI key
+                            fallback_rows = db.execute(
+                                text("SELECT id, ai_api_key, whatsapp_access_token, ai_provider, ai_base_url FROM organizations WHERE whatsapp_access_token IS NOT NULL OR ai_api_key IS NOT NULL LIMIT 1")
+                            ).fetchall()
+                            if fallback_rows:
+                                allowed_org_ids = [row[0] for row in fallback_rows]
+                                org_id = allowed_org_ids[0]
+                                org_row_data = fallback_rows[0]
                         
                         sender_name = "WhatsApp User"
                         if contacts_list:
@@ -512,13 +523,17 @@ async def whatsapp_incoming_webhook(
                                 msg_media_url = f"meta_media_id:{media_id}"
                                 msg_content = "[Voice message]"
                                 
-                                # Voice note transcription using Google Gemini Multimodal API
+                                # Voice note transcription using Google Gemini / Whisper
                                 if media_id and org_row_data and org_row_data[2]:
                                     try:
                                         import httpx
                                         from app.services.agent_service import transcribe_voice_note
                                         meta_token = org_row_data[2]
-                                        async with httpx.AsyncClient(timeout=15.0) as client:
+                                        ai_key = org_row_data[1]
+                                        ai_prov = org_row_data[3] or "gemini"
+                                        ai_base = org_row_data[4]
+
+                                        async with httpx.AsyncClient(timeout=20.0) as client:
                                             info_res = await client.get(
                                                 f"https://graph.facebook.com/v18.0/{media_id}",
                                                 headers={"Authorization": f"Bearer {meta_token}"}
@@ -532,10 +547,13 @@ async def whatsapp_incoming_webhook(
                                                         transcript = await transcribe_voice_note(
                                                             audio_bytes=bin_res.content,
                                                             mime_type=mime,
-                                                            api_key=org_row_data[1]
+                                                            api_key=ai_key,
+                                                            provider=ai_prov,
+                                                            base_url=ai_base
                                                         )
                                                         if transcript and not transcript.startswith("["):
                                                             msg_content = f"[Voice Note]: {transcript}"
+                                                            logger.info(f"🎙️ Processed voice note into text: {msg_content}")
                                     except Exception as tr_err:
                                         logger.warning(f"Failed to transcribe voice note: {tr_err}")
                             elif msg_type in ["image", "video", "document", "sticker"]:

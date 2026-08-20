@@ -111,34 +111,94 @@ def parse_agent_response(raw_text: str) -> Dict[str, Any]:
 async def transcribe_voice_note(
     audio_bytes: bytes,
     mime_type: str = "audio/ogg",
-    api_key: Optional[str] = None
+    api_key: Optional[str] = None,
+    provider: str = "gemini",
+    base_url: Optional[str] = None
 ) -> str:
-    """Transcribe WhatsApp audio/voice note using Google Gemini Multimodal API."""
-    if not api_key:
-        logger.warning("No Gemini API key available for voice transcription.")
-        return "[Voice note received]"
+    """
+    Transcribe WhatsApp audio/voice note using Google Gemini Multimodal API (Free) or Whisper.
+    Works directly via HTTP REST with zero SDK dependency issues.
+    """
+    if not api_key or not audio_bytes:
+        logger.warning("No API key or empty audio bytes for voice transcription.")
+        return ""
+
+    import base64
+    import httpx
+    import re
+
+    # Clean mime type (remove parameters like codecs=opus)
+    clean_mime = mime_type.split(";")[0].strip() if mime_type else "audio/ogg"
+    if clean_mime in ["audio/opus", "audio/ogg", "audio/oga"]:
+        clean_mime = "audio/ogg"
+    elif clean_mime in ["audio/mp4", "audio/m4a", "audio/aac"]:
+        clean_mime = "audio/mp4"
+    elif clean_mime in ["audio/mp3", "audio/mpeg"]:
+        clean_mime = "audio/mp3"
+    elif clean_mime in ["audio/wav", "audio/x-wav"]:
+        clean_mime = "audio/wav"
 
     try:
-        import google.generativeai as genai
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("gemini-2.0-flash")
+        # Provider 1: Gemini (Multimodal Audio Transcription)
+        if provider == "gemini" or api_key.startswith("AIza"):
+            b64_audio = base64.b64encode(audio_bytes).decode("utf-8")
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
+            payload = {
+                "contents": [
+                    {
+                        "parts": [
+                            {
+                                "inline_data": {
+                                    "mime_type": clean_mime,
+                                    "data": b64_audio
+                                }
+                            },
+                            {
+                                "text": "Listen to this WhatsApp voice message carefully and transcribe it word-for-word into English (or the spoken language). Return ONLY the direct transcription. Do not include any explanations, greetings, quotes, or metadata."
+                            }
+                        ]
+                    }
+                ]
+            }
 
-        audio_part = {
-            "mime_type": mime_type or "audio/ogg",
-            "data": audio_bytes
-        }
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                res = await client.post(url, json=payload, headers={"Content-Type": "application/json"})
+                if res.status_code == 200:
+                    data = res.json()
+                    candidates = data.get("candidates", [])
+                    if candidates:
+                        parts = candidates[0].get("content", {}).get("parts", [])
+                        if parts:
+                            text_out = parts[0].get("text", "").strip()
+                            text_out = re.sub(r'^["\']|["\']$', '', text_out).strip()
+                            if text_out:
+                                logger.info(f"🎙️ Gemini voice note transcribed successfully: '{text_out[:60]}...'")
+                                return text_out
+                else:
+                    logger.error(f"Gemini voice transcription failed ({res.status_code}): {res.text}")
 
-        prompt = (
-            "Transcribe this WhatsApp voice message accurately into text. "
-            "Return ONLY the verbatim transcription with no conversational preamble."
-        )
+        # Provider 2: OpenAI / Groq Whisper fallback
+        whisper_url = "https://api.openai.com/v1/audio/transcriptions"
+        model_name = "whisper-1"
+        if provider == "groq" or (base_url and "groq.com" in base_url):
+            whisper_url = "https://api.groq.com/openai/v1/audio/transcriptions"
+            model_name = "whisper-large-v3-turbo"
 
-        response = model.generate_content([audio_part, prompt])
-        transcription = response.text.strip() if response and response.text else ""
-        return transcription or "[Voice note could not be transcribed]"
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            files = {"file": ("voice_message.ogg", audio_bytes, clean_mime)}
+            data = {"model": model_name}
+            headers = {"Authorization": f"Bearer {api_key}"}
+            res = await client.post(whisper_url, headers=headers, data=data, files=files)
+            if res.status_code == 200:
+                text_out = res.json().get("text", "").strip()
+                if text_out:
+                    logger.info(f"🎙️ Whisper voice note transcribed successfully: '{text_out[:60]}...'")
+                    return text_out
+
     except Exception as e:
-        logger.error(f"Voice note transcription error: {e}")
-        return "[Voice note could not be transcribed]"
+        logger.error(f"Voice note transcription exception: {e}")
+
+    return ""
 
 
 async def trigger_ai_agent_reply(
@@ -292,6 +352,11 @@ APPOINTMENT & BOOKING RULES:
 3. When confirming an appointment or when the contact says "yes", "correct", or confirms details:
    - Set "type": "CREATE_BOOKING" with finalized "purpose", "preferredDate" (YYYY-MM-DD), and "preferredTime" (HH:MM AM/PM).
    - Your "reply" MUST explicitly confirm the booking to the contact (e.g. "🎉 Awesome, {contact.name}! Your appointment for [Topic] is booked for tomorrow, {tomorrow_dt.strftime('%B %d, %Y')} at {current_time_str}. Looking forward to speaking with you!").
+
+VOICE NOTE RULES:
+- When a customer sends a voice message, it is transcribed into text as "[Voice Note]: <transcription>".
+- Answer the customer's transcribed message directly, warmly, and helpfully as if they spoke directly to you!
+- NEVER tell the customer "I cannot listen to voice notes" or ask them to type instead. You process voice notes seamlessly.
 
 RESPONSE FORMAT — You must return ONLY a JSON object:
 {{
