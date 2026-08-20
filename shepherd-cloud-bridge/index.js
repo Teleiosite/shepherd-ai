@@ -328,6 +328,19 @@ app.post('/api/sendMedia', async (req, res) => {
     }
 });
 
+// Trigger group sync on demand
+app.post('/api/groups/sync-now', async (req, res) => {
+    if (bridgeStatus !== 'connected' || !sock) {
+        return res.status(503).json({ success: false, error: 'Bridge not connected' });
+    }
+    try {
+        await syncGroups();
+        res.json({ success: true, message: 'Group sync triggered' });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 // =================== WHATSAPP INITIALIZATION (BAILEYS) ===================
 
 async function initializeWhatsApp() {
