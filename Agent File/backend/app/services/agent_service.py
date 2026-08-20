@@ -119,199 +119,85 @@ async def transcribe_voice_note(
     base_url: Optional[str] = None
 ) -> str:
     """
-    Transcribe WhatsApp voice note using Google Gemini Multimodal API.
-    Tries two methods:
-      1. inline_data (fastest, works for most formats)
-      2. Gemini File Upload API (more reliable for OGG/Opus)
-    Falls back to Whisper if OpenAI/Groq key is available.
+    Transcribes WhatsApp voice notes via the dedicated self-hosted faster-whisper microservice.
+    Replaces the previous Gemini-based transcription which fails on OGG/Opus.
     """
-    if not api_key or not audio_bytes:
-        logger.warning(f"🔇 Transcription skipped — api_key present={bool(api_key)}, audio_bytes={len(audio_bytes) if audio_bytes else 0}")
+    if not audio_bytes:
+        logger.warning("🔇 Transcription skipped — audio_bytes is empty.")
         return ""
 
-    import base64
+    import os
+    import time
     import httpx
-    import re
 
-    # Normalize mime type — strip codec parameters
-    raw_mime = (mime_type or "audio/ogg").strip()
-    clean_mime = raw_mime.split(";")[0].strip()
-    if clean_mime in ["audio/ogg", "audio/oga", "audio/opus"]:
-        clean_mime = "audio/ogg"
-    elif clean_mime in ["audio/mp4", "audio/m4a", "audio/aac"]:
-        clean_mime = "audio/mp4"
-    elif clean_mime in ["audio/mp3", "audio/mpeg"]:
-        clean_mime = "audio/mp3"
-    elif clean_mime in ["audio/wav", "audio/x-wav"]:
-        clean_mime = "audio/wav"
+    # Check raw binary and log magic bytes for debugging
+    first_4 = audio_bytes[:4]
+    first_4_str = repr(first_4)
+    is_ogg = (first_4 == b"OggS")
+    logger.info(f"🎙️ TRANSCRIBE START: {len(audio_bytes)} bytes | magic={first_4_str} (is_ogg={is_ogg}) | mime={mime_type}")
 
-    logger.info(f"🎙️ TRANSCRIBE START: {len(audio_bytes)} bytes, raw_mime={raw_mime}, clean_mime={clean_mime}, provider={provider}")
+    # Read self-hosted faster-whisper microservice configuration
+    transcribe_url = os.getenv("TRANSCRIBE_SERVICE_URL", "").strip()
+    transcribe_key = os.getenv("TRANSCRIBE_SERVICE_KEY", "").strip()
 
-    # Convert OGG/Opus → MP3 using the bundled imageio-ffmpeg binary.
-    # Gemini does not reliably support OGG/Opus (audio/ogg) — it only handles OGG/Vorbis.
-    # imageio-ffmpeg ships a pre-compiled ffmpeg binary that works on Vercel (Linux).
-    if clean_mime in ("audio/ogg", "audio/oga", "audio/opus"):
+    if transcribe_url:
+        start_t = time.time()
+        logger.info(f"🎙️ Calling self-hosted Whisper microservice: {transcribe_url}")
         try:
-            import imageio_ffmpeg
-            ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
-            with tempfile.TemporaryDirectory() as tmpdir:
-                ogg_path = os.path.join(tmpdir, "input.ogg")
-                mp3_path = os.path.join(tmpdir, "output.mp3")
-                with open(ogg_path, "wb") as f:
-                    f.write(audio_bytes)
-                proc = await asyncio.create_subprocess_exec(
-                    ffmpeg_exe, "-y", "-i", ogg_path, mp3_path,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE
-                )
-                _, stderr_out = await proc.communicate()
-                if proc.returncode == 0 and os.path.exists(mp3_path):
-                    with open(mp3_path, "rb") as f:
-                        audio_bytes = f.read()
-                    clean_mime = "audio/mp3"
-                    logger.info(f"🎙️ Converted OGG/Opus → MP3 ({len(audio_bytes)} bytes) for Gemini")
-                else:
-                    logger.warning(f"🎙️ OGG→MP3 conversion failed (rc={proc.returncode}): {stderr_out.decode()[:200]}")
-        except Exception as conv_err:
-            logger.warning(f"🎙️ OGG→MP3 conversion exception (will try OGG anyway): {conv_err}")
+            headers = {}
+            if transcribe_key:
+                headers["X-Api-Key"] = transcribe_key
 
-    is_gemini = provider == "gemini" or (api_key and api_key.startswith("AIza"))
-
-    if is_gemini:
-        # ── Method 1: Gemini inline_data ──────────────────────────────
-        try:
-            b64_audio = base64.b64encode(audio_bytes).decode("utf-8")
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
-            payload = {
-                "contents": [{
-                    "parts": [
-                        {
-                            "inline_data": {
-                                "mime_type": clean_mime,
-                                "data": b64_audio
-                            }
-                        },
-                        {
-                            "text": (
-                                "You are a transcription assistant. "
-                                "Listen to this audio and transcribe every word spoken, exactly as said. "
-                                "Return ONLY the spoken words. No explanations, no quotes, no commentary."
-                            )
-                        }
-                    ]
-                }]
-            }
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                res = await client.post(url, json=payload, headers={"Content-Type": "application/json"})
-                logger.info(f"🎙️ Gemini inline_data HTTP {res.status_code}")
-
-                if res.status_code == 200:
-                    data = res.json()
-                    candidates = data.get("candidates", [])
-                    if not candidates:
-                        logger.warning(f"🎙️ Gemini returned NO candidates. promptFeedback={data.get('promptFeedback')}")
+            clean_mime = "audio/ogg" if ("ogg" in (mime_type or "").lower() or is_ogg) else (mime_type or "audio/ogg")
+            async with httpx.AsyncClient(timeout=45.0) as client:
+                files = {"file": ("voice.ogg", audio_bytes, clean_mime)}
+                resp = await client.post(transcribe_url, files=files, headers=headers)
+                elapsed = time.time() - start_t
+                logger.info(f"🎙️ Whisper microservice HTTP {resp.status_code} in {elapsed:.2f}s")
+                if resp.status_code == 200:
+                    data = resp.json()
+                    text = data.get("text", "").strip()
+                    if text:
+                        logger.info(f"🎙️ ✅ Whisper transcription SUCCESS: '{text[:120]}'")
+                        return text
                     else:
-                        finish_reason = candidates[0].get("finishReason", "STOP")
-                        parts = candidates[0].get("content", {}).get("parts", [])
-                        logger.info(f"🎙️ Gemini finishReason={finish_reason}, parts_count={len(parts)}")
-                        if finish_reason not in ("STOP", "MAX_TOKENS"):
-                            logger.warning(f"🎙️ Gemini blocked/failed: finishReason={finish_reason}")
-                        elif parts:
-                            text_out = parts[0].get("text", "").strip()
-                            text_out = re.sub(r'^["\']|["\']$', '', text_out).strip()
-                            logger.info(f"🎙️ Gemini inline transcript: '{text_out[:120]}'")
-                            if text_out and len(text_out) > 2:
-                                return text_out
+                        logger.warning("🎙️ Whisper microservice returned empty text.")
                 else:
-                    logger.error(f"🎙️ Gemini inline_data error HTTP {res.status_code}: {res.text[:400]}")
-        except Exception as e1:
-            logger.error(f"🎙️ Gemini inline_data exception: {e1}")
+                    logger.error(f"🎙️ Whisper microservice error HTTP {resp.status_code}: {resp.text[:300]}")
+        except Exception as e:
+            elapsed = time.time() - start_t
+            logger.error(f"🎙️ Whisper microservice request failed after {elapsed:.2f}s: {e}", exc_info=True)
+    else:
+        logger.warning("⚠️ TRANSCRIBE_SERVICE_URL is not set in environment variables.")
 
-        # ── Method 2: Gemini File Upload API (handles OGG/Opus reliably) ──
-        try:
-            logger.info("🎙️ Trying Gemini File Upload API...")
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                # Step A: Upload the audio file
-                upload_url = f"https://generativelanguage.googleapis.com/upload/v1beta/files?uploadType=media&key={api_key}"
-                upload_res = await client.post(
-                    upload_url,
-                    content=audio_bytes,
-                    headers={
-                        "Content-Type": clean_mime,
-                        "X-Goog-Upload-Protocol": "raw",
-                        "X-Goog-Upload-Header-Content-Type": clean_mime
-                    }
-                )
-                logger.info(f"🎙️ File upload HTTP {upload_res.status_code}: {upload_res.text[:300]}")
-                if upload_res.status_code == 200:
-                    file_info = upload_res.json().get("file", {})
-                    file_uri = file_info.get("uri")
-                    file_state = file_info.get("state", "")
-                    logger.info(f"🎙️ File uploaded: uri={file_uri}, state={file_state}")
-
-                    if file_uri:
-                        # Step B: Generate transcription using the uploaded file
-                        gen_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
-                        gen_payload = {
-                            "contents": [{
-                                "parts": [
-                                    {
-                                        "file_data": {
-                                            "mime_type": clean_mime,
-                                            "file_uri": file_uri
-                                        }
-                                    },
-                                    {
-                                        "text": (
-                                            "Transcribe the audio exactly, word for word. "
-                                            "Return ONLY the transcription text, nothing else."
-                                        )
-                                    }
-                                ]
-                            }]
-                        }
-                        gen_res = await client.post(gen_url, json=gen_payload, headers={"Content-Type": "application/json"})
-                        logger.info(f"🎙️ File API generate HTTP {gen_res.status_code}: {gen_res.text[:400]}")
-                        if gen_res.status_code == 200:
-                            candidates = gen_res.json().get("candidates", [])
-                            if candidates:
-                                parts = candidates[0].get("content", {}).get("parts", [])
-                                if parts:
-                                    text_out = parts[0].get("text", "").strip()
-                                    text_out = re.sub(r'^["\']|["\']$', '', text_out).strip()
-                                    logger.info(f"🎙️ File API transcript: '{text_out[:120]}'")
-                                    if text_out and len(text_out) > 2:
-                                        return text_out
-                else:
-                    logger.error(f"🎙️ File upload failed HTTP {upload_res.status_code}: {upload_res.text[:300]}")
-        except Exception as e2:
-            logger.error(f"🎙️ Gemini File Upload exception: {e2}", exc_info=True)
-
-    # ── Whisper fallback (only for OpenAI/Groq keys) ──────────────────
-    if not is_gemini or (base_url and ("openai" in base_url or "groq.com" in base_url)):
+    # Secondary fallback if OpenAI/Groq keys are available or provided directly
+    if api_key and (provider == "groq" or (base_url and "groq.com" in base_url) or api_key.startswith("sk-") or api_key.startswith("gsk_")):
         try:
             whisper_url = "https://api.openai.com/v1/audio/transcriptions"
             model_name = "whisper-1"
-            if provider == "groq" or (base_url and "groq.com" in base_url):
+            if provider == "groq" or (base_url and "groq.com" in base_url) or api_key.startswith("gsk_"):
                 whisper_url = "https://api.groq.com/openai/v1/audio/transcriptions"
                 model_name = "whisper-large-v3-turbo"
-            logger.info(f"🎙️ Trying Whisper at {whisper_url}")
+            logger.info(f"🎙️ Trying OpenAI/Groq Whisper fallback at {whisper_url}")
             async with httpx.AsyncClient(timeout=30.0) as client:
+                clean_mime = "audio/ogg" if mime_type and "ogg" in mime_type else (mime_type or "audio/ogg")
                 files = {"file": ("voice_message.ogg", audio_bytes, clean_mime)}
                 data_w = {"model": model_name}
                 headers_w = {"Authorization": f"Bearer {api_key}"}
                 wres = await client.post(whisper_url, headers=headers_w, data=data_w, files=files)
-                logger.info(f"🎙️ Whisper HTTP {wres.status_code}: {wres.text[:200]}")
                 if wres.status_code == 200:
                     text_out = wres.json().get("text", "").strip()
                     if text_out:
-                        logger.info(f"🎙️ Whisper transcript: '{text_out[:120]}'")
+                        logger.info(f"🎙️ Whisper fallback transcript: '{text_out[:120]}'")
                         return text_out
-        except Exception as e3:
-            logger.error(f"🎙️ Whisper exception: {e3}")
+                else:
+                    logger.warning(f"🎙️ Whisper fallback HTTP {wres.status_code}: {wres.text[:200]}")
+        except Exception as e_w:
+            logger.error(f"🎙️ Whisper fallback exception: {e_w}")
 
     logger.warning("🎙️ All transcription methods failed — returning empty string")
     return ""
+
 
 
 
@@ -441,11 +327,25 @@ async def trigger_ai_agent_reply(
                                     if _transcript and len(_transcript) > 2:
                                         incoming_text = f"[Voice Note]: {_transcript}"
                                         logger.info(f"🎙️ ✅ Transcription SUCCESS: '{_transcript[:100]}'")
+                                        # Update latest inbound message in database so dashboard Live Chats displays the transcription
+                                        try:
+                                            latest_inbound = db.query(Message).filter(
+                                                Message.contact_id == contact_id,
+                                                Message.type == "Inbound"
+                                            ).order_by(Message.created_at.desc()).first()
+                                            if latest_inbound and latest_inbound.content in ("[Voice message]", "[voice message]"):
+                                                latest_inbound.content = f"🎙️ {_transcript}"
+                                                db.commit()
+                                                logger.info(f"💾 Updated inbound message content in DB with transcript")
+                                        except Exception as db_err:
+                                            logger.warning(f"Failed to update message content in DB: {db_err}")
                                     else:
+                                        incoming_text = "[Voice message — transcription failed]"
                                         logger.warning(f"🎙️ Transcription returned empty for {audio_media_id}")
                 else:
                     logger.warning("🎙️ No WhatsApp access token on org — cannot download audio")
             except Exception as _te:
+                incoming_text = "[Voice message — transcription failed]"
                 logger.error(f"🎙️ Voice transcription inside agent failed: {_te}", exc_info=True)
 
 

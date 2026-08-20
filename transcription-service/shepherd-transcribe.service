@@ -1,0 +1,22 @@
+[Unit]
+Description=Shepherd AI Faster-Whisper Transcription Microservice
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/shepherd-transcribe
+Environment="PATH=/opt/shepherd-transcribe/venv/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="PORT=8001"
+Environment="TRANSCRIBE_SERVICE_KEY=17f187c37b8164bc2f038779fa9ebe886ef771e3f721793e584bd816bf1a8ac5"
+Environment="WHISPER_MODEL_SIZE=small"
+Environment="WHISPER_COMPUTE_TYPE=int8"
+ExecStart=/opt/shepherd-transcribe/venv/bin/uvicorn transcribe_service:app --host 127.0.0.1 --port 8001 --workers 1
+
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
