@@ -320,7 +320,7 @@ async def get_ai_autopilot_settings(
     """Get AI auto-reply and autopilot configuration for the organization"""
     result = db.execute(
         text("""
-            SELECT ai_auto_reply_enabled, ai_reply_mode, ai_reply_delay_seconds, ai_tone, ai_payment_link, ai_business_type
+            SELECT ai_auto_reply_enabled, ai_reply_mode, ai_reply_delay_seconds, ai_tone, ai_payment_link, ai_business_type, ai_voice_reply_mode, ai_voice_name
             FROM organizations
             WHERE id = :org_id
         """),
@@ -334,7 +334,9 @@ async def get_ai_autopilot_settings(
             "reply_delay": 5,
             "tone": "Warm, professional, and helpful. Use casual WhatsApp-style language.",
             "payment_link": "",
-            "business_type": "Organization"
+            "business_type": "Organization",
+            "voice_reply_mode": "text",
+            "voice_name": "en-NG-EzinneNeural"
         }
 
     return {
@@ -343,7 +345,9 @@ async def get_ai_autopilot_settings(
         "reply_delay": result[2] or 5,
         "tone": result[3] or "Warm, professional, and helpful. Use casual WhatsApp-style language.",
         "payment_link": result[4] or "",
-        "business_type": result[5] or "Organization"
+        "business_type": result[5] or "Organization",
+        "voice_reply_mode": result[6] or "text",
+        "voice_name": result[7] or "en-NG-EzinneNeural"
     }
 
 
@@ -361,6 +365,8 @@ async def update_ai_autopilot_settings(
         tone = settings_data.get("tone", "Warm, professional, and helpful.")
         payment_link = settings_data.get("payment_link", "")
         business_type = settings_data.get("business_type", "Organization")
+        voice_reply_mode = settings_data.get("voice_reply_mode", "text")
+        voice_name = settings_data.get("voice_name", "en-NG-EzinneNeural")
 
         db.execute(
             text("""
@@ -370,7 +376,9 @@ async def update_ai_autopilot_settings(
                     ai_reply_delay_seconds = :delay,
                     ai_tone = :tone,
                     ai_payment_link = :payment_link,
-                    ai_business_type = :business_type
+                    ai_business_type = :business_type,
+                    ai_voice_reply_mode = :voice_reply_mode,
+                    ai_voice_name = :voice_name
                 WHERE id = :org_id
             """),
             {
@@ -380,6 +388,8 @@ async def update_ai_autopilot_settings(
                 "tone": tone,
                 "payment_link": payment_link,
                 "business_type": business_type,
+                "voice_reply_mode": voice_reply_mode,
+                "voice_name": voice_name,
                 "org_id": str(current_user.organization_id)
             }
         )
@@ -389,7 +399,9 @@ async def update_ai_autopilot_settings(
             "success": True,
             "message": "AI autopilot settings updated successfully",
             "enabled": enabled == "true",
-            "mode": mode
+            "mode": mode,
+            "voice_reply_mode": voice_reply_mode,
+            "voice_name": voice_name
         }
     except Exception as e:
         db.rollback()

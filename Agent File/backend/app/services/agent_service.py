@@ -201,6 +201,35 @@ async def transcribe_voice_note(
     return ""
 
 
+async def synthesize_voice_note(text: str, voice: str = "en-NG-EzinneNeural") -> bytes:
+    """
+    Synthesize natural speech for WhatsApp voice notes (100% free, zero API cost via edge-tts).
+    Voices supported:
+    - en-NG-EzinneNeural (Nigerian English - Female)
+    - en-NG-AbeoNeural (Nigerian English - Male)
+    - en-US-EmmaNeural (US English - Female)
+    - en-US-GuyNeural (US English - Male)
+    - en-GB-SoniaNeural (British English - Female)
+    """
+    import edge_tts
+    try:
+        import re
+        clean_text = re.sub(r"[\*\_~`#]", "", text)
+        clean_text = re.sub(r"\[.*?\]", "", clean_text).strip()
+        if not clean_text:
+            clean_text = text.strip()
+
+        communicate = edge_tts.Communicate(clean_text, voice or "en-NG-EzinneNeural")
+        audio_chunks = []
+        async for chunk in communicate.stream():
+            if chunk["type"] == "audio":
+                audio_chunks.append(chunk["data"])
+        return b"".join(audio_chunks)
+    except Exception as e:
+        logger.error(f"Voice synthesis error: {e}")
+        return b""
+
+
 async def trigger_ai_agent_reply(
     contact_id: UUID,
     incoming_text: str,
@@ -459,11 +488,55 @@ ACTION TYPE GUIDE:
         # 10. Deliver reply to customer via WhatsApp
         from app.api.whatsapp import get_organization_whatsapp_config
         from app.services.meta_whatsapp_service import get_meta_whatsapp_service
+        import base64
 
         config = get_organization_whatsapp_config(db, org_id)
 
+        # Check voice reply settings
+        voice_reply_mode = getattr(org, "ai_voice_reply_mode", "text") or "text"
+        voice_name = getattr(org, "ai_voice_name", "en-NG-EzinneNeural") or "en-NG-EzinneNeural"
+
+        is_inbound_voice = incoming_text.startswith("[Voice Note") or incoming_text.startswith("[Voice message")
+        should_send_voice = (voice_reply_mode == "voice") or (voice_reply_mode == "match_input" and is_inbound_voice)
+
+        if should_send_voice and config["delivery_method"] == "meta":
+            logger.info(f"🎙️ Synthesizing voice note response using voice: {voice_name}")
+            voice_bytes = await synthesize_voice_note(reply_text, voice_name)
+            if voice_bytes:
+                b64_audio = "data:audio/ogg;base64," + base64.b64encode(voice_bytes).decode("utf-8")
+                meta_service = get_meta_whatsapp_service(
+                    config["phone_number_id"],
+                    config["access_token"]
+                )
+                send_result = await meta_service.send_media(
+                    to_phone=contact.phone,
+                    media_type="audio",
+                    media_data=b64_audio,
+                    caption=reply_text
+                )
+                out_msg = Message(
+                    organization_id=org_id,
+                    contact_id=contact.id,
+                    content=reply_text,
+                    attachment_url="voice_note_response",
+                    attachment_type="audio",
+                    type="Outbound",
+                    status="Sent" if send_result.get("success") else "Failed",
+                    sent_at=now,
+                    whatsapp_message_id=send_result.get("messageId")
+                )
+                db.add(out_msg)
+                db.commit()
+                logger.info(f"🎙️ AI Voice Note auto-reply sent to {contact.phone} via Meta Cloud API")
+                return {
+                    "reply": reply_text,
+                    "action": action,
+                    "message_id": str(out_msg.id),
+                    "is_voice": True
+                }
+
         if config["delivery_method"] == "meta":
-            # Send immediately via Meta Cloud API
+            # Send standard text message via Meta Cloud API
             meta_service = get_meta_whatsapp_service(
                 config["phone_number_id"],
                 config["access_token"]

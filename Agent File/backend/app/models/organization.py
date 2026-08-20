@@ -30,6 +30,8 @@ class Organization(Base):
     ai_tone = Column(String, nullable=True, default="Warm, professional, and helpful.")
     ai_payment_link = Column(String, nullable=True)
     ai_business_type = Column(String(100), nullable=True, default="Organization")
+    ai_voice_reply_mode = Column(String(50), nullable=True, default="text")  # "text", "match_input", "voice"
+    ai_voice_name = Column(String(100), nullable=True, default="en-NG-EzinneNeural")
     
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     

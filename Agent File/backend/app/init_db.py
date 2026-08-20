@@ -137,6 +137,8 @@ def init_chat_tables():
     ALTER TABLE organizations ADD COLUMN IF NOT EXISTS ai_tone TEXT DEFAULT 'Warm, professional, and helpful.';
     ALTER TABLE organizations ADD COLUMN IF NOT EXISTS ai_payment_link TEXT;
     ALTER TABLE organizations ADD COLUMN IF NOT EXISTS ai_business_type VARCHAR(100) DEFAULT 'Organization';
+    ALTER TABLE organizations ADD COLUMN IF NOT EXISTS ai_voice_reply_mode VARCHAR(50) DEFAULT 'text';
+    ALTER TABLE organizations ADD COLUMN IF NOT EXISTS ai_voice_name VARCHAR(100) DEFAULT 'en-NG-EzinneNeural';
 
     -- Add chat handover & triage columns to contacts if not present
     ALTER TABLE contacts ADD COLUMN IF NOT EXISTS conversation_status VARCHAR(50) DEFAULT 'open';

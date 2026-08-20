@@ -14,8 +14,9 @@ beautifulsoup4>=4.12.3
 lxml>=5.1.0
 python-dotenv>=1.0.0
 
-# AI - Gemini SDK
+# AI - Gemini SDK & Free Text-to-Speech
 google-generativeai>=0.3.2
+edge-tts>=7.0.0
 
 # Database vector support
 pgvector>=0.2.4

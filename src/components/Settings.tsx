@@ -40,6 +40,8 @@ const Settings: React.FC<SettingsProps> = ({
     const [agentTone, setAgentTone] = useState(() => localStorage.getItem('shepherd_agent_tone') || 'Warm, professional, and helpful. Use casual WhatsApp-style language.');
     const [agentDelay, setAgentDelay] = useState(() => parseInt(localStorage.getItem('shepherd_agent_delay') || '5', 10));
     const [paymentLink, setPaymentLink] = useState(() => localStorage.getItem('shepherd_payment_link') || '');
+    const [voiceReplyMode, setVoiceReplyMode] = useState<'text' | 'match_input' | 'voice'>(() => (localStorage.getItem('shepherd_voice_reply_mode') as any) || 'text');
+    const [voiceName, setVoiceName] = useState(() => localStorage.getItem('shepherd_voice_name') || 'en-NG-EzinneNeural');
     const [agentSaved, setAgentSaved] = useState(false);
 
     // API & Integration State
@@ -163,6 +165,14 @@ const Settings: React.FC<SettingsProps> = ({
                     setAgentDelay(autoData.reply_delay || 5);
                     if (autoData.tone) setAgentTone(autoData.tone);
                     if (autoData.payment_link) setPaymentLink(autoData.payment_link);
+                    if (autoData.voice_reply_mode) {
+                        setVoiceReplyMode(autoData.voice_reply_mode);
+                        localStorage.setItem('shepherd_voice_reply_mode', autoData.voice_reply_mode);
+                    }
+                    if (autoData.voice_name) {
+                        setVoiceName(autoData.voice_name);
+                        localStorage.setItem('shepherd_voice_name', autoData.voice_name);
+                    }
                     localStorage.setItem('shepherd_agent_enabled', String(autoData.enabled));
                     localStorage.setItem('shepherd_agent_mode', autoData.mode || 'auto-send');
                 }
@@ -531,6 +541,45 @@ const Settings: React.FC<SettingsProps> = ({
                                 <p className="text-xs text-slate-400 mt-1">AI will automatically paste this link when contacts ask how to pay, give, or buy.</p>
                             </div>
 
+                            {/* Voice Note Response Mode */}
+                            <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-4">
+                                <div>
+                                    <label className="block text-sm font-bold text-slate-800 mb-1 flex items-center gap-2">
+                                        <Volume2 size={16} className="text-violet-600" /> Voice Note Response Mode
+                                        <span className="text-[10px] bg-green-100 text-green-700 font-bold px-2 py-0.5 rounded-full">100% Free</span>
+                                    </label>
+                                    <p className="text-xs text-slate-500 mb-3">Choose whether the AI replies with text or spoken audio voice notes.</p>
+                                    <select
+                                        value={voiceReplyMode}
+                                        onChange={(e) => setVoiceReplyMode(e.target.value as any)}
+                                        className="w-full border border-slate-300 rounded-lg px-4 py-2 text-sm font-medium focus:ring-2 focus:ring-violet-500 outline-none bg-white"
+                                    >
+                                        <option value="text">💬 Text Only (Default — AI always replies with text)</option>
+                                        <option value="match_input">🎙️ Match Customer (Reply in voice when customer sends a voice note, text otherwise)</option>
+                                        <option value="voice">🔊 Always Voice Note (AI always sends spoken audio voice replies)</option>
+                                    </select>
+                                </div>
+
+                                {voiceReplyMode !== 'text' && (
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                                            AI Voice Accent & Style
+                                        </label>
+                                        <select
+                                            value={voiceName}
+                                            onChange={(e) => setVoiceName(e.target.value)}
+                                            className="w-full border border-slate-300 rounded-lg px-4 py-2 text-xs font-medium focus:ring-2 focus:ring-violet-500 outline-none bg-white"
+                                        >
+                                            <option value="en-NG-EzinneNeural">🇳🇬 Nigerian English (Warm Female - Ezinne)</option>
+                                            <option value="en-NG-AbeoNeural">🇳🇬 Nigerian English (Warm Male - Abeo)</option>
+                                            <option value="en-US-EmmaNeural">🇺🇸 US English (Warm Female - Emma)</option>
+                                            <option value="en-US-GuyNeural">🇺🇸 US English (Warm Male - Guy)</option>
+                                            <option value="en-GB-SoniaNeural">🇬🇧 British English (Warm Female - Sonia)</option>
+                                        </select>
+                                    </div>
+                                )}
+                            </div>
+
                             <div>
                                 <button
                                     onClick={async () => {
@@ -539,6 +588,8 @@ const Settings: React.FC<SettingsProps> = ({
                                         localStorage.setItem('shepherd_agent_tone', agentTone);
                                         localStorage.setItem('shepherd_agent_delay', String(agentDelay));
                                         localStorage.setItem('shepherd_payment_link', paymentLink);
+                                        localStorage.setItem('shepherd_voice_reply_mode', voiceReplyMode);
+                                        localStorage.setItem('shepherd_voice_name', voiceName);
 
                                         try {
                                             const token = localStorage.getItem('authToken');
@@ -555,7 +606,9 @@ const Settings: React.FC<SettingsProps> = ({
                                                         mode: agentMode,
                                                         reply_delay: agentDelay,
                                                         tone: agentTone,
-                                                        payment_link: paymentLink
+                                                        payment_link: paymentLink,
+                                                        voice_reply_mode: voiceReplyMode,
+                                                        voice_name: voiceName
                                                     })
                                                 });
                                             }
