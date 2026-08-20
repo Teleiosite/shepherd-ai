@@ -138,18 +138,21 @@ async def transcribe_voice_note(
 
     # Read self-hosted faster-whisper microservice configuration
     transcribe_url = os.getenv("TRANSCRIBE_SERVICE_URL", "").strip()
-    transcribe_key = os.getenv("TRANSCRIBE_SERVICE_KEY", "").strip()
+    transcribe_key = os.getenv("TRANSCRIBE_SERVICE_KEY", "").strip() or "17f187c37b8164bc2f038779fa9ebe886ef771e3f721793e584bd816bf1a8ac5"
 
     if transcribe_url:
+        # Automatically ensure /transcribe path is present
+        transcribe_url = transcribe_url.rstrip("/")
+        if not transcribe_url.endswith("/transcribe"):
+            transcribe_url = f"{transcribe_url}/transcribe"
+
         start_t = time.time()
         logger.info(f"🎙️ Calling self-hosted Whisper microservice: {transcribe_url}")
         try:
-            headers = {}
-            if transcribe_key:
-                headers["X-Api-Key"] = transcribe_key
+            headers = {"X-Api-Key": transcribe_key}
 
             clean_mime = "audio/ogg" if ("ogg" in (mime_type or "").lower() or is_ogg) else (mime_type or "audio/ogg")
-            async with httpx.AsyncClient(timeout=45.0) as client:
+            async with httpx.AsyncClient(timeout=25.0) as client:
                 files = {"file": ("voice.ogg", audio_bytes, clean_mime)}
                 resp = await client.post(transcribe_url, files=files, headers=headers)
                 elapsed = time.time() - start_t
