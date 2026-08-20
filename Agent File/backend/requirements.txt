@@ -18,6 +18,9 @@ python-dotenv>=1.0.0
 google-generativeai>=0.3.2
 edge-tts>=7.0.0
 
+# Bundled ffmpeg binary for audio conversion on Vercel (no system ffmpeg required)
+imageio-ffmpeg>=0.4.9
+
 # Database vector support
 pgvector>=0.2.4
 
