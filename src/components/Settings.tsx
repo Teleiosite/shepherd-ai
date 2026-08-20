@@ -619,9 +619,19 @@ const Settings: React.FC<SettingsProps> = ({
                                         setAgentSaved(true);
                                         setTimeout(() => setAgentSaved(false), 2000);
                                     }}
-                                    className="bg-violet-600 text-white px-6 py-2.5 rounded-lg hover:bg-violet-700 font-bold transition-all shadow-sm active:scale-95"
+                                    className={`px-6 py-2.5 rounded-lg font-bold transition-all shadow-sm active:scale-95 flex items-center gap-2 ${
+                                        agentSaved
+                                            ? 'bg-green-600 text-white hover:bg-green-700'
+                                            : 'bg-violet-600 text-white hover:bg-violet-700'
+                                    }`}
                                 >
-                                    Save Agent Settings
+                                    {agentSaved ? (
+                                        <>
+                                            <Check size={18} /> Saved Successfully!
+                                        </>
+                                    ) : (
+                                        'Save Agent Settings'
+                                    )}
                                 </button>
                             </div>
                         </div>

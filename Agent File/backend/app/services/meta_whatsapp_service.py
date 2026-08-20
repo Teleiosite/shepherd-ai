@@ -144,13 +144,17 @@ class MetaWhatsAppService:
                         content_type = "image/jpeg"
                     elif meta_media_type == "video":
                         content_type = "video/mp4"
+                    elif meta_media_type == "audio":
+                        content_type = "audio/mpeg"
                     else:
                         content_type = "application/pdf"
 
                 upload_filename = filename or (
                     "image.png" if "png" in content_type else (
                         "image.jpg" if meta_media_type == "image" else (
-                            "video.mp4" if meta_media_type == "video" else "document.pdf"
+                            "video.mp4" if meta_media_type == "video" else (
+                                "voice_note.mp3" if meta_media_type == "audio" else "document.pdf"
+                            )
                         )
                     )
                 )

@@ -503,7 +503,7 @@ ACTION TYPE GUIDE:
             logger.info(f"🎙️ Synthesizing voice note response using voice: {voice_name}")
             voice_bytes = await synthesize_voice_note(reply_text, voice_name)
             if voice_bytes:
-                b64_audio = "data:audio/ogg;base64," + base64.b64encode(voice_bytes).decode("utf-8")
+                b64_audio = "data:audio/mpeg;base64," + base64.b64encode(voice_bytes).decode("utf-8")
                 meta_service = get_meta_whatsapp_service(
                     config["phone_number_id"],
                     config["access_token"]
@@ -512,7 +512,7 @@ ACTION TYPE GUIDE:
                     to_phone=contact.phone,
                     media_type="audio",
                     media_data=b64_audio,
-                    caption=reply_text
+                    filename="voice_note.mp3"
                 )
                 out_msg = Message(
                     organization_id=org_id,

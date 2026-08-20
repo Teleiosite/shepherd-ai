@@ -526,24 +526,29 @@ async def whatsapp_incoming_webhook(
                                 # Voice note transcription using Google Gemini / Whisper
                                 if media_id and org_row_data and org_row_data[2]:
                                     try:
-                                        import httpx
+                                        import httpx, os
                                         from app.services.agent_service import transcribe_voice_note
                                         meta_token = org_row_data[2]
-                                        ai_key = org_row_data[1]
+                                        ai_key = org_row_data[1] or os.getenv("GEMINI_API_KEY")
                                         ai_prov = org_row_data[3] or "gemini"
                                         ai_base = org_row_data[4]
 
-                                        async with httpx.AsyncClient(timeout=20.0) as client:
+                                        download_headers = {
+                                            "Authorization": f"Bearer {meta_token}",
+                                            "User-Agent": "curl/7.64.1"
+                                        }
+
+                                        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
                                             info_res = await client.get(
                                                 f"https://graph.facebook.com/v18.0/{media_id}",
-                                                headers={"Authorization": f"Bearer {meta_token}"}
+                                                headers=download_headers
                                             )
                                             if info_res.status_code == 200:
                                                 down_url = info_res.json().get("url")
                                                 mime = info_res.json().get("mime_type", "audio/ogg")
                                                 if down_url:
-                                                    bin_res = await client.get(down_url, headers={"Authorization": f"Bearer {meta_token}"})
-                                                    if bin_res.status_code == 200:
+                                                    bin_res = await client.get(down_url, headers=download_headers)
+                                                    if bin_res.status_code == 200 and bin_res.content:
                                                         transcript = await transcribe_voice_note(
                                                             audio_bytes=bin_res.content,
                                                             mime_type=mime,
@@ -553,9 +558,15 @@ async def whatsapp_incoming_webhook(
                                                         )
                                                         if transcript and not transcript.startswith("["):
                                                             msg_content = f"[Voice Note]: {transcript}"
-                                                            logger.info(f"🎙️ Processed voice note into text: {msg_content}")
+                                                            logger.info(f"🎙️ Successfully processed voice note into text: '{msg_content}'")
+                                                        else:
+                                                            logger.warning(f"Voice note transcription returned empty for media {media_id}")
+                                                    else:
+                                                        logger.warning(f"Failed to download audio binary (HTTP {bin_res.status_code}) from Meta")
+                                            else:
+                                                logger.warning(f"Failed to fetch media metadata from Meta (HTTP {info_res.status_code}): {info_res.text}")
                                     except Exception as tr_err:
-                                        logger.warning(f"Failed to transcribe voice note: {tr_err}")
+                                        logger.warning(f"Failed to transcribe voice note: {tr_err}", exc_info=True)
                             elif msg_type in ["image", "video", "document", "sticker"]:
                                 media_obj = msg.get(msg_type, {})
                                 media_id = media_obj.get("id")
