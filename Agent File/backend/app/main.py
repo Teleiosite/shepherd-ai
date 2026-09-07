@@ -38,7 +38,7 @@ async def health_check():
     return {"status": "healthy"}
 
 
-from app.api import auth, contacts, messages, knowledge, workflows, whatsapp, settings, bridge, bridge_polling, groups, bookings, browse, conversations, widget, media_library
+from app.api import auth, contacts, messages, knowledge, workflows, whatsapp, settings, bridge, bridge_polling, groups, bookings, browse, conversations, widget, media_library, catalog
 app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
 app.include_router(contacts.router, prefix="/api/contacts", tags=["Contacts"])
 app.include_router(messages.router, prefix="/api/messages", tags=["Messages"])
@@ -54,6 +54,7 @@ app.include_router(browse.router, prefix="/api/browse", tags=["Web Browsing"])
 app.include_router(conversations.router, tags=["Conversations"])
 app.include_router(widget.router, tags=["Website Widget"])
 app.include_router(media_library.router, tags=["Media Library"])
+app.include_router(catalog.router, tags=["Universal Catalog"])
 
 
 @app.on_event("startup")
@@ -76,11 +77,12 @@ if __name__ == "__main__":
 
 # Initialize Tables & Schema on startup
 try:
-    from app.init_db import init_groups_tables, init_bookings_table, init_chat_tables, init_media_table
+    from app.init_db import init_groups_tables, init_bookings_table, init_chat_tables, init_media_table, init_catalog_and_saas_tables
     init_groups_tables()
     init_bookings_table()
     init_chat_tables()
     init_media_table()
+    init_catalog_and_saas_tables()
 except Exception as e:
     print(f"Startup DB initialization error: {e}")
 

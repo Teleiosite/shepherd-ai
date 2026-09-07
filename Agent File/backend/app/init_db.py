@@ -199,9 +199,63 @@ def init_media_table():
         pass
 
 
+def init_catalog_and_saas_tables():
+    """Create Catalog and SaaS subscription/widget schema if it doesn't exist."""
+    saas_sql = """
+    -- Add SaaS subscription & quota fields to organizations
+    ALTER TABLE organizations ADD COLUMN IF NOT EXISTS subscription_plan VARCHAR(50) DEFAULT 'starter';
+    ALTER TABLE organizations ADD COLUMN IF NOT EXISTS subscription_status VARCHAR(50) DEFAULT 'active';
+    ALTER TABLE organizations ADD COLUMN IF NOT EXISTS monthly_message_limit INTEGER DEFAULT 1000;
+    ALTER TABLE organizations ADD COLUMN IF NOT EXISTS messages_used_this_month INTEGER DEFAULT 0;
+    ALTER TABLE organizations ADD COLUMN IF NOT EXISTS paystack_subscription_code VARCHAR(100);
+
+    -- Add Universal Catalog & Webhook fields to organizations
+    ALTER TABLE organizations ADD COLUMN IF NOT EXISTS catalog_mode VARCHAR(50) DEFAULT 'internal';
+    ALTER TABLE organizations ADD COLUMN IF NOT EXISTS external_search_webhook_url VARCHAR(500);
+    ALTER TABLE organizations ADD COLUMN IF NOT EXISTS external_search_webhook_secret VARCHAR(255);
+
+    -- Add Web Chat Widget branding & customization fields
+    ALTER TABLE organizations ADD COLUMN IF NOT EXISTS widget_primary_color VARCHAR(20) DEFAULT '#0d9488';
+    ALTER TABLE organizations ADD COLUMN IF NOT EXISTS widget_welcome_message TEXT DEFAULT 'Hello! How can we help you today?';
+    ALTER TABLE organizations ADD COLUMN IF NOT EXISTS widget_position VARCHAR(20) DEFAULT 'bottom-right';
+    ALTER TABLE organizations ADD COLUMN IF NOT EXISTS widget_avatar_url VARCHAR(500);
+
+    -- Create Universal Catalog Items table
+    CREATE TABLE IF NOT EXISTS catalog_items (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        title VARCHAR(255) NOT NULL,
+        category VARCHAR(100),
+        description TEXT,
+        price_amount NUMERIC(12, 2),
+        price_currency VARCHAR(10) DEFAULT 'NGN',
+        price_unit VARCHAR(50) DEFAULT 'per day',
+        image_url VARCHAR(500),
+        action_url VARCHAR(500),
+        attributes JSONB DEFAULT '{}'::jsonb,
+        is_available BOOLEAN DEFAULT true,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_catalog_org ON catalog_items(organization_id);
+    CREATE INDEX IF NOT EXISTS idx_catalog_category ON catalog_items(category);
+    CREATE INDEX IF NOT EXISTS idx_catalog_available ON catalog_items(is_available);
+    """
+    try:
+        with engine.connect() as conn:
+            conn.execute(text(saas_sql))
+            conn.commit()
+            logger.info("✅ Universal Catalog and SaaS tables ready")
+    except Exception as e:
+        logger.error(f"❌ Error initializing Catalog/SaaS schema: {e}")
+        pass
+
+
 if __name__ == "__main__":
     init_groups_tables()
     init_bookings_table()
     init_chat_tables()
     init_media_table()
+    init_catalog_and_saas_tables()
 

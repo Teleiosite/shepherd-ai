@@ -10,6 +10,7 @@ from app.models.booking import Booking
 from app.models.group import Group
 from app.models.media_file import MediaFile
 from app.models.conversation_session import ConversationSession
+from app.models.catalog_item import CatalogItem
 
 __all__ = [
     "Organization",
@@ -24,4 +25,5 @@ __all__ = [
     "Group",
     "MediaFile",
     "ConversationSession",
+    "CatalogItem",
 ]

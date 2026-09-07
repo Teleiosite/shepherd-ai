@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, DateTime, func
+from sqlalchemy import Column, String, Integer, Text, DateTime, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 import uuid
@@ -33,6 +33,24 @@ class Organization(Base):
     ai_voice_reply_mode = Column(String(50), nullable=True, default="text")  # "text", "match_input", "voice"
     ai_voice_name = Column(String(100), nullable=True, default="en-NG-EzinneNeural")
     
+    # SaaS Subscription & Quotas
+    subscription_plan = Column(String(50), nullable=True, default="starter")  # "starter", "growth", "enterprise"
+    subscription_status = Column(String(50), nullable=True, default="active")  # "active", "trialing", "past_due"
+    monthly_message_limit = Column(Integer, nullable=True, default=1000)
+    messages_used_this_month = Column(Integer, nullable=True, default=0)
+    paystack_subscription_code = Column(String(100), nullable=True)
+
+    # Universal Catalog & External Webhook
+    catalog_mode = Column(String(50), nullable=True, default="internal")  # "internal", "external_webhook"
+    external_search_webhook_url = Column(String(500), nullable=True)
+    external_search_webhook_secret = Column(String(255), nullable=True)
+
+    # Web Chat Widget Customization
+    widget_primary_color = Column(String(20), nullable=True, default="#0d9488")
+    widget_welcome_message = Column(Text, nullable=True, default="Hello! How can we help you today?")
+    widget_position = Column(String(20), nullable=True, default="bottom-right")
+    widget_avatar_url = Column(String(500), nullable=True)
+
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
     # Relationships
@@ -43,3 +61,4 @@ class Organization(Base):
     categories = relationship("Category", back_populates="organization", cascade="all, delete-orphan")
     workflow_steps = relationship("WorkflowStep", back_populates="organization", cascade="all, delete-orphan")
     groups = relationship("Group", back_populates="organization", cascade="all, delete-orphan")
+    catalog_items = relationship("CatalogItem", back_populates="organization", cascade="all, delete-orphan")

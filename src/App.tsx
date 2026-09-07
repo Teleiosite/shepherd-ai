@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef as _useRef } from 'react';
 import { HashRouter, Routes, Route, Link, useLocation, useNavigate, Navigate } from 'react-router-dom';
-import { LayoutDashboard, Users, BookOpen, Send, Menu, Settings as SettingsIcon, MessageCircle, Zap, Loader2, LogOut, Calendar, Bot } from 'lucide-react';
+import { LayoutDashboard, Users, BookOpen, Send, Menu, Settings as SettingsIcon, MessageCircle, Zap, Loader2, LogOut, Calendar, Bot, Package, Globe, CreditCard } from 'lucide-react';
 import Dashboard from './components/Dashboard';
 import ContactsManager from './components/ContactsManager';
 import KnowledgeBase from './components/KnowledgeBase-enhanced';
@@ -11,6 +11,9 @@ import Settings from './components/Settings';
 import Auth from './components/Auth';
 import WorkflowsManager from './components/WorkflowsManager';
 import Groups from './pages/Groups';
+import CatalogManager from './components/CatalogManager';
+import WidgetConfigurator from './components/WidgetConfigurator';
+import SubscriptionBilling from './components/SubscriptionBilling';
 import { Contact, KnowledgeResource, MessageLog, ContactCategory, MessageStatus, DEFAULT_CATEGORIES, WorkflowStep, User, AgentSuggestion, MediaFile } from './types';
 import { v4 as uuidv4 } from 'uuid';
 import { generateMessage } from './services/geminiService';
@@ -1029,11 +1032,13 @@ function App() {
               <Menu size={24} />
             </button>
           </div>
-
           <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
             <NavItem to="/" icon={LayoutDashboard} label="Dashboard" />
             <NavItem to="/contacts" icon={Users} label="Contacts" />
             <NavItem to="/chats" icon={MessageCircle} label="Live Chats" badge={logs.filter(l => l.type === 'Inbound' && l.status !== MessageStatus.RESPONDED).length} />
+            <NavItem to="/catalog" icon={Package} label="Catalog & Offerings" />
+            <NavItem to="/widget" icon={Globe} label="Website Widget" />
+            <NavItem to="/billing" icon={CreditCard} label="Subscription" />
             <NavItem to="/bookings" icon={Calendar} label="Bookings" />
             <NavItem to="/library" icon={Bot} label="Media Library" />
             <NavItem to="/knowledge" icon={BookOpen} label="Knowledge Base" />
@@ -1100,6 +1105,9 @@ function App() {
                 organizationName={organizationName}
                 mediaFiles={mediaFiles}
               />} />
+              <Route path="/catalog" element={<CatalogManager />} />
+              <Route path="/widget" element={<WidgetConfigurator />} />
+              <Route path="/billing" element={<SubscriptionBilling />} />
               <Route path="/bookings" element={<Bookings />} />
               <Route path="/library" element={<MediaLibrary />} />
               <Route path="/knowledge" element={<KnowledgeBase resources={resources} setResources={setResources} />} />
@@ -1116,6 +1124,7 @@ function App() {
                 businessType={businessType}
                 setBusinessType={(val) => { setBusinessType(val); localStorage.setItem('shepherd_business_type', val); }}
               />} />
+              <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </div>
 

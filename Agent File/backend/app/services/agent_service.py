@@ -285,19 +285,116 @@ async def synthesize_voice_note(text: str, voice: str = "en-NG-EzinneNeural") ->
         return b""
 
 
+async def execute_catalog_search(
+    org: Organization,
+    search_params: Dict[str, Any],
+    db: Session
+) -> list:
+    """
+    Search either the tenant's external API webhook (e.g. Rentigram fleet DB)
+    or the internal catalog_items table.
+    Returns normalized items array for universal card rendering.
+    """
+    items = []
+    query_str = (search_params.get("query") or "").strip()
+    category = (search_params.get("category") or "").strip()
+    max_budget = search_params.get("max_budget")
+
+    # Mode 1: External API Webhook (e.g. Rentigram, Hotel PMS, Store API)
+    if getattr(org, "catalog_mode", "internal") == "external_webhook" and getattr(org, "external_search_webhook_url", None):
+        try:
+            webhook_url = org.external_search_webhook_url.strip()
+            headers = {"Content-Type": "application/json"}
+            if org.external_search_webhook_secret:
+                headers["X-Shepherd-Secret"] = org.external_search_webhook_secret
+
+            async with httpx.AsyncClient(timeout=8.0) as client:
+                resp = await client.post(
+                    webhook_url,
+                    json={
+                        "query": query_str,
+                        "category": category,
+                        "max_budget": max_budget,
+                        "location": search_params.get("location"),
+                        "attributes": search_params.get("attributes", {})
+                    },
+                    headers=headers
+                )
+                if resp.is_success:
+                    data = resp.json()
+                    raw_items = data if isinstance(data, list) else data.get("items") or data.get("cars") or data.get("products") or []
+                    for itm in raw_items[:5]:
+                        items.append({
+                            "id": str(itm.get("id") or itm.get("_id") or uuid4()),
+                            "title": itm.get("title") or itm.get("name") or "Available Option",
+                            "category": itm.get("category") or category,
+                            "description": itm.get("description") or "",
+                            "price": str(itm.get("price") or itm.get("daily_rate") or itm.get("rate") or ""),
+                            "price_amount": float(itm.get("price_amount") or 0),
+                            "image_url": itm.get("image_url") or itm.get("photo_url") or itm.get("image") or "",
+                            "action_url": itm.get("action_url") or itm.get("booking_url") or itm.get("link") or "",
+                            "attributes": itm.get("attributes") or itm.get("specs") or {}
+                        })
+                    logger.info(f"🌐 External webhook returned {len(items)} catalog items from {webhook_url}")
+                    return items
+                else:
+                    logger.warning(f"External webhook {webhook_url} returned HTTP {resp.status_code}: {resp.text[:200]}")
+        except Exception as e:
+            logger.warning(f"External catalog webhook query failed: {e}")
+
+    # Mode 2: Internal Database Catalog
+    try:
+        from app.models.catalog_item import CatalogItem
+        query = db.query(CatalogItem).filter(
+            CatalogItem.organization_id == org.id,
+            CatalogItem.is_available == True
+        )
+        if query_str:
+            query = query.filter(
+                (CatalogItem.title.ilike(f"%{query_str}%")) |
+                (CatalogItem.description.ilike(f"%{query_str}%")) |
+                (CatalogItem.category.ilike(f"%{query_str}%"))
+            )
+        if max_budget:
+            try:
+                val = float(max_budget)
+                query = query.filter(CatalogItem.price_amount <= val)
+            except:
+                pass
+
+        results = query.limit(5).all()
+        for itm in results:
+            price_display = f"{itm.price_currency or 'NGN'} {itm.price_amount:,.0f} {itm.price_unit or ''}".strip() if itm.price_amount else "Contact for pricing"
+            items.append({
+                "id": str(itm.id),
+                "title": itm.title,
+                "category": itm.category or "",
+                "description": itm.description or "",
+                "price": price_display,
+                "price_amount": float(itm.price_amount) if itm.price_amount else 0,
+                "image_url": itm.image_url or "",
+                "action_url": itm.action_url or "",
+                "attributes": itm.attributes or {}
+            })
+        logger.info(f"📦 Internal catalog search found {len(items)} items for org {org.id}")
+    except Exception as e:
+        logger.warning(f"Internal catalog query failed: {e}")
+
+    return items
+
+
 async def trigger_ai_agent_reply(
     contact_id: UUID,
     incoming_text: str,
     org_id: UUID,
     db: Session,
     audio_media_id: Optional[str] = None,
-    audio_mime_type: str = "audio/ogg"
+    audio_mime_type: str = "audio/ogg",
+    channel: str = "whatsapp"
 ) -> Optional[Dict[str, Any]]:
     """
     Main 24/7 backend agent orchestrator.
-    Called on every incoming message.
-    If audio_media_id is provided, downloads and transcribes the voice note
-    using the org's API key (guaranteed available here via ORM).
+    Called on every incoming message across WhatsApp or Web Chat Widget.
     """
     try:
         # 1. Fetch organization settings
@@ -526,9 +623,19 @@ VOICE NOTE RULES:
 
 
 
+CATALOG & INVENTORY SEARCH RULES:
+- When a customer asks about available cars, properties, products, services, prices, or requests something specific (e.g. "I want to book a black BMW for the weekend in Lagos", "Do you have 2-bedroom flats in Lekki", "How much for teeth whitening?", "Show me SUVs under 150k"):
+  - Set "type": "SEARCH_CATALOG" in action with:
+    - "query": specific item or model (e.g. "BMW", "G-Wagon", "2-bedroom", "teeth whitening")
+    - "category": category if applicable (e.g. "SUV", "Shortlet", "Dental")
+    - "location": city or area mentioned (e.g. "Lagos", "Ikeja", "Lekki")
+    - "max_budget": numeric maximum budget if mentioned (e.g. 150000)
+    - "attributes": object of extra filters (e.g. {"color": "black", "drive_mode": "self-drive", "duration": "weekend"})
+  - In your "reply", provide an attentive, helpful response confirming you are pulling up the available options.
+
 RESPONSE FORMAT — You must return ONLY a JSON object:
 {{
-  "reply": "Your WhatsApp response text to the contact",
+  "reply": "Your response text to the contact",
   "action": {{
     "type": "NONE",
     "documentName": "",
@@ -537,12 +644,17 @@ RESPONSE FORMAT — You must return ONLY a JSON object:
     "preferredDate": "",
     "preferredTime": "",
     "query": "",
+    "category": "",
+    "location": "",
+    "max_budget": null,
+    "attributes": {{}},
     "reason": ""
   }}
 }}
 
 ACTION TYPE GUIDE:
 - NONE: standard conversational reply / answering greetings and questions
+- SEARCH_CATALOG: customer inquires about cars, inventory, products, properties, or services (include query, category, location, max_budget, attributes)
 - CREATE_BOOKING: customer wants to book/schedule an appointment (include purpose, preferredDate YYYY-MM-DD, preferredTime HH:MM AM/PM)
 - SEND_DOCUMENT: customer asks for a document, price list, menu, PDF, or form
 - SEND_IMAGE: customer asks for a photo, map, or picture
@@ -624,7 +736,52 @@ ACTION TYPE GUIDE:
                 db.delete(session)
                 db.commit()
 
-        # 10. Deliver reply to customer via WhatsApp
+        recommended_items = []
+        if action_type == "SEARCH_CATALOG":
+            search_params = {
+                "query": action.get("query") or incoming_text,
+                "category": action.get("category") or "",
+                "max_budget": action.get("max_budget"),
+                "location": action.get("location"),
+                "attributes": action.get("attributes") or {}
+            }
+            recommended_items = await execute_catalog_search(org, search_params, db)
+            if recommended_items:
+                card_summaries = []
+                for itm in recommended_items[:3]:
+                    card_summaries.append(f"• {itm['title']} ({itm['price']})")
+                if card_summaries and not any(itm['title'].lower() in reply_text.lower() for itm in recommended_items):
+                    reply_text += f"\n\nHere are available options:\n" + "\n".join(card_summaries)
+
+        # 10. Increment SaaS usage quota counter
+        try:
+            org.messages_used_this_month = (org.messages_used_this_month or 0) + 1
+            db.commit()
+        except Exception as quota_err:
+            logger.warning(f"Failed to increment messages_used_this_month: {quota_err}")
+
+        # 11. If channel is Web Chat Widget, return reply directly (bypasses WhatsApp Meta & Bridge)
+        if channel == "web_widget":
+            out_msg = Message(
+                organization_id=org_id,
+                contact_id=contact.id,
+                content=reply_text,
+                type="Outbound",
+                status="Sent",
+                sent_at=now,
+                attachment_type="web"
+            )
+            db.add(out_msg)
+            db.commit()
+            logger.info(f"💬 AI Auto-reply sent to web widget visitor ({contact.name})")
+            return {
+                "reply": reply_text,
+                "action": action,
+                "recommended_items": recommended_items,
+                "message_id": str(out_msg.id)
+            }
+
+        # 12. Deliver reply to customer via WhatsApp
         from app.api.whatsapp import get_organization_whatsapp_config
         from app.services.meta_whatsapp_service import get_meta_whatsapp_service
         import base64

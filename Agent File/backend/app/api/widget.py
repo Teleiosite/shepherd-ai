@@ -31,6 +31,35 @@ class WidgetMessageRequest(BaseModel):
     message: str
 
 
+@router.get("/config/{org_id}")
+async def get_widget_config(
+    org_id: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Public config endpoint for website embed widget.
+    Returns brand styling, colors, and welcome greeting.
+    """
+    try:
+        org_uuid = UUID(org_id)
+    except:
+        raise HTTPException(status_code=400, detail="Invalid organization ID format")
+
+    org = db.query(Organization).filter(Organization.id == org_uuid).first()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+
+    return {
+        "org_id": str(org.id),
+        "name": org.name,
+        "ai_name": org.ai_name or "Live Assistant",
+        "primary_color": getattr(org, "widget_primary_color", "#0d9488") or "#0d9488",
+        "welcome_message": getattr(org, "widget_welcome_message", "Hello! How can we help you today?") or "Hello! How can we help you today?",
+        "position": getattr(org, "widget_position", "bottom-right") or "bottom-right",
+        "avatar_url": getattr(org, "widget_avatar_url", None)
+    }
+
+
 @router.post("/message")
 async def handle_widget_message(
     payload: WidgetMessageRequest,
@@ -38,7 +67,7 @@ async def handle_widget_message(
 ):
     """
     Public webhook for website live chat widget.
-    Processes inbound message and returns AI reply to the website visitor.
+    Processes inbound message and returns AI reply + recommended catalog items.
     """
     try:
         org_id = UUID(payload.org_id)
@@ -48,6 +77,19 @@ async def handle_widget_message(
     org = db.query(Organization).filter(Organization.id == org_id).first()
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
+
+    # SaaS Usage Quota Guard
+    limit = getattr(org, "monthly_message_limit", 1000) or 1000
+    used = getattr(org, "messages_used_this_month", 0) or 0
+    if used >= limit:
+        logger.warning(f"Organization {org.name} ({org.id}) reached monthly message quota ({used}/{limit}).")
+        return {
+            "success": True,
+            "reply": "Thank you for reaching out! We are currently experiencing high inquiry volume. Please leave your email or phone number and our team will get back to you shortly.",
+            "recommended_items": [],
+            "action": {"type": "QUOTA_EXCEEDED"},
+            "ai_name": org.ai_name or "Shepherd AI"
+        }
 
     contact_identifier = payload.visitor_phone_or_email or f"web_{payload.visitor_name.replace(' ', '_').lower()}"
 
@@ -83,19 +125,23 @@ async def handle_widget_message(
     db.add(in_msg)
     db.commit()
 
-    # Trigger AI Agent Reply
+    # Trigger AI Agent Reply with channel="web_widget"
     agent_result = await trigger_ai_agent_reply(
         contact_id=contact.id,
         incoming_text=payload.message,
         org_id=org_id,
-        db=db
+        db=db,
+        channel="web_widget"
     )
 
     reply_text = agent_result.get("reply", "") if agent_result else "Thank you for reaching out! We will get back to you shortly."
+    recommended_items = agent_result.get("recommended_items", []) if agent_result else []
 
     return {
         "success": True,
         "reply": reply_text,
+        "recommended_items": recommended_items,
+        "action": agent_result.get("action", {}) if agent_result else {},
         "contact_id": str(contact.id),
         "message_id": str(in_msg.id),
         "ai_name": org.ai_name or "Shepherd AI"
