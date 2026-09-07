@@ -141,6 +141,41 @@ def create_catalog_item(
     return {"success": True, "id": str(item.id), "title": item.title}
 
 
+class CatalogBulkCreate(BaseModel):
+    items: List[CatalogItemCreate]
+
+
+@router.post("/bulk", status_code=status.HTTP_201_CREATED)
+def bulk_create_catalog_items(
+    payload: CatalogBulkCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Bulk create catalog items from Excel/CSV import."""
+    created_count = 0
+    for itm in payload.items:
+        if not itm.title or not itm.title.strip():
+            continue
+        item = CatalogItem(
+            organization_id=current_user.organization_id,
+            title=itm.title.strip(),
+            category=itm.category or "General",
+            description=itm.description,
+            price_amount=itm.price_amount,
+            price_currency=itm.price_currency or "NGN",
+            price_unit=itm.price_unit or "per day",
+            image_url=itm.image_url,
+            action_url=itm.action_url,
+            attributes=itm.attributes or {},
+            is_available=itm.is_available if itm.is_available is not None else True
+        )
+        db.add(item)
+        created_count += 1
+
+    db.commit()
+    return {"success": True, "created_count": created_count}
+
+
 @router.put("/{item_id}")
 def update_catalog_item(
     item_id: UUID,

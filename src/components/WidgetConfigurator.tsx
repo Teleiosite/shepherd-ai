@@ -10,6 +10,7 @@ export default function WidgetConfigurator() {
   const [position, setPosition] = useState('bottom-right');
   const [isSaving, setIsSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [isChatOpen, setIsChatOpen] = useState(true);
 
   // Read organization id from localStorage or auth token
   const orgId = (() => {
@@ -129,31 +130,51 @@ export default function WidgetConfigurator() {
 
             {/* Accent Color */}
             <div>
-              <label className="block text-xs font-bold text-slate-600 mb-2">Accent Brand Color</label>
-              <div className="flex flex-wrap items-center gap-3">
+              <div className="flex justify-between items-center mb-2">
+                <label className="block text-xs font-bold text-slate-600">Accent Brand Color</label>
+                <span className="text-[11px] text-slate-400">Pick preset or paste custom HEX</span>
+              </div>
+              <div className="flex flex-wrap items-center gap-2.5">
                 {colorPresets.map((preset) => (
                   <button
                     key={preset.value}
                     type="button"
                     onClick={() => setPrimaryColor(preset.value)}
-                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all ${
-                      primaryColor === preset.value
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all ${
+                      primaryColor.toLowerCase() === preset.value.toLowerCase()
                         ? 'border-slate-800 bg-slate-50 shadow-xs ring-2 ring-slate-800'
-                        : 'border-slate-200 bg-white hover:bg-slate-50'
+                        : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
                     }`}
                   >
                     <span className="w-3.5 h-3.5 rounded-full" style={{ backgroundColor: preset.value }} />
                     {preset.label}
                   </button>
                 ))}
-                <div className="flex items-center gap-2 border border-slate-200 rounded-lg px-2 py-1 bg-white">
+
+                {/* Editable HEX Code Box with Color Swatch */}
+                <div className="flex items-center gap-1.5 border border-slate-300 rounded-lg px-2 py-1 bg-white shadow-2xs focus-within:ring-2 focus-within:ring-teal-500 focus-within:border-teal-500">
                   <input
                     type="color"
-                    value={primaryColor}
+                    value={primaryColor.startsWith('#') && primaryColor.length === 7 ? primaryColor : '#0d9488'}
                     onChange={(e) => setPrimaryColor(e.target.value)}
-                    className="w-6 h-6 border-0 rounded cursor-pointer"
+                    className="w-6 h-6 border-0 rounded cursor-pointer p-0 bg-transparent"
+                    title="Open Color Picker"
                   />
-                  <span className="text-xs font-mono text-slate-600">{primaryColor}</span>
+                  <input
+                    type="text"
+                    value={primaryColor}
+                    onChange={(e) => {
+                      let val = e.target.value.trim();
+                      if (val && !val.startsWith('#') && !val.startsWith('rgb')) {
+                        val = '#' + val;
+                      }
+                      setPrimaryColor(val);
+                    }}
+                    placeholder="#0d9488"
+                    maxLength={9}
+                    className="w-20 text-xs font-mono text-slate-800 font-bold outline-none uppercase"
+                    title="Type or paste your hex code here"
+                  />
                 </div>
               </div>
             </div>
@@ -228,7 +249,14 @@ export default function WidgetConfigurator() {
               <span className="font-bold flex items-center gap-1.5 uppercase tracking-wider text-[11px] text-slate-400">
                 <Monitor size={14} /> Live Interactive Preview
               </span>
-              <span className="text-[11px] bg-slate-100 px-2 py-0.5 rounded text-slate-600">Simulating Website</span>
+              <button
+                type="button"
+                onClick={() => setIsChatOpen(!isChatOpen)}
+                className="text-[11px] font-bold bg-white border border-slate-200 hover:bg-slate-50 px-2.5 py-1 rounded-lg text-slate-700 shadow-2xs transition-all flex items-center gap-1.5"
+              >
+                <span className={`w-2 h-2 rounded-full ${isChatOpen ? 'bg-green-500' : 'bg-slate-400'}`} />
+                {isChatOpen ? 'Hide Concierge' : 'Show Concierge'}
+              </button>
             </div>
 
             {/* Mock Web Page Frame */}
@@ -244,84 +272,122 @@ export default function WidgetConfigurator() {
                 </div>
               </div>
 
-              {/* Mock Chat Box */}
-              <div className="bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden flex flex-col h-[460px] z-10">
-                {/* Header */}
-                <div className="p-4 text-white flex justify-between items-center shrink-0" style={{ backgroundColor: primaryColor }}>
-                  <div>
-                    <div className="font-bold text-sm leading-tight">{aiName}</div>
-                    <div className="text-[11px] opacity-85">Powered by Shepherd AI</div>
-                  </div>
-                  <div className="w-2.5 h-2.5 rounded-full bg-green-400 ring-4 ring-white/20 animate-pulse" />
-                </div>
-
-                {/* Messages Body */}
-                <div className="flex-1 p-3.5 overflow-y-auto space-y-3 text-xs bg-slate-50">
-                  {/* Bot Welcome */}
-                  <div className="bg-white p-3 rounded-xl rounded-bl-xs border border-slate-200 shadow-2xs max-w-[85%] text-slate-800">
-                    {welcomeMessage}
-                  </div>
-
-                  {/* Simulated Customer query */}
-                  <div className="p-3 rounded-xl rounded-br-xs text-white ml-auto max-w-[85%]" style={{ backgroundColor: primaryColor }}>
-                    I need a black BMW for the weekend in Lagos, self drive.
-                  </div>
-
-                  {/* Bot Reply + Card */}
-                  <div className="bg-white p-3 rounded-xl rounded-bl-xs border border-slate-200 shadow-2xs space-y-2.5 max-w-[90%] text-slate-800">
-                    <p>I found matching vehicles available for your weekend in Lagos:</p>
-
-                    {/* Rich Vehicle Card Sample */}
-                    <div className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-xs">
-                      <div className="h-24 bg-slate-800 flex items-center justify-center text-slate-400 text-xs font-bold relative overflow-hidden">
-                        <img
-                          src="https://images.unsplash.com/photo-1555215695-3004980ad54e?auto=format&fit=crop&w=400&q=80"
-                          alt="BMW"
-                          className="w-full h-full object-cover"
-                          onError={(e) => { (e.target as any).style.display = 'none'; }}
-                        />
+              {/* Mock Chat Box (Shows or Hides when clicked) */}
+              {isChatOpen ? (
+                <div className="bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden flex flex-col h-[460px] z-10 animate-fade-in transition-all">
+                  {/* Header */}
+                  <div
+                    className="p-4 text-white flex justify-between items-center shrink-0 cursor-pointer select-none"
+                    style={{ backgroundColor: primaryColor }}
+                    onClick={() => setIsChatOpen(false)}
+                    title="Click header to minimize chat"
+                  >
+                    <div>
+                      <div className="font-bold text-sm leading-tight flex items-center gap-1.5">
+                        {aiName}
+                        <span className="text-[10px] bg-white/20 px-1.5 py-0.5 rounded font-normal">Click to minimize</span>
                       </div>
-                      <div className="p-2.5 space-y-1">
-                        <div className="font-bold text-slate-900 text-xs">2022 BMW 530i M-Sport</div>
-                        <div className="text-xs font-bold" style={{ color: primaryColor }}>₦120,000 / day</div>
-                        <div className="flex gap-1 flex-wrap text-[10px] text-slate-500">
-                          <span className="bg-slate-100 px-1.5 py-0.5 rounded">Self-Drive</span>
-                          <span className="bg-slate-100 px-1.5 py-0.5 rounded">Lagos</span>
-                          <span className="bg-slate-100 px-1.5 py-0.5 rounded">Automatic</span>
+                      <div className="text-[11px] opacity-85">Powered by Shepherd AI</div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setIsChatOpen(false);
+                      }}
+                      className="w-7 h-7 rounded-full bg-black/15 hover:bg-black/30 flex items-center justify-center text-white text-xs font-bold transition-colors"
+                      title="Minimize"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  {/* Messages Body */}
+                  <div className="flex-1 p-3.5 overflow-y-auto space-y-3 text-xs bg-slate-50">
+                    {/* Bot Welcome */}
+                    <div className="bg-white p-3 rounded-xl rounded-bl-xs border border-slate-200 shadow-2xs max-w-[85%] text-slate-800">
+                      {welcomeMessage}
+                    </div>
+
+                    {/* Simulated Customer query */}
+                    <div className="p-3 rounded-xl rounded-br-xs text-white ml-auto max-w-[85%]" style={{ backgroundColor: primaryColor }}>
+                      I need a black BMW for the weekend in Lagos, self drive.
+                    </div>
+
+                    {/* Bot Reply + Card */}
+                    <div className="bg-white p-3 rounded-xl rounded-bl-xs border border-slate-200 shadow-2xs space-y-2.5 max-w-[90%] text-slate-800">
+                      <p>I found matching vehicles available for your weekend in Lagos:</p>
+
+                      {/* Rich Vehicle Card Sample */}
+                      <div className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-xs">
+                        <div className="h-24 bg-slate-800 flex items-center justify-center text-slate-400 text-xs font-bold relative overflow-hidden">
+                          <img
+                            src="https://images.unsplash.com/photo-1555215695-3004980ad54e?auto=format&fit=crop&w=400&q=80"
+                            alt="BMW"
+                            className="w-full h-full object-cover"
+                            onError={(e) => { (e.target as any).style.display = 'none'; }}
+                          />
                         </div>
-                        <button
-                          type="button"
-                          className="w-full mt-1.5 py-1.5 text-center text-white text-[11px] font-bold rounded-lg transition-opacity hover:opacity-90 block"
-                          style={{ backgroundColor: primaryColor }}
-                        >
-                          Book / View Details →
-                        </button>
+                        <div className="p-2.5 space-y-1">
+                          <div className="font-bold text-slate-900 text-xs">2022 BMW 530i M-Sport</div>
+                          <div className="text-xs font-bold" style={{ color: primaryColor }}>₦120,000 / day</div>
+                          <div className="flex gap-1 flex-wrap text-[10px] text-slate-500">
+                            <span className="bg-slate-100 px-1.5 py-0.5 rounded">Self-Drive</span>
+                            <span className="bg-slate-100 px-1.5 py-0.5 rounded">Lagos</span>
+                            <span className="bg-slate-100 px-1.5 py-0.5 rounded">Automatic</span>
+                          </div>
+                          <button
+                            type="button"
+                            className="w-full mt-1.5 py-1.5 text-center text-white text-[11px] font-bold rounded-lg transition-opacity hover:opacity-90 block"
+                            style={{ backgroundColor: primaryColor }}
+                          >
+                            Book / View Details →
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
 
-                {/* Input Bar */}
-                <div className="p-2.5 bg-white border-t border-slate-200 flex gap-2 items-center shrink-0">
-                  <input
-                    type="text"
-                    disabled
-                    placeholder="Type a message..."
-                    className="flex-1 bg-slate-100 border-0 rounded-full px-3.5 py-1.5 text-xs text-slate-500 outline-none"
-                  />
-                  <div className="w-7 h-7 rounded-full flex items-center justify-center text-white shrink-0" style={{ backgroundColor: primaryColor }}>
-                    ➤
+                  {/* Input Bar */}
+                  <div className="p-2.5 bg-white border-t border-slate-200 flex gap-2 items-center shrink-0">
+                    <input
+                      type="text"
+                      disabled
+                      placeholder="Type a message..."
+                      className="flex-1 bg-slate-100 border-0 rounded-full px-3.5 py-1.5 text-xs text-slate-500 outline-none"
+                    />
+                    <div className="w-7 h-7 rounded-full flex items-center justify-center text-white shrink-0" style={{ backgroundColor: primaryColor }}>
+                      ➤
+                    </div>
                   </div>
                 </div>
-              </div>
+              ) : (
+                <div
+                  onClick={() => setIsChatOpen(true)}
+                  className="z-10 bg-white/90 backdrop-blur-xs border border-slate-200 rounded-xl p-4 shadow-sm text-center cursor-pointer hover:bg-white transition-all mx-4 mb-16 space-y-1"
+                >
+                  <p className="text-xs font-bold text-slate-700">Live Concierge is Minimized</p>
+                  <p className="text-[11px] text-slate-500">Click here or on the floating bubble below to open chat!</p>
+                </div>
+              )}
 
-              {/* Floating trigger button preview */}
-              <div
-                className={`absolute bottom-3 ${position === 'bottom-left' ? 'left-3' : 'right-3'} w-12 h-12 rounded-full shadow-lg flex items-center justify-center text-white pointer-events-none`}
+              {/* Floating trigger button preview (Clickable) */}
+              <button
+                type="button"
+                onClick={() => setIsChatOpen(!isChatOpen)}
+                className={`absolute bottom-3 ${position === 'bottom-left' ? 'left-3' : 'right-3'} w-13 h-13 rounded-full shadow-xl flex items-center justify-center text-white cursor-pointer hover:scale-110 active:scale-95 transition-all z-20`}
                 style={{ backgroundColor: primaryColor }}
+                title={isChatOpen ? "Minimize Live Concierge" : "Open Live Concierge"}
               >
-                <MessageSquare size={22} />
-              </div>
+                {isChatOpen ? (
+                  <span className="text-lg font-bold">✕</span>
+                ) : (
+                  <>
+                    <MessageSquare size={22} />
+                    <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-green-400 border-2 border-white rounded-full animate-pulse" />
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>

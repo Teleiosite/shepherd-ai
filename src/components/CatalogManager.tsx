@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { Package, Plus, Search, Trash2, Globe, Server, Check, AlertCircle, ExternalLink, RefreshCw, DollarSign, Image, Tag, Zap } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Package, Plus, Search, Trash2, Globe, Server, Check, AlertCircle, ExternalLink, RefreshCw, DollarSign, Image, Tag, Zap, Upload, FileSpreadsheet, Download } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { BACKEND_URL } from '../services/env';
 
 interface CatalogItem {
@@ -22,6 +23,12 @@ export default function CatalogManager() {
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
+
+  // Bulk Excel/CSV Upload State
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadStats, setUploadStats] = useState<{ total: number; success: number } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // External Webhook State
   const [webhookUrl, setWebhookUrl] = useState('');
@@ -129,6 +136,148 @@ export default function CatalogManager() {
     } catch (err) {
       console.error('Delete error:', err);
     }
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploading(true);
+    setUploadStats(null);
+
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      try {
+        const bstr = evt.target?.result;
+        const wb = XLSX.read(bstr, { type: 'binary' });
+        const wsname = wb.SheetNames[0];
+        const ws = wb.Sheets[wsname];
+        const data = XLSX.utils.sheet_to_json(ws) as Record<string, any>[];
+
+        const parsedItems: any[] = [];
+
+        data.forEach((row) => {
+          const normalized: Record<string, any> = {};
+          Object.keys(row).forEach((k) => {
+            normalized[k.trim().toLowerCase()] = row[k];
+          });
+
+          const title =
+            normalized['title'] ||
+            normalized['name'] ||
+            normalized['item'] ||
+            normalized['car'] ||
+            normalized['vehicle'] ||
+            normalized['service'] ||
+            normalized['product'];
+
+          if (!title) return;
+
+          const category = normalized['category'] || normalized['type'] || 'General';
+          const priceRaw = normalized['price'] || normalized['price amount'] || normalized['rate'] || normalized['daily rate'] || normalized['amount'] || 0;
+          const price_amount = typeof priceRaw === 'number' ? priceRaw : parseFloat(String(priceRaw).replace(/[^0-9.]/g, '')) || 0;
+          const price_unit = normalized['unit'] || normalized['price unit'] || 'per day';
+          const image_url = normalized['image url'] || normalized['image'] || normalized['photo'] || '';
+          const action_url = normalized['booking link'] || normalized['booking url'] || normalized['link'] || normalized['action url'] || '';
+          const description = normalized['description'] || normalized['details'] || '';
+
+          const attributes: Record<string, any> = {};
+          const tags = normalized['tags'] || normalized['features'] || normalized['specs'] || '';
+          if (tags) {
+            String(tags).split(/[,;|]/).map(t => t.trim()).filter(Boolean).forEach((tag, idx) => {
+              attributes[`feature_${idx + 1}`] = tag;
+            });
+          }
+
+          parsedItems.push({
+            title: String(title).trim(),
+            category: String(category).trim(),
+            price_amount,
+            price_currency: 'NGN',
+            price_unit: String(price_unit).trim(),
+            image_url: String(image_url).trim() || null,
+            action_url: String(action_url).trim() || null,
+            description: String(description).trim() || null,
+            attributes
+          });
+        });
+
+        if (parsedItems.length === 0) {
+          alert('No valid items found in file. Please ensure at least a "Title" or "Name" column exists.');
+          setIsUploading(false);
+          return;
+        }
+
+        const token = localStorage.getItem('authToken');
+        const res = await fetch(`${BACKEND_URL}/api/catalog/bulk`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ items: parsedItems })
+        });
+
+        if (res.ok) {
+          const resData = await res.json();
+          setUploadStats({ total: data.length, success: resData.created_count || parsedItems.length });
+          fetchItems();
+          setTimeout(() => {
+            setShowUploadModal(false);
+            setUploadStats(null);
+          }, 2000);
+        } else {
+          alert('Upload failed. Please check your file format and try again.');
+        }
+      } catch (err: any) {
+        console.error('File parsing error:', err);
+        alert('Could not read file: ' + err.message);
+      } finally {
+        setIsUploading(false);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      }
+    };
+    reader.readAsBinaryString(file);
+  };
+
+  const downloadSampleTemplate = () => {
+    const sampleData = [
+      {
+        Title: '2023 Mercedes G-Wagon G63',
+        Category: 'Luxury SUV',
+        Price: 250000,
+        Unit: 'per day',
+        'Image URL': 'https://images.unsplash.com/photo-1555215695-3004980ad54e?auto=format&fit=crop&w=600&q=80',
+        'Booking Link': 'https://rentigram.com/book/gwagon-2023',
+        Description: 'AMG performance V8, self-drive or chauffeur driven, black leather interior.',
+        Tags: 'Self-Drive, Ikeja, Automatic, V8'
+      },
+      {
+        Title: '2022 BMW 530i M-Sport',
+        Category: 'Executive Sedan',
+        Price: 120000,
+        Unit: 'per day',
+        'Image URL': 'https://images.unsplash.com/photo-1555215695-3004980ad54e?auto=format&fit=crop&w=600&q=80',
+        'Booking Link': 'https://rentigram.com/book/bmw-530i',
+        Description: 'Grey executive sedan, sunroof, ambient lighting, fuel efficient.',
+        Tags: 'Self-Drive, Lagos, Sedan, Automatic'
+      },
+      {
+        Title: '2-Bedroom Luxury Shortlet Apartment',
+        Category: 'Shortlet',
+        Price: 85000,
+        Unit: 'per night',
+        'Image URL': 'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?auto=format&fit=crop&w=600&q=80',
+        'Booking Link': 'https://yourdomain.com/book/lekki-apt',
+        Description: '24/7 power, swimming pool, superfast WiFi, ocean view balcony.',
+        Tags: 'Lekki Phase 1, Swimming Pool, WiFi, 24/7 Power'
+      }
+    ];
+
+    const ws = XLSX.utils.json_to_sheet(sampleData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'CatalogTemplate');
+    XLSX.writeFile(wb, 'shepherd_catalog_template.xlsx');
   };
 
   const handleTestWebhook = async () => {
@@ -285,28 +434,52 @@ export default function CatalogManager() {
               />
             </div>
 
-            <button
-              onClick={() => setShowAddModal(true)}
-              className="bg-teal-500 hover:bg-teal-600 text-white font-bold text-sm px-5 py-2.5 rounded-xl flex items-center justify-center gap-2 transition-all shadow-xs shrink-0 active:scale-95"
-            >
-              <Plus size={18} /> Add Catalog Item
-            </button>
+            <div className="flex items-center gap-2.5 shrink-0">
+              <button
+                onClick={() => setShowUploadModal(true)}
+                className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 font-bold text-sm px-4 py-2.5 rounded-xl flex items-center justify-center gap-2 transition-all shadow-2xs active:scale-95"
+              >
+                <Upload size={16} className="text-teal-600" />
+                <span>Upload Excel / CSV</span>
+              </button>
+
+              <button
+                onClick={() => setShowAddModal(true)}
+                className="bg-teal-500 hover:bg-teal-600 text-white font-bold text-sm px-5 py-2.5 rounded-xl flex items-center justify-center gap-2 transition-all shadow-xs active:scale-95"
+              >
+                <Plus size={18} />
+                <span>Add Catalog Item</span>
+              </button>
+            </div>
           </div>
 
           {/* Items Grid */}
           {items.length === 0 && !loading ? (
-            <div className="bg-white rounded-2xl border border-slate-100 p-12 text-center text-slate-400 space-y-3 shadow-sm">
+            <div className="bg-white rounded-2xl border border-slate-100 p-12 text-center text-slate-400 space-y-4 shadow-sm">
               <Package size={48} className="mx-auto text-slate-300 stroke-[1.5]" />
-              <div className="font-bold text-slate-700 text-base">Your Catalog is Empty</div>
-              <p className="text-xs text-slate-500 max-w-md mx-auto">
-                Add the cars, properties, or services you offer. The AI will recommend them dynamically whenever customers inquire!
-              </p>
-              <button
-                onClick={() => setShowAddModal(true)}
-                className="mt-2 bg-teal-50 text-teal-700 text-xs font-bold px-4 py-2 rounded-lg hover:bg-teal-100 transition-colors"
-              >
-                + Add First Item
-              </button>
+              <div>
+                <div className="font-bold text-slate-700 text-base">Your Catalog is Empty</div>
+                <p className="text-xs text-slate-500 max-w-md mx-auto mt-1">
+                  Add the cars, properties, or services you offer. The AI will recommend them dynamically whenever customers inquire!
+                </p>
+              </div>
+
+              <div className="flex justify-center items-center gap-3 pt-1">
+                <button
+                  onClick={() => setShowUploadModal(true)}
+                  className="bg-white border border-slate-200 text-slate-700 text-xs font-bold px-4 py-2.5 rounded-xl hover:bg-slate-50 transition-colors flex items-center gap-1.5 shadow-2xs"
+                >
+                  <FileSpreadsheet size={15} className="text-teal-600" />
+                  Upload Excel or CSV
+                </button>
+                <button
+                  onClick={() => setShowAddModal(true)}
+                  className="bg-teal-500 hover:bg-teal-600 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-colors shadow-xs flex items-center gap-1.5"
+                >
+                  <Plus size={15} />
+                  Add Manually
+                </button>
+              </div>
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -498,6 +671,95 @@ export default function CatalogManager() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Upload Excel / CSV */}
+      {showUploadModal && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-5 animate-fade-in">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-teal-50 text-teal-600 rounded-xl">
+                  <FileSpreadsheet size={20} />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-800 text-lg">Upload Catalog (Excel / CSV)</h3>
+                  <p className="text-xs text-slate-500">Bulk import products, cars, or offerings in seconds</p>
+                </div>
+              </div>
+              <button onClick={() => setShowUploadModal(false)} className="text-slate-400 hover:text-slate-600 text-lg">✕</button>
+            </div>
+
+            {/* Template Download Banner */}
+            <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between gap-3">
+              <div>
+                <div className="font-bold text-slate-800 text-xs">Need a pre-made template?</div>
+                <div className="text-[11px] text-slate-500">Download our formatted Excel template with sample car & shortlet rows.</div>
+              </div>
+              <button
+                type="button"
+                onClick={downloadSampleTemplate}
+                className="bg-white hover:bg-slate-100 border border-slate-200 text-teal-700 text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 shrink-0 shadow-2xs"
+              >
+                <Download size={13} />
+                <span>Template</span>
+              </button>
+            </div>
+
+            {/* Drag & Drop / File Select Box */}
+            <input
+              type="file"
+              ref={fileInputRef}
+              accept=".xlsx,.xls,.csv"
+              onChange={handleFileUpload}
+              className="hidden"
+            />
+
+            <div
+              onClick={() => fileInputRef.current?.click()}
+              className="border-2 border-dashed border-teal-300 hover:border-teal-500 bg-teal-50/40 hover:bg-teal-50/70 rounded-2xl p-8 text-center cursor-pointer transition-all space-y-3"
+            >
+              <div className="w-14 h-14 bg-white rounded-full flex items-center justify-center text-teal-600 mx-auto shadow-xs">
+                {isUploading ? (
+                  <RefreshCw size={24} className="animate-spin text-teal-600" />
+                ) : (
+                  <Upload size={24} />
+                )}
+              </div>
+
+              <div>
+                <div className="font-bold text-slate-800 text-sm">
+                  {isUploading ? 'Importing and processing items...' : 'Click to select Excel or CSV file'}
+                </div>
+                <p className="text-xs text-slate-500 mt-1">
+                  Supports <strong>.xlsx</strong>, <strong>.xls</strong>, and <strong>.csv</strong> files
+                </p>
+              </div>
+
+              {uploadStats && (
+                <div className="p-2.5 bg-green-100 text-green-800 text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 animate-fade-in">
+                  <Check size={16} /> Successfully imported {uploadStats.success} of {uploadStats.total} items!
+                </div>
+              )}
+            </div>
+
+            {/* Expected columns helper */}
+            <div className="text-[11px] text-slate-500 space-y-1 bg-slate-50 p-3 rounded-xl border border-slate-100">
+              <span className="font-bold text-slate-700">Supported Columns:</span>
+              <p>Title / Name, Category, Price, Unit (e.g. per day), Image URL, Booking Link, Description, Tags</p>
+            </div>
+
+            <div className="flex justify-end pt-1">
+              <button
+                type="button"
+                onClick={() => setShowUploadModal(false)}
+                className="px-5 py-2.5 bg-slate-100 text-slate-700 font-bold text-xs rounded-xl hover:bg-slate-200 transition-colors"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}
