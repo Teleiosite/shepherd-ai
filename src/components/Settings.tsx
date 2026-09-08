@@ -18,7 +18,7 @@ interface SettingsProps {
 }
 
 const DEFAULT_MODELS = {
-    gemini: 'gemini-2.5-flash',
+    gemini: 'gemini-3.5-flash',
     openai: 'gpt-4o',
     deepseek: 'deepseek-chat',
     groq: 'llama3-70b-8192',
@@ -287,8 +287,8 @@ const Settings: React.FC<SettingsProps> = ({
             if (token) {
                 const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
                 
-                // 1. Save AI Config
-                await fetch(`${backendUrl}/api/settings/ai-config`, {
+                // 1. Save AI Config — always use the effective (unmasked) key
+                const aiSaveRes = await fetch(`${backendUrl}/api/settings/ai-config`, {
                     method: 'PUT',
                     headers: {
                         'Authorization': `Bearer ${token}`,
@@ -296,13 +296,36 @@ const Settings: React.FC<SettingsProps> = ({
                     },
                     body: JSON.stringify({
                         provider: aiConfig.provider,
-                        api_key: aiConfig.apiKey || '',
-                        model: aiConfig.model || 'gemini-pro',
+                        api_key: effectiveApiKey || '',   // ← use unmasked key
+                        model: aiConfig.model || 'gemini-3.5-flash',
                         base_url: aiConfig.baseUrl || null
                     })
                 });
+                if (!aiSaveRes.ok) {
+                    console.error('❌ Failed to save AI config to backend:', await aiSaveRes.text());
+                } else {
+                    console.log('✅ AI config saved to backend');
+                }
 
-                // 2. Save WhatsApp Config
+                // 2. Save AI Autopilot — sync enabled state + mode so backend has it
+                await fetch(`${backendUrl}/api/settings/ai-autopilot`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        enabled: agentEnabled,
+                        mode: agentMode,
+                        reply_delay: agentDelay,
+                        tone: agentTone,
+                        payment_link: paymentLink,
+                        voice_reply_mode: voiceReplyMode,
+                        voice_name: voiceName
+                    })
+                });
+
+                // 3. Save WhatsApp Config
                 if (waConfig.provider === 'meta') {
                     await fetch(`${backendUrl}/api/settings/whatsapp-meta`, {
                         method: 'PUT',
@@ -335,6 +358,7 @@ const Settings: React.FC<SettingsProps> = ({
         setIsSaved(true);
         setTimeout(() => setIsSaved(false), 2000);
     };
+
 
     const checkSystemStatus = async () => {
         setIsTesting(true);

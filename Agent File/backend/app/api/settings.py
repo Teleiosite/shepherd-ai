@@ -54,7 +54,7 @@ async def get_ai_config(
         return {
             "provider": "gemini",
             "api_key_masked": "",
-            "model": "gemini-2.0-flash",
+            "model": "gemini-3.5-flash",
             "base_url": None,
             "configured": False
         }
@@ -62,7 +62,7 @@ async def get_ai_config(
     return {
         "provider": result[0] or "gemini",
         "api_key_masked": mask_api_key(result[1]),
-        "model": result[2] or "gemini-2.0-flash",
+        "model": result[2] or "gemini-3.5-flash",
         "base_url": result[3],
         "configured": True
     }
@@ -445,7 +445,7 @@ async def generate_ai_completion(
 
     system_prompt = payload.get("system_prompt", "")
     user_turn = payload.get("user_turn", "")
-    model = payload.get("model", "gemini-2.0-flash")
+    model = payload.get("model", "gemini-3.5-flash")
     temperature = float(payload.get("temperature", 0.75))
 
     # Retrieve organization's AI configuration
@@ -468,7 +468,7 @@ async def generate_ai_completion(
             genai.configure(api_key=api_key)
             model_name = selected_model
             if "gemini" not in model_name:
-                model_name = "gemini-2.0-flash"
+                model_name = "gemini-3.5-flash"
             g_model = genai.GenerativeModel(model_name)
             combined_prompt = f"{system_prompt}\n\n{user_turn}" if system_prompt else user_turn
             res = g_model.generate_content(
@@ -511,3 +511,60 @@ async def generate_ai_completion(
         logger.error(f"Error in ai-generate proxy: {err}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(err))
 
+
+@router.get("/debug-ai")
+async def debug_ai_state(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Diagnostic endpoint — shows current AI + autopilot DB state for this org.
+    Use this to verify settings are saved correctly without needing Render logs.
+    """
+    from app.config import settings as app_settings
+    org_id = str(current_user.organization_id)
+    row = db.execute(
+        text("""
+            SELECT ai_provider, ai_api_key, ai_model,
+                   ai_auto_reply_enabled, ai_reply_mode, ai_reply_delay_seconds,
+                   ai_tone, ai_payment_link, ai_business_type,
+                   whatsapp_phone_id, whatsapp_access_token, name
+            FROM organizations WHERE id = :org_id
+        """),
+        {"org_id": org_id}
+    ).fetchone()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="Organization not found")
+
+    has_org_key = bool(row[1])
+    has_env_key = bool(app_settings.gemini_api_key)
+    raw_enabled = row[3]
+    auto_enabled = str(raw_enabled).lower() not in ("false", "0", "no")
+
+    return {
+        "org_name": row[11],
+        "org_id": org_id,
+        "ai": {
+            "provider": row[0] or "gemini",
+            "api_key_in_db": "SET ✅" if has_org_key else "MISSING ❌",
+            "api_key_env_var": "SET ✅" if has_env_key else "MISSING ❌",
+            "effective_key_available": has_org_key or has_env_key,
+            "model": row[2] or "gemini-3.5-flash (default)",
+        },
+        "auto_reply": {
+            "ai_auto_reply_enabled_raw": repr(raw_enabled),
+            "will_reply": auto_enabled,
+            "mode": row[4] or "auto-send",
+            "delay_seconds": row[5] or 0,
+        },
+        "whatsapp": {
+            "phone_id_set": bool(row[9]),
+            "access_token_set": bool(row[10]),
+        },
+        "diagnosis": (
+            "✅ AI should be auto-replying" if (auto_enabled and (has_org_key or has_env_key))
+            else "❌ AI key missing — set GEMINI_API_KEY on Render or save key in Settings" if auto_enabled
+            else "❌ Auto-reply DISABLED — go to Settings → AI Agent → toggle ON and save"
+        )
+    }

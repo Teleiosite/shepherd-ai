@@ -14,7 +14,7 @@ async def generate_message(
     organization_name: str = "Church",
     ai_provider: str = "gemini",
     ai_api_key: Optional[str] = None,
-    ai_model: str = "gemini-2.0-flash",
+    ai_model: str = "gemini-3.5-flash",
     ai_base_url: Optional[str] = None
 ) -> str:
     """

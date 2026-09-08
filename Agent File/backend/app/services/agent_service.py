@@ -44,7 +44,7 @@ async def call_ai_provider(
         import google.generativeai as genai
         genai.configure(api_key=api_key)
         # Use provided model or fallback to standard flash
-        model_name = model if model and "gemini" in model else "gemini-2.0-flash"
+        model_name = model if model and "gemini" in model else "gemini-3.5-flash"
         generative_model = genai.GenerativeModel(
             model_name=model_name,
             system_instruction=system_prompt
@@ -403,15 +403,23 @@ async def trigger_ai_agent_reply(
             logger.warning(f"Organization {org_id} not found for agent reply.")
             return None
 
-        # Check if auto-reply is enabled (or stored as string "true")
-        auto_enabled = str(org.ai_auto_reply_enabled).lower() == "true"
+        # Check if auto-reply is enabled (stored as string "true" or boolean True)
+        # IMPORTANT: NULL/None means "never explicitly disabled" → treat as ENABLED
+        raw_enabled = org.ai_auto_reply_enabled
+        # Only block if explicitly set to "false" or "0"
+        auto_enabled = str(raw_enabled).lower() not in ("false", "0", "no")
+        logger.info(f"🤖 AI Auto-reply check for org '{org.name}' ({org.id}): ai_auto_reply_enabled={repr(raw_enabled)} → auto_enabled={auto_enabled}")
         if not auto_enabled:
-            logger.info(f"AI Auto-reply is disabled for org {org.name} ({org.id}).")
+            logger.info(f"⛔ AI Auto-reply is DISABLED for org {org.name}. Go to Settings → AI Agent → enable the toggle and save.")
             return None
 
-        ai_api_key = org.ai_api_key
+        # Get API key — use org's stored key, or fall back to server environment GEMINI_API_KEY
+        from app.config import settings as _app_settings
+        ai_api_key = org.ai_api_key or _app_settings.gemini_api_key
+        ai_provider = getattr(org, "ai_provider", None) or "gemini"
+        logger.info(f"🔑 API key: {'org DB key' if org.ai_api_key else 'server GEMINI_API_KEY env var'} | provider={ai_provider} | key_set={bool(ai_api_key)}")
         if not ai_api_key:
-            logger.warning(f"No AI API key configured for org {org.name}.")
+            logger.error(f"❌ No AI API key for org {org.name}. Set GEMINI_API_KEY env var on Render OR save a key in Settings → Integrations.")
             return None
 
         # 1b. If a voice note was sent, transcribe it NOW
@@ -669,7 +677,7 @@ ACTION TYPE GUIDE:
         raw_reply = await call_ai_provider(
             provider=org.ai_provider or "gemini",
             api_key=ai_api_key,
-            model=org.ai_model or "gemini-2.0-flash",
+            model=org.ai_model or "gemini-3.5-flash",
             system_prompt=system_prompt,
             user_turn=user_turn,
             base_url=org.ai_base_url
