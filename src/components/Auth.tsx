@@ -1,10 +1,7 @@
-
 import React, { useState } from 'react';
 import { authService } from '../services/authService';
-import { User, Lock, Mail, ArrowRight, Building2, AlertCircle, CheckCircle, ArrowLeft } from 'lucide-react';
+import { User, Lock, Mail, ArrowRight, Building2, AlertCircle, CheckCircle, ArrowLeft, Sparkles, MessageCircle } from 'lucide-react';
 import logoImage from '../logo.png';
-import illustrationImage from '../illustration.png';
-import shepherdSheepImage from '../shepherd-sheep.png';
 
 interface AuthProps {
   onLogin: () => void;
@@ -20,11 +17,14 @@ const Auth: React.FC<AuthProps> = ({ onLogin, initialView = 'login', onBackToLan
     name: '',
     email: '',
     password: '',
-    churchName: ''
+    companyName: '',
+    phone: '',
+    notes: ''
   });
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
+  const [deploymentSubmitted, setDeploymentSubmitted] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -38,16 +38,26 @@ const Auth: React.FC<AuthProps> = ({ onLogin, initialView = 'login', onBackToLan
         if (result.success) {
           onLogin();
         } else {
-          setError(result.message || 'Login failed');
+          setError(result.message || 'Login failed. Please verify your credentials or contact your administrator.');
         }
       }
       else if (view === 'register') {
-        const result = await authService.register(formData.name, formData.email, formData.password, formData.churchName);
-        if (result.success) {
-          onLogin();
-        } else {
-          setError(result.message || 'Registration failed');
+        // Gated Enterprise Deployment Request - captures lead without giving unauthorized free access
+        try {
+          const existing = JSON.parse(localStorage.getItem('shepherd_deployment_leads') || '[]');
+          existing.push({
+            fullName: formData.name,
+            companyName: formData.companyName,
+            email: formData.email,
+            phone: formData.phone,
+            notes: formData.notes,
+            submittedAt: new Date().toISOString()
+          });
+          localStorage.setItem('shepherd_deployment_leads', JSON.stringify(existing));
+        } catch (err) {
+          console.error(err);
         }
+        setDeploymentSubmitted(true);
       }
       else if (view === 'forgot-password') {
         const result = await authService.recoverPassword(formData.email);
@@ -105,181 +115,228 @@ const Auth: React.FC<AuthProps> = ({ onLogin, initialView = 'login', onBackToLan
               <ArrowLeft size={13} /> Back to Website
             </button>
           )}
+
           <div className="w-full max-w-sm">
-            {/* Header */}
-            <h2 className="text-xl sm:text-2xl font-bold text-white mb-1">
-              {view === 'login' && 'Welcome Back'}
-              {view === 'register' && 'Create Account'}
-              {view === 'forgot-password' && 'Reset Password'}
-            </h2>
-            <p className="text-emerald-200 text-xs mb-4 sm:mb-5">
-              {view === 'login' && 'Sign in to access your business concierge dashboard'}
-              {view === 'register' && 'Start empowering your commerce & operations with AI'}
-              {view === 'forgot-password' && 'Enter your email to reset password'}
-            </p>
+            {/* Gated Deployment Success State */}
+            {view === 'register' && deploymentSubmitted ? (
+              <div className="text-center py-2 animate-fadeIn">
+                <div className="w-14 h-14 rounded-full bg-teal-400/20 border-2 border-teal-400 flex items-center justify-center text-teal-300 mx-auto mb-3">
+                  <CheckCircle size={32} />
+                </div>
+                <h3 className="text-xl font-bold text-white mb-1">
+                  Deployment Request Logged
+                </h3>
+                <p className="text-xs text-emerald-200 mb-4 leading-relaxed">
+                  Thank you, <span className="text-white font-semibold">{formData.name}</span>. Your deployment intake for <span className="text-white font-semibold">{formData.companyName}</span> has been received. Our Senior Solutions Architect will connect within 2 hours.
+                </p>
 
-            {/* Alerts */}
-            {error && (
-              <div className="mb-4 bg-red-500/20 border border-red-500/50 text-red-200 p-2.5 sm:p-3 rounded-2xl text-xs sm:text-sm flex items-center gap-2">
-                <AlertCircle size={16} className="shrink-0" /> <span>{error}</span>
+                <div className="p-3 bg-emerald-950/70 border border-emerald-500/30 rounded-2xl mb-4 text-left text-[11px] text-emerald-200 space-y-1">
+                  <div className="font-bold text-white flex items-center gap-1">
+                    <Sparkles size={12} className="text-teal-400" /> Next Provisioning Steps:
+                  </div>
+                  <div>• Dedicated tenant isolation & custom URL setup</div>
+                  <div>• Live inventory catalog / webhook integration</div>
+                  <div>• Authorized login credentials issued upon contract execution</div>
+                </div>
+
+                <a
+                  href={`https://wa.me/?text=${encodeURIComponent(
+                    `Hello Shepherd AI, I just requested an enterprise deployment for ${formData.companyName} (${formData.name}, ${formData.phone}). I would like to expedite our deployment.`
+                  )}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="w-full py-2.5 px-4 rounded-full bg-teal-500 hover:bg-teal-400 text-slate-950 font-bold text-xs flex items-center justify-center gap-2 shadow-lg transition"
+                >
+                  <MessageCircle size={15} />
+                  <span>Chat with Technical Lead on WhatsApp</span>
+                </a>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDeploymentSubmitted(false);
+                    setView('login');
+                  }}
+                  className="mt-3 text-xs text-emerald-300 hover:text-white transition"
+                >
+                  ← Return to Client Login
+                </button>
               </div>
-            )}
+            ) : (
+              <>
+                {/* Header */}
+                <h2 className="text-xl sm:text-2xl font-bold text-white mb-1">
+                  {view === 'login' && 'Enterprise Client Portal'}
+                  {view === 'register' && 'Request Dedicated Deployment'}
+                  {view === 'forgot-password' && 'Reset Password'}
+                </h2>
+                <p className="text-emerald-200 text-xs mb-4 sm:mb-5">
+                  {view === 'login' && 'Sign in to access your business concierge dashboard'}
+                  {view === 'register' && 'Shepherd AI instances are provisioned exclusively for verified clients.'}
+                  {view === 'forgot-password' && 'Enter your authorized email to reset password'}
+                </p>
 
-            {success && (
-              <div className="mb-4 bg-green-500/20 border border-green-500/50 text-green-200 p-2.5 sm:p-3 rounded-2xl text-xs sm:text-sm flex items-center gap-2">
-                <CheckCircle size={16} className="shrink-0" /> <span>{success}</span>
-              </div>
-            )}
+                {/* Alerts */}
+                {error && (
+                  <div className="mb-4 bg-red-500/20 border border-red-500/50 text-red-200 p-2.5 sm:p-3 rounded-2xl text-xs sm:text-sm flex items-center gap-2">
+                    <AlertCircle size={16} className="shrink-0" /> <span>{error}</span>
+                  </div>
+                )}
 
-            {/* Form */}
-            <form onSubmit={handleSubmit} className="space-y-3 sm:space-y-4">
+                {success && (
+                  <div className="mb-4 bg-green-500/20 border border-green-500/50 text-green-200 p-2.5 sm:p-3 rounded-2xl text-xs sm:text-sm flex items-center gap-2">
+                    <CheckCircle size={16} className="shrink-0" /> <span>{success}</span>
+                  </div>
+                )}
 
-              {view === 'register' && (
-                <>
-                  <input
-                    required
-                    type="text"
-                    placeholder="Full Name"
-                    className="w-full px-5 py-2.5 sm:py-3 bg-emerald-800/50 border border-emerald-700/50 text-white placeholder-emerald-300/50 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
-                    value={formData.name}
-                    onChange={e => setFormData({ ...formData, name: e.target.value })}
-                  />
-                  <input
-                    required
-                    type="text"
-                    placeholder="Business / Organization Name"
-                    className="w-full px-5 py-2.5 sm:py-3 bg-emerald-800/50 border border-emerald-700/50 text-white placeholder-emerald-300/50 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
-                    value={formData.churchName}
-                    onChange={e => setFormData({ ...formData, churchName: e.target.value })}
-                  />
-                </>
-              )}
+                {/* Form */}
+                <form onSubmit={handleSubmit} className="space-y-3 sm:space-y-4">
 
-              <input
-                required
-                type="email"
-                placeholder="Enter your email"
-                className="w-full px-5 py-2.5 sm:py-3 bg-emerald-800/50 border border-emerald-700/50 text-white placeholder-emerald-300/50 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
-                value={formData.email}
-                onChange={e => setFormData({ ...formData, email: e.target.value })}
-              />
+                  {view === 'register' ? (
+                    <>
+                      <input
+                        required
+                        type="text"
+                        placeholder="Your Full Name"
+                        className="w-full px-5 py-2.5 sm:py-3 bg-emerald-800/50 border border-emerald-700/50 text-white placeholder-emerald-300/50 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
+                        value={formData.name}
+                        onChange={e => setFormData({ ...formData, name: e.target.value })}
+                      />
+                      <input
+                        required
+                        type="text"
+                        placeholder="Company / Fleet Name (e.g. Rentigram)"
+                        className="w-full px-5 py-2.5 sm:py-3 bg-emerald-800/50 border border-emerald-700/50 text-white placeholder-emerald-300/50 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
+                        value={formData.companyName}
+                        onChange={e => setFormData({ ...formData, companyName: e.target.value })}
+                      />
+                      <input
+                        required
+                        type="email"
+                        placeholder="Work Email"
+                        className="w-full px-5 py-2.5 sm:py-3 bg-emerald-800/50 border border-emerald-700/50 text-white placeholder-emerald-300/50 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
+                        value={formData.email}
+                        onChange={e => setFormData({ ...formData, email: e.target.value })}
+                      />
+                      <input
+                        required
+                        type="tel"
+                        placeholder="WhatsApp Phone (+234...)"
+                        className="w-full px-5 py-2.5 sm:py-3 bg-emerald-800/50 border border-emerald-700/50 text-white placeholder-emerald-300/50 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
+                        value={formData.phone}
+                        onChange={e => setFormData({ ...formData, phone: e.target.value })}
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <input
+                        required
+                        type="email"
+                        placeholder="Enter your authorized email"
+                        className="w-full px-5 py-2.5 sm:py-3 bg-emerald-800/50 border border-emerald-700/50 text-white placeholder-emerald-300/50 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
+                        value={formData.email}
+                        onChange={e => setFormData({ ...formData, email: e.target.value })}
+                      />
 
-              {view !== 'forgot-password' && (
-                <>
-                  <input
-                    required
-                    type="password"
-                    placeholder="Enter your password"
-                    className="w-full px-5 py-2.5 sm:py-3 bg-emerald-800/50 border border-emerald-700/50 text-white placeholder-emerald-300/50 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
-                    value={formData.password}
-                    onChange={e => setFormData({ ...formData, password: e.target.value })}
-                  />
+                      {view !== 'forgot-password' && (
+                        <>
+                          <input
+                            required
+                            type="password"
+                            placeholder="Enter your password"
+                            className="w-full px-5 py-2.5 sm:py-3 bg-emerald-800/50 border border-emerald-700/50 text-white placeholder-emerald-300/50 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
+                            value={formData.password}
+                            onChange={e => setFormData({ ...formData, password: e.target.value })}
+                          />
 
+                          <div className="flex items-center justify-between text-xs sm:text-sm pt-0.5">
+                            <label className="flex items-center gap-1.5 text-emerald-200 cursor-pointer">
+                              <input type="checkbox" className="w-3.5 h-3.5 rounded border-emerald-600 bg-emerald-800/50" />
+                              <span>Remember Me</span>
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => setView('forgot-password')}
+                              className="text-teal-300 hover:text-teal-200 transition"
+                            >
+                              Forgot Password?
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </>
+                  )}
+
+                  <button
+                    disabled={loading}
+                    type="submit"
+                    className="w-full bg-teal-500 hover:bg-teal-400 text-slate-950 font-black py-2.5 sm:py-3 rounded-full text-sm sm:text-base transition-all transform hover:scale-[1.02] active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg mt-2"
+                  >
+                    {loading ? 'Processing...' : (
+                      <>
+                        {view === 'login' && 'Login to Dashboard'}
+                        {view === 'register' && 'Submit Deployment Request'}
+                        {view === 'forgot-password' && 'Send Recovery Link'}
+                      </>
+                    )}
+                  </button>
+                </form>
+
+                {/* Footer Gating Links */}
+                <div className="mt-5 sm:mt-6 text-center">
                   {view === 'login' && (
-                    <div className="flex items-center justify-between text-xs sm:text-sm pt-0.5">
-                      <label className="flex items-center gap-1.5 text-emerald-200 cursor-pointer">
-                        <input type="checkbox" className="w-3.5 h-3.5 rounded border-emerald-600 bg-emerald-800/50" />
-                        <span>Remember Me</span>
-                      </label>
+                    <div className="pt-3 border-t border-emerald-800/60">
+                      <p className="text-emerald-300/90 text-xs">
+                        Need a dedicated deployment for your company?
+                      </p>
                       <button
                         type="button"
-                        onClick={() => setView('forgot-password')}
-                        className="text-teal-300 hover:text-teal-200 transition"
+                        onClick={() => {
+                          setError('');
+                          setView('register');
+                        }}
+                        className="mt-2 inline-flex items-center gap-1.5 text-xs font-bold text-teal-300 hover:text-white px-4 py-2 rounded-full bg-white/10 hover:bg-white/20 transition"
                       >
-                        Forgot Password?
+                        <span>Request Custom Deployment</span>
+                        <ArrowRight size={13} />
                       </button>
                     </div>
                   )}
-                </>
-              )}
 
-              <button
-                disabled={loading}
-                type="submit"
-                className="w-full bg-teal-500 hover:bg-teal-400 text-white font-bold py-2.5 sm:py-3 rounded-full text-sm sm:text-base transition-all transform hover:scale-[1.02] active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg mt-2"
-              >
-                {loading ? 'Processing...' : (
-                  <>
-                    {view === 'login' && 'Login to Dashboard'}
-                    {view === 'register' && 'Create Account'}
-                    {view === 'forgot-password' && 'Send Recovery Link'}
-                  </>
-                )}
-              </button>
-            </form>
+                  {view === 'register' && (
+                    <p className="text-emerald-200 text-xs sm:text-sm pt-2">
+                      Already an authorized client?{' '}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setError('');
+                          setView('login');
+                        }}
+                        className="text-teal-300 hover:text-teal-200 font-bold underline transition"
+                      >
+                        Sign In Here
+                      </button>
+                    </p>
+                  )}
 
-            {/* Social Login */}
-            {view === 'login' && (
-              <div className="mt-4 sm:mt-6">
-                <div className="relative">
-                  <div className="absolute inset-0 flex items-center">
-                    <div className="w-full border-t border-emerald-700/50"></div>
-                  </div>
-                  <div className="relative flex justify-center text-xs">
-                    <span className="px-3 bg-emerald-900 text-emerald-300">Or continue with</span>
+                  {view === 'forgot-password' && (
+                    <button
+                      type="button"
+                      onClick={() => setView('login')}
+                      className="text-emerald-200 hover:text-white flex items-center justify-center gap-2 mx-auto text-xs sm:text-sm transition pt-2"
+                    >
+                      <ArrowLeft size={14} /> Back to Login
+                    </button>
+                  )}
+
+                  <div className="mt-4 flex gap-3 justify-center text-[10px] sm:text-xs text-emerald-400">
+                    <a href="#" className="hover:text-emerald-200 transition">Privacy Policy</a>
+                    <span>•</span>
+                    <a href="#" className="hover:text-emerald-200 transition">Terms of Service</a>
                   </div>
                 </div>
-
-                <div className="mt-3 sm:mt-4 flex gap-3">
-                  {/* Google */}
-                  <button type="button" className="flex-1 bg-white/10 hover:bg-white/20 border border-emerald-700/50 py-2 sm:py-2.5 rounded-full transition flex items-center justify-center group">
-                    <svg className="w-4 h-4 sm:w-5 sm:h-5" viewBox="0 0 24 24" fill="none">
-                      <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
-                      <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
-                      <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
-                      <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
-                    </svg>
-                  </button>
-
-                  {/* Apple */}
-                  <button type="button" className="flex-1 bg-white/10 hover:bg-white/20 border border-emerald-700/50 py-2 sm:py-2.5 rounded-full transition flex items-center justify-center group">
-                    <svg className="w-4 h-4 sm:w-5 sm:h-5 fill-white" viewBox="0 0 24 24">
-                      <path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09l.01-.01zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z" />
-                    </svg>
-                  </button>
-
-                  {/* Microsoft */}
-                  <button type="button" className="flex-1 bg-white/10 hover:bg-white/20 border border-emerald-700/50 py-2 sm:py-2.5 rounded-full transition flex items-center justify-center group">
-                    <svg className="w-4 h-4 sm:w-5 sm:h-5" viewBox="0 0 24 24" fill="none">
-                      <path d="M11.4 11.4H2V2h9.4v9.4zM22 11.4h-9.4V2H22v9.4zM11.4 22H2v-9.4h9.4V22zM22 22h-9.4v-9.4H22V22z" fill="#00A4EF" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
+              </>
             )}
-
-            {/* Footer Links */}
-            <div className="mt-4 sm:mt-6 text-center">
-              {view === 'login' && (
-                <p className="text-emerald-200 text-xs sm:text-sm">
-                  Don't have an account?{' '}
-                  <button type="button" onClick={() => setView('register')} className="text-teal-300 hover:text-teal-200 font-bold underline transition">
-                    Sign Up
-                  </button>
-                </p>
-              )}
-
-              {view === 'register' && (
-                <p className="text-emerald-200 text-xs sm:text-sm">
-                  Already have an account?{' '}
-                  <button type="button" onClick={() => setView('login')} className="text-teal-300 hover:text-teal-200 font-bold underline transition">
-                    Sign In
-                  </button>
-                </p>
-              )}
-
-              {view === 'forgot-password' && (
-                <button type="button" onClick={() => setView('login')} className="text-emerald-200 hover:text-white flex items-center justify-center gap-2 mx-auto text-xs sm:text-sm transition">
-                  <ArrowLeft size={14} /> Back to Login
-                </button>
-              )}
-
-              <div className="mt-4 flex gap-3 justify-center text-[10px] sm:text-xs text-emerald-400">
-                <a href="#" className="hover:text-emerald-200 transition">Privacy Policy</a>
-                <span>•</span>
-                <a href="#" className="hover:text-emerald-200 transition">Terms of Service</a>
-              </div>
-            </div>
           </div>
         </div>
       </div>
