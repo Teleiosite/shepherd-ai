@@ -602,6 +602,102 @@ function App() {
   // Track processed message IDs to prevent duplicates
   const processedMessageIds = React.useRef(new Set<string>());
 
+  const triggerAgentAutoReply = async (
+    targetContact: Contact,
+    incomingMessageText: string,
+    historyLogs: MessageLog[]
+  ) => {
+    // 1. Check if paused for human handover
+    const isPaused = Boolean(
+      (targetContact as any).ai_paused_until &&
+      new Date((targetContact as any).ai_paused_until).getTime() > Date.now()
+    );
+    if (isPaused) {
+      console.log('[AIAgent] AI paused for contact:', targetContact.name);
+      return;
+    }
+
+    // 2. Check settings
+    const agentSettings = getAgentSettings();
+    if (!agentSettings.enabled) {
+      console.log('[AIAgent] Auto-reply is disabled in settings');
+      return;
+    }
+
+    console.log('[AIAgent] Generating reply for:', targetContact.name, 'Mode:', agentSettings.mode);
+
+    try {
+      const currentMedia = getMediaFiles();
+      const result = await generateAgentReply(
+        targetContact,
+        incomingMessageText,
+        historyLogs,
+        resources,
+        currentMedia,
+        aiName,
+        organizationName
+      );
+
+      if (!result.reply) {
+        console.warn('[AIAgent] Empty reply generated for:', targetContact.name);
+        return;
+      }
+
+      // Handle booking action
+      if (result.action?.type === 'CREATE_BOOKING') {
+        const booking = createBooking({
+          contactId: targetContact.id,
+          contactName: targetContact.name,
+          contactPhone: targetContact.phone,
+          purpose: result.action.purpose || 'Appointment',
+          date: result.action.preferredDate,
+          notes: result.action.notes,
+        });
+        console.log('[AIAgent] Created booking:', booking.id);
+        const confirmMsg = formatConfirmationMessage(booking, organizationName);
+        result.reply = result.reply + '\n\n' + confirmMsg;
+      }
+
+      const suggestion: AgentSuggestion = {
+        contactId: targetContact.id,
+        reply: result.reply,
+        action: result.action,
+        generatedAt: new Date().toISOString(),
+      };
+
+      if (agentSettings.mode === 'suggest') {
+        setSuggestedReplies(prev => ({ ...prev, [targetContact.id]: suggestion }));
+        console.log('[AIAgent] Suggestion set for:', targetContact.name);
+      } else {
+        // Auto-send immediately or after delay
+        const delay = Math.max(0, (agentSettings.replyDelay ?? 5)) * 1000;
+        if (delay > 0) {
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+
+        const sendResult = await whatsappService.sendMessage(
+          targetContact.phone,
+          result.reply,
+          (targetContact as any).whatsappId,
+          targetContact.id
+        );
+
+        const autoLog: MessageLog = {
+          id: (sendResult as any)?.id || uuidv4(),
+          contactId: targetContact.id,
+          content: result.reply,
+          timestamp: new Date().toISOString(),
+          status: sendResult.success !== false ? MessageStatus.SENT : MessageStatus.FAILED,
+          type: 'Outbound',
+        };
+        setLogs(prev => [autoLog, ...prev]);
+        console.log('[AIAgent] Auto-sent reply to:', targetContact.name, 'success:', sendResult.success !== false);
+      }
+    } catch (err) {
+      console.error('[AIAgent] Failed to generate/send reply:', err);
+    }
+  };
+
   useEffect(() => {
     if (!user) return;
 
@@ -749,77 +845,9 @@ function App() {
               });
             }
 
-            // ===== AI AGENT AUTO-REPLY =====
-            const agentSettings = getAgentSettings();
-            if (agentSettings.enabled) {
-              console.log('[AIAgent] Generating reply for:', contact.name);
-              // Run async without blocking
-              (async () => {
-                try {
-                  const currentHistory = logs.filter(l => l.contactId === contact.id);
-                  const currentMedia = getMediaFiles();
-                  const result = await generateAgentReply(
-                    contact,
-                    messageData.body || '',
-                    currentHistory,
-                    resources,
-                    currentMedia,
-                    aiName,
-                    organizationName
-                  );
-
-                  if (!result.reply) return; // AI failed silently
-
-                  // Handle booking action
-                  if (result.action?.type === 'CREATE_BOOKING') {
-                    const booking = createBooking({
-                      contactId: contact.id,
-                      contactName: contact.name,
-                      contactPhone: contact.phone,
-                      purpose: result.action.purpose || 'Appointment',
-                      date: result.action.preferredDate,
-                      notes: result.action.notes,
-                    });
-                    console.log('[AIAgent] Created booking:', booking.id);
-                    // Append booking confirmation to the reply
-                    const confirmMsg = formatConfirmationMessage(booking, organizationName);
-                    result.reply = result.reply + '\n\n' + confirmMsg;
-                  }
-
-                  const suggestion: AgentSuggestion = {
-                    contactId: contact.id,
-                    reply: result.reply,
-                    action: result.action,
-                    generatedAt: new Date().toISOString(),
-                  };
-
-                  if (agentSettings.mode === 'suggest') {
-                    // Show suggestion in LiveChats for human review
-                    setSuggestedReplies(prev => ({ ...prev, [contact.id]: suggestion }));
-                  } else if (agentSettings.mode === 'auto-send') {
-                    // Auto-send after configured delay
-                    const delay = (agentSettings.replyDelay || 5) * 1000;
-                    await new Promise(resolve => setTimeout(resolve, delay));
-                    const sendResult = await whatsappService.sendMessage(
-                      contact.phone, result.reply, (contact as any).whatsappId, contact.id
-                    );
-                    // Add to logs
-                    const autoLog: MessageLog = {
-                      id: (sendResult as any)?.id || uuidv4(),
-                      contactId: contact.id,
-                      content: result.reply,
-                      timestamp: new Date().toISOString(),
-                      status: MessageStatus.SENT,
-                      type: 'Outbound',
-                    };
-                    setLogs(prev => [...prev, autoLog]);
-                    console.log('[AIAgent] Auto-sent reply to:', contact.name);
-                  }
-                } catch (err) {
-                  console.error('[AIAgent] Failed to generate reply:', err);
-                }
-              })();
-            }
+            // ===== AI AGENT AUTO-REPLY FOR EXISTING CONTACT =====
+            const existingHistory = logs.filter(l => l.contactId === contact.id);
+            triggerAgentAutoReply(contact, messageData.body || '', [newLog, ...existingHistory]);
           } else {
             // Check one more time if contact already exists (avoid race condition)
             const alreadyExists = contactsRef.current.some(c =>
@@ -894,6 +922,8 @@ function App() {
               });
             }
 
+            // ===== AI AGENT AUTO-REPLY FOR FIRST-TIME CONTACT =====
+            triggerAgentAutoReply(newContact, messageData.body || '', [newLog]);
           }
         },
         (status) => {

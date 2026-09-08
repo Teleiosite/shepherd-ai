@@ -16,9 +16,20 @@ import { Contact, KnowledgeResource, MessageLog, AgentResult, AgentAction, Media
 
 const getAIConfig = (): AIConfig => {
   const configStr = localStorage.getItem('shepherd_ai_config');
-  if (configStr) return JSON.parse(configStr);
+  if (configStr) {
+    try {
+      const parsed = JSON.parse(configStr);
+      if (parsed.apiKey && !parsed.apiKey.startsWith('***')) {
+        return parsed;
+      }
+    } catch {}
+  }
   const legacyKey = localStorage.getItem('shepherd_google_api_key');
-  return { provider: 'gemini', apiKey: legacyKey || '', model: 'gemini-2.5-flash' };
+  if (legacyKey && !legacyKey.startsWith('***')) {
+    return { provider: 'gemini', apiKey: legacyKey, model: 'gemini-2.5-flash' };
+  }
+  const envKey = (import.meta as any).env?.VITE_GEMINI_API_KEY || '';
+  return { provider: 'gemini', apiKey: envKey, model: 'gemini-2.5-flash' };
 };
 
 export const getAgentSettings = () => {
@@ -200,47 +211,82 @@ ACTION SELECTION GUIDE:
 Return ONLY the JSON object. No markdown code blocks, no extra text.`;
 };
 
-const callAI = async (systemPrompt: string, userTurn: string): Promise<string> => {
-  const config = getAIConfig();
-  if (!config.apiKey) throw new Error('No AI API key configured. Please set up your AI provider in Settings.');
-
-  if (config.provider === 'gemini') {
-    const { GoogleGenAI } = await import('@google/genai');
-    const genai = new GoogleGenAI({ apiKey: config.apiKey });
-    const response = await genai.models.generateContent({
-      model: config.model || 'gemini-2.5-flash',
-      contents: [{ role: 'user', parts: [{ text: `${systemPrompt}\n\n${userTurn}` }] }],
-      config: { temperature: 0.75 }
-    });
-    return response.text || '';
-  }
-
-  // OpenAI-compatible providers
-  let baseUrl = config.baseUrl;
-  if (!baseUrl) {
-    if (config.provider === 'openai') baseUrl = 'https://api.openai.com/v1';
-    else if (config.provider === 'deepseek') baseUrl = 'https://api.deepseek.com';
-    else if (config.provider === 'groq') baseUrl = 'https://api.groq.com/openai/v1';
-  }
-  if (!baseUrl) throw new Error('No base URL configured for AI provider.');
-
-  const res = await fetch(`${baseUrl}/chat/completions`, {
+const callBackendAI = async (systemPrompt: string, userTurn: string): Promise<string> => {
+  const token = localStorage.getItem('authToken');
+  const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
+  const res = await fetch(`${backendUrl}/api/settings/ai-generate`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${config.apiKey}` },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    },
     body: JSON.stringify({
-      model: config.model,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userTurn }
-      ],
-      temperature: 0.75,
-      response_format: { type: 'json_object' }
+      system_prompt: systemPrompt,
+      user_turn: userTurn
     })
   });
 
-  if (!res.ok) throw new Error(`AI Provider error: ${res.statusText}`);
+  if (!res.ok) {
+    const errText = await res.text().catch(() => '');
+    throw new Error(`Backend AI proxy error (${res.status}): ${errText || res.statusText}`);
+  }
+
   const data = await res.json();
-  return data.choices?.[0]?.message?.content || '{}';
+  return data.text || '{}';
+};
+
+const callAI = async (systemPrompt: string, userTurn: string): Promise<string> => {
+  const config = getAIConfig();
+  const hasValidClientKey = Boolean(config.apiKey && !config.apiKey.startsWith('***'));
+
+  if (hasValidClientKey) {
+    try {
+      if (config.provider === 'gemini') {
+        const { GoogleGenAI } = await import('@google/genai');
+        const genai = new GoogleGenAI({ apiKey: config.apiKey });
+        const response = await genai.models.generateContent({
+          model: config.model || 'gemini-2.5-flash',
+          contents: [{ role: 'user', parts: [{ text: `${systemPrompt}\n\n${userTurn}` }] }],
+          config: { temperature: 0.75 }
+        });
+        if (response.text) return response.text;
+      } else {
+        // OpenAI-compatible providers
+        let baseUrl = config.baseUrl;
+        if (!baseUrl) {
+          if (config.provider === 'openai') baseUrl = 'https://api.openai.com/v1';
+          else if (config.provider === 'deepseek') baseUrl = 'https://api.deepseek.com';
+          else if (config.provider === 'groq') baseUrl = 'https://api.groq.com/openai/v1';
+        }
+        if (baseUrl) {
+          const res = await fetch(`${baseUrl}/chat/completions`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${config.apiKey}` },
+            body: JSON.stringify({
+              model: config.model,
+              messages: [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: userTurn }
+              ],
+              temperature: 0.75,
+              response_format: { type: 'json_object' }
+            })
+          });
+
+          if (res.ok) {
+            const data = await res.json();
+            const content = data.choices?.[0]?.message?.content;
+            if (content) return content;
+          }
+        }
+      }
+    } catch (clientErr) {
+      console.warn('[AIAgent] Client-side AI generation failed, falling back to backend AI proxy:', clientErr);
+    }
+  }
+
+  // Robust server-side fallback using backend organization key or GEMINI_API_KEY
+  return await callBackendAI(systemPrompt, userTurn);
 };
 
 const parseAgentResponse = (rawText: string, fallback: string): AgentResult => {

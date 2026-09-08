@@ -36,7 +36,7 @@ const Settings: React.FC<SettingsProps> = ({
 
     // AI Agent settings
     const [agentEnabled, setAgentEnabled] = useState(() => localStorage.getItem('shepherd_agent_enabled') === 'true');
-    const [agentMode, setAgentMode] = useState<'suggest' | 'auto-send'>(() => (localStorage.getItem('shepherd_agent_mode') as any) || 'suggest');
+    const [agentMode, setAgentMode] = useState<'suggest' | 'auto-send'>(() => (localStorage.getItem('shepherd_agent_mode') as any) || 'auto-send');
     const [agentTone, setAgentTone] = useState(() => localStorage.getItem('shepherd_agent_tone') || 'Warm, professional, and helpful. Use casual WhatsApp-style language.');
     const [agentDelay, setAgentDelay] = useState(() => parseInt(localStorage.getItem('shepherd_agent_delay') || '5', 10));
     const [paymentLink, setPaymentLink] = useState(() => localStorage.getItem('shepherd_payment_link') || '');
@@ -115,12 +115,12 @@ const Settings: React.FC<SettingsProps> = ({
                 if (aiRes.ok) {
                     const aiData = await aiRes.json();
                     if (aiData.configured) {
-                        setAiConfig({
-                            provider: aiData.provider,
-                            apiKey: aiData.api_key_masked || '',
-                            model: aiData.model || DEFAULT_MODELS.gemini,
-                            baseUrl: aiData.base_url || ''
-                        });
+                        setAiConfig(prev => ({
+                            provider: aiData.provider || prev.provider,
+                            apiKey: (prev.apiKey && !prev.apiKey.startsWith('***')) ? prev.apiKey : (aiData.api_key_masked || ''),
+                            model: aiData.model || prev.model || DEFAULT_MODELS.gemini,
+                            baseUrl: aiData.base_url || prev.baseUrl || ''
+                        }));
                     }
                 }
 
@@ -160,9 +160,15 @@ const Settings: React.FC<SettingsProps> = ({
                 });
                 if (autoRes.ok) {
                     const autoData = await autoRes.json();
-                    setAgentEnabled(autoData.enabled);
-                    setAgentMode(autoData.mode || 'auto-send');
-                    setAgentDelay(autoData.reply_delay || 5);
+                    const localEnabled = localStorage.getItem('shepherd_agent_enabled') === 'true';
+                    const effectiveEnabled = (autoData.enabled === true) || localEnabled;
+                    setAgentEnabled(effectiveEnabled);
+
+                    const localMode = localStorage.getItem('shepherd_agent_mode') as 'suggest' | 'auto-send';
+                    const effectiveMode = autoData.mode || localMode || 'auto-send';
+                    setAgentMode(effectiveMode);
+
+                    setAgentDelay(autoData.reply_delay ?? 5);
                     if (autoData.tone) setAgentTone(autoData.tone);
                     if (autoData.payment_link) setPaymentLink(autoData.payment_link);
                     if (autoData.voice_reply_mode) {
@@ -173,8 +179,23 @@ const Settings: React.FC<SettingsProps> = ({
                         setVoiceName(autoData.voice_name);
                         localStorage.setItem('shepherd_voice_name', autoData.voice_name);
                     }
-                    localStorage.setItem('shepherd_agent_enabled', String(autoData.enabled));
-                    localStorage.setItem('shepherd_agent_mode', autoData.mode || 'auto-send');
+                    localStorage.setItem('shepherd_agent_enabled', String(effectiveEnabled));
+                    localStorage.setItem('shepherd_agent_mode', effectiveMode);
+
+                    // If locally enabled but DB had false, sync to DB immediately
+                    if (localEnabled && !autoData.enabled) {
+                        fetch(`${backendUrl}/api/settings/ai-autopilot`, {
+                            method: 'PUT',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Authorization': `Bearer ${token}`
+                            },
+                            body: JSON.stringify({
+                                enabled: true,
+                                mode: effectiveMode
+                            })
+                        }).catch(() => {});
+                    }
                 }
             } catch (err) {
                 console.error('Failed to load settings from DB:', err);
@@ -235,10 +256,26 @@ const Settings: React.FC<SettingsProps> = ({
         setIsSaving(true);
         setIsSaved(false);
 
-        // Save locally first for compatibility
-        localStorage.setItem('shepherd_ai_config', JSON.stringify(aiConfig));
-        if (aiConfig.provider === 'gemini') {
-            localStorage.setItem('shepherd_google_api_key', aiConfig.apiKey);
+        // Save locally first for compatibility - NEVER overwrite unmasked key with masked key
+        const existingConfigStr = localStorage.getItem('shepherd_ai_config');
+        let unmaskedKey = '';
+        if (existingConfigStr) {
+            try {
+                const parsed = JSON.parse(existingConfigStr);
+                if (parsed.apiKey && !parsed.apiKey.startsWith('***')) unmaskedKey = parsed.apiKey;
+            } catch {}
+        }
+        if (!unmaskedKey) {
+            const oldKey = localStorage.getItem('shepherd_google_api_key');
+            if (oldKey && !oldKey.startsWith('***')) unmaskedKey = oldKey;
+        }
+
+        const effectiveApiKey = (!aiConfig.apiKey || aiConfig.apiKey.startsWith('***')) ? unmaskedKey : aiConfig.apiKey;
+        const configToSave = { ...aiConfig, apiKey: effectiveApiKey };
+
+        localStorage.setItem('shepherd_ai_config', JSON.stringify(configToSave));
+        if (configToSave.provider === 'gemini' && configToSave.apiKey) {
+            localStorage.setItem('shepherd_google_api_key', configToSave.apiKey);
         }
 
         localStorage.setItem('shepherd_wa_config', JSON.stringify(waConfig));
@@ -376,6 +413,62 @@ const Settings: React.FC<SettingsProps> = ({
         );
     };
 
+    const handleToggleAgent = async (newEnabled: boolean) => {
+        setAgentEnabled(newEnabled);
+        localStorage.setItem('shepherd_agent_enabled', String(newEnabled));
+        setAgentSaved(true);
+        setTimeout(() => setAgentSaved(false), 2000);
+
+        try {
+            const token = localStorage.getItem('authToken');
+            const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
+            if (token) {
+                await fetch(`${backendUrl}/api/settings/ai-autopilot`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        enabled: newEnabled,
+                        mode: agentMode
+                    })
+                });
+            }
+        } catch (e) {
+            console.error('Error auto-saving agent toggle to backend:', e);
+        }
+    };
+
+    const handleSelectAgentMode = async (newMode: 'suggest' | 'auto-send') => {
+        setAgentMode(newMode);
+        localStorage.setItem('shepherd_agent_mode', newMode);
+        localStorage.setItem('shepherd_agent_enabled', 'true');
+        setAgentEnabled(true);
+        setAgentSaved(true);
+        setTimeout(() => setAgentSaved(false), 2000);
+
+        try {
+            const token = localStorage.getItem('authToken');
+            const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
+            if (token) {
+                await fetch(`${backendUrl}/api/settings/ai-autopilot`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        enabled: true,
+                        mode: newMode
+                    })
+                });
+            }
+        } catch (e) {
+            console.error('Error auto-saving agent mode to backend:', e);
+        }
+    };
+
     return (
         <div className="max-w-4xl mx-auto space-y-6 sm:space-y-8 animate-fade-in pb-10 px-2 sm:px-0">
             <div>
@@ -446,11 +539,7 @@ const Settings: React.FC<SettingsProps> = ({
                                     <input
                                         type="checkbox"
                                         checked={agentEnabled}
-                                        onChange={(e) => {
-                                            const val = e.target.checked;
-                                            setAgentEnabled(val);
-                                            localStorage.setItem('shepherd_agent_enabled', String(val));
-                                        }}
+                                        onChange={(e) => handleToggleAgent(e.target.checked)}
                                         className="sr-only peer"
                                     />
                                     <div className="w-14 h-8 bg-slate-300 rounded-full peer peer-checked:bg-violet-600 transition-colors"></div>
@@ -478,14 +567,14 @@ const Settings: React.FC<SettingsProps> = ({
                                     <div className="flex bg-slate-100 p-1 rounded-lg">
                                         <button
                                             type="button"
-                                            onClick={() => setAgentMode('suggest')}
+                                            onClick={() => handleSelectAgentMode('suggest')}
                                             className={`flex-1 py-2 text-center rounded-md text-sm font-medium transition-colors ${agentMode === 'suggest' ? 'bg-white shadow text-slate-800' : 'text-slate-500'}`}
                                         >
                                             Suggest (Review First)
                                         </button>
                                         <button
                                             type="button"
-                                            onClick={() => setAgentMode('auto-send')}
+                                            onClick={() => handleSelectAgentMode('auto-send')}
                                             className={`flex-1 py-2 text-center rounded-md text-sm font-medium transition-colors ${agentMode === 'auto-send' ? 'bg-white shadow text-slate-800' : 'text-slate-500'}`}
                                         >
                                             Auto-Send Immediately

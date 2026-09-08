@@ -357,53 +357,157 @@ async def update_ai_autopilot_settings(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Update AI auto-reply and autopilot configuration for the organization"""
+    """Update AI auto-reply and autopilot configuration for the organization (supports partial updates)"""
     try:
-        enabled = "true" if settings_data.get("enabled") in [True, "true", "True", 1] else "false"
-        mode = settings_data.get("mode", "suggest")
-        reply_delay = int(settings_data.get("reply_delay", 5))
-        tone = settings_data.get("tone", "Warm, professional, and helpful.")
-        payment_link = settings_data.get("payment_link", "")
-        business_type = settings_data.get("business_type", "Organization")
-        voice_reply_mode = settings_data.get("voice_reply_mode", "text")
-        voice_name = settings_data.get("voice_name", "en-NG-EzinneNeural")
+        org_id = str(current_user.organization_id)
+        fields = []
+        params = {"org_id": org_id}
 
-        db.execute(
+        if "enabled" in settings_data:
+            val = settings_data["enabled"]
+            params["enabled"] = "true" if val in [True, "true", "True", 1] else "false"
+            fields.append("ai_auto_reply_enabled = :enabled")
+
+        if "mode" in settings_data:
+            params["mode"] = settings_data["mode"]
+            fields.append("ai_reply_mode = :mode")
+
+        if "reply_delay" in settings_data:
+            params["delay"] = int(settings_data["reply_delay"])
+            fields.append("ai_reply_delay_seconds = :delay")
+
+        if "tone" in settings_data:
+            params["tone"] = settings_data["tone"]
+            fields.append("ai_tone = :tone")
+
+        if "payment_link" in settings_data:
+            params["payment_link"] = settings_data["payment_link"]
+            fields.append("ai_payment_link = :payment_link")
+
+        if "business_type" in settings_data:
+            params["business_type"] = settings_data["business_type"]
+            fields.append("ai_business_type = :business_type")
+
+        if "voice_reply_mode" in settings_data:
+            params["voice_reply_mode"] = settings_data["voice_reply_mode"]
+            fields.append("ai_voice_reply_mode = :voice_reply_mode")
+
+        if "voice_name" in settings_data:
+            params["voice_name"] = settings_data["voice_name"]
+            fields.append("ai_voice_name = :voice_name")
+
+        if fields:
+            sql = f"UPDATE organizations SET {', '.join(fields)} WHERE id = :org_id"
+            db.execute(text(sql), params)
+            db.commit()
+
+        # Fetch current state to return complete updated values
+        row = db.execute(
             text("""
-                UPDATE organizations
-                SET ai_auto_reply_enabled = :enabled,
-                    ai_reply_mode = :mode,
-                    ai_reply_delay_seconds = :delay,
-                    ai_tone = :tone,
-                    ai_payment_link = :payment_link,
-                    ai_business_type = :business_type,
-                    ai_voice_reply_mode = :voice_reply_mode,
-                    ai_voice_name = :voice_name
+                SELECT ai_auto_reply_enabled, ai_reply_mode, ai_reply_delay_seconds, ai_tone, ai_payment_link, ai_business_type, ai_voice_reply_mode, ai_voice_name
+                FROM organizations
                 WHERE id = :org_id
             """),
-            {
-                "enabled": enabled,
-                "mode": mode,
-                "delay": reply_delay,
-                "tone": tone,
-                "payment_link": payment_link,
-                "business_type": business_type,
-                "voice_reply_mode": voice_reply_mode,
-                "voice_name": voice_name,
-                "org_id": str(current_user.organization_id)
-            }
-        )
-        db.commit()
+            {"org_id": org_id}
+        ).fetchone()
 
         return {
             "success": True,
             "message": "AI autopilot settings updated successfully",
-            "enabled": enabled == "true",
-            "mode": mode,
-            "voice_reply_mode": voice_reply_mode,
-            "voice_name": voice_name
+            "enabled": str(row[0]).lower() == "true" if row else False,
+            "mode": row[1] if row else "auto-send",
+            "reply_delay": row[2] if row else 5,
+            "tone": row[3] if row else "",
+            "payment_link": row[4] if row else "",
+            "business_type": row[5] if row else "Organization",
+            "voice_reply_mode": row[6] if row else "text",
+            "voice_name": row[7] if row else "en-NG-EzinneNeural"
         }
     except Exception as e:
         db.rollback()
         logger.error(f"Error updating AI autopilot settings: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/ai-generate")
+async def generate_ai_completion(
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Server-side AI completion proxy for the AI Agent.
+    Uses organization's stored API key or server-wide GEMINI_API_KEY.
+    """
+    from app.config import settings as app_settings
+    import google.generativeai as genai
+    import httpx
+
+    system_prompt = payload.get("system_prompt", "")
+    user_turn = payload.get("user_turn", "")
+    model = payload.get("model", "gemini-2.0-flash")
+    temperature = float(payload.get("temperature", 0.75))
+
+    # Retrieve organization's AI configuration
+    org_id = str(current_user.organization_id)
+    org_row = db.execute(
+        text("SELECT ai_provider, ai_api_key, ai_model, ai_base_url FROM organizations WHERE id = :org_id"),
+        {"org_id": org_id}
+    ).fetchone()
+
+    provider = (org_row[0] if org_row else None) or "gemini"
+    api_key = (org_row[1] if org_row else None) or app_settings.gemini_api_key
+    selected_model = (org_row[2] if org_row and org_row[2] else None) or model
+    base_url = org_row[3] if org_row else None
+
+    if not api_key:
+        raise HTTPException(status_code=400, detail="No AI API key configured on server or organization")
+
+    try:
+        if provider == "gemini":
+            genai.configure(api_key=api_key)
+            model_name = selected_model
+            if "gemini" not in model_name:
+                model_name = "gemini-2.0-flash"
+            g_model = genai.GenerativeModel(model_name)
+            combined_prompt = f"{system_prompt}\n\n{user_turn}" if system_prompt else user_turn
+            res = g_model.generate_content(
+                combined_prompt,
+                generation_config=genai.types.GenerationConfig(temperature=temperature)
+            )
+            return {"text": res.text or "{}"}
+        else:
+            url = base_url
+            if not url:
+                if provider == "openai":
+                    url = "https://api.openai.com/v1"
+                elif provider == "deepseek":
+                    url = "https://api.deepseek.com"
+                elif provider == "groq":
+                    url = "https://api.groq.com/openai/v1"
+            if not url:
+                raise HTTPException(status_code=400, detail=f"No base URL for provider {provider}")
+
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                res = await client.post(
+                    f"{url.rstrip('/')}/chat/completions",
+                    headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                    json={
+                        "model": selected_model,
+                        "messages": [
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": user_turn}
+                        ],
+                        "temperature": temperature
+                    }
+                )
+                if not res.is_success:
+                    raise HTTPException(status_code=502, detail=f"AI Provider error: {res.text}")
+                data = res.json()
+                return {"text": data.get("choices", [{}])[0].get("message", {}).get("content", "{}")}
+    except HTTPException:
+        raise
+    except Exception as err:
+        logger.error(f"Error in ai-generate proxy: {err}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(err))
+
