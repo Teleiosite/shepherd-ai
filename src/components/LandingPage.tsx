@@ -1175,7 +1175,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
 
                 <div className="flex flex-col gap-3">
                   <a
-                    href={`https://wa.me/?text=${encodeURIComponent(
+                    href={`https://wa.me/2348137592915?text=${encodeURIComponent(
                       `Hello Shepherd AI, I just submitted an Enterprise Deployment request for ${deployFormData.companyName} (${deployFormData.fullName}, ${deployFormData.phone}). I would like to expedite our deployment setup.`
                     )}`}
                     target="_blank"

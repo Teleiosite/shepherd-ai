@@ -140,7 +140,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin, initialView = 'login', onBackToLan
                 </div>
 
                 <a
-                  href={`https://wa.me/?text=${encodeURIComponent(
+                  href={`https://wa.me/2348137592915?text=${encodeURIComponent(
                     `Hello Shepherd AI, I just requested an enterprise deployment for ${formData.companyName} (${formData.name}, ${formData.phone}). I would like to expedite our deployment.`
                   )}`}
                   target="_blank"
