@@ -198,7 +198,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
             <a href="#features" className="hover:text-teal-300 transition-colors">Capabilities</a>
             <a href="#solutions" className="hover:text-teal-300 transition-colors">Solutions</a>
             <a href="#embed" className="hover:text-teal-300 transition-colors">Widget Code</a>
-            <a href="#pricing" className="hover:text-teal-300 transition-colors">Pricing</a>
             <a href="#faq" className="hover:text-teal-300 transition-colors">FAQ</a>
           </nav>
 
@@ -705,157 +704,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
         </div>
       </section>
 
-      {/* Pricing Section */}
-      <section id="pricing" className="relative z-10 py-20 sm:py-28 bg-slate-900/50 border-t border-slate-800/80">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center max-w-3xl mx-auto mb-16">
-            <span className="text-teal-400 text-xs sm:text-sm font-bold tracking-wider uppercase">
-              Transparent Investment
-            </span>
-            <h2 className="text-3xl sm:text-5xl font-extrabold text-white mt-2">
-              Plans Scaled to Your Business Ambitions
-            </h2>
-            <p className="text-slate-400 text-base mt-4">
-              Start with high-velocity lead automation and upgrade as your booking volume surges.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 max-w-6xl mx-auto">
-            {/* Starter */}
-            <div className="p-8 rounded-3xl bg-slate-950 border border-slate-800 flex flex-col justify-between">
-              <div>
-                <div className="text-base font-bold text-slate-300">Starter Plan</div>
-                <div className="mt-4 flex items-baseline gap-1">
-                  <span className="text-4xl font-extrabold text-white">₦35,000</span>
-                  <span className="text-slate-400 text-xs">/ month</span>
-                </div>
-                <p className="text-xs text-slate-400 mt-3">
-                  Ideal for single locations, boutique rental fleets, or emerging local clinics.
-                </p>
-
-                <div className="mt-8 space-y-3 text-xs sm:text-sm text-slate-300">
-                  <div className="flex items-center gap-2">
-                    <CheckCircle2 size={16} className="text-teal-400 shrink-0" />
-                    <span>Up to 500 active AI conversations</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <CheckCircle2 size={16} className="text-teal-400 shrink-0" />
-                    <span>Website Live Concierge Widget</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <CheckCircle2 size={16} className="text-teal-400 shrink-0" />
-                    <span>Excel & CSV Catalog Upload</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <CheckCircle2 size={16} className="text-teal-400 shrink-0" />
-                    <span>1 WhatsApp Number Bridge</span>
-                  </div>
-                </div>
-              </div>
-
-              <button
-                onClick={() => onOpenAuth('register')}
-                className="mt-8 w-full py-3 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-sm transition"
-              >
-                Choose Starter
-              </button>
-            </div>
-
-            {/* Growth (Most Popular) */}
-            <div className="p-8 rounded-3xl bg-gradient-to-b from-slate-900 to-slate-950 border-2 border-teal-500 flex flex-col justify-between relative shadow-2xl shadow-teal-950">
-              <div className="absolute -top-4 left-1/2 -translate-x-1/2 px-4 py-1 bg-gradient-to-r from-emerald-500 to-teal-400 text-slate-950 font-black text-[11px] tracking-wider uppercase rounded-full shadow">
-                Most Popular
-              </div>
-
-              <div>
-                <div className="text-base font-bold text-teal-300">Growth Plan</div>
-                <div className="mt-4 flex items-baseline gap-1">
-                  <span className="text-4xl font-extrabold text-white">₦95,000</span>
-                  <span className="text-slate-400 text-xs">/ month</span>
-                </div>
-                <p className="text-xs text-slate-400 mt-3">
-                  For growing car rental fleets, multi-unit shortlets, and established brands.
-                </p>
-
-                <div className="mt-8 space-y-3 text-xs sm:text-sm text-slate-200">
-                  <div className="flex items-center gap-2">
-                    <CheckCircle2 size={16} className="text-teal-400 shrink-0" />
-                    <span>Up to 2,500 active AI conversations</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <CheckCircle2 size={16} className="text-teal-400 shrink-0" />
-                    <span>Real-Time Database / API Webhook Catalog</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <CheckCircle2 size={16} className="text-teal-400 shrink-0" />
-                    <span>Human Co-Pilot Live Takeover</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <CheckCircle2 size={16} className="text-teal-400 shrink-0" />
-                    <span>Rich Visual Product Cards & Direct Quotes</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <CheckCircle2 size={16} className="text-teal-400 shrink-0" />
-                    <span>Custom Brand HEX Color & Logo</span>
-                  </div>
-                </div>
-              </div>
-
-              <button
-                onClick={() => onOpenAuth('register')}
-                className="mt-8 w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white font-bold text-sm shadow-lg shadow-emerald-500/25 transition transform active:scale-95"
-              >
-                Choose Growth
-              </button>
-            </div>
-
-            {/* Enterprise & Custom */}
-            <div className="p-8 rounded-3xl bg-slate-950 border border-slate-800 flex flex-col justify-between">
-              <div>
-                <div className="text-base font-bold text-emerald-300">Enterprise & Custom</div>
-                <div className="mt-4 flex items-baseline gap-1">
-                  <span className="text-4xl font-extrabold text-white">₦250,000+</span>
-                  <span className="text-slate-400 text-xs">/ mo or Custom Contract</span>
-                </div>
-                <p className="text-xs text-slate-400 mt-3">
-                  Tailored infrastructure for national operators like Rentigram requiring bespoke integration.
-                </p>
-
-                <div className="mt-8 space-y-3 text-xs sm:text-sm text-slate-300">
-                  <div className="flex items-center gap-2">
-                    <CheckCircle2 size={16} className="text-teal-400 shrink-0" />
-                    <span>Unlimited conversations & bookings</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <CheckCircle2 size={16} className="text-teal-400 shrink-0" />
-                    <span>Dedicated Private Cloud Instance</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <CheckCircle2 size={16} className="text-teal-400 shrink-0" />
-                    <span>Direct ERP & Booking Engine Hookup</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <CheckCircle2 size={16} className="text-teal-400 shrink-0" />
-                    <span>Multi-Agent Fleet Routing Architecture</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <CheckCircle2 size={16} className="text-teal-400 shrink-0" />
-                    <span>Dedicated Technical Account Manager & SLA</span>
-                  </div>
-                </div>
-              </div>
-
-              <button
-                onClick={() => onOpenAuth('register')}
-                className="mt-8 w-full py-3 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-emerald-300 hover:text-white font-bold text-sm transition"
-              >
-                Contact Enterprise Sales
-              </button>
-            </div>
-          </div>
-        </div>
-      </section>
-
       {/* Frequently Asked Questions */}
       <section id="faq" className="relative z-10 py-20 sm:py-28">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -946,7 +794,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
           </div>
 
           <div className="text-slate-500">
-            © {new Date().getFullYear()} Shepherd AI. All rights reserved.
+            © 2025 Shepherd AI. All rights reserved.
           </div>
         </div>
       </footer>
