@@ -514,57 +514,57 @@ async def generate_ai_completion(
 
 @router.get("/debug-ai")
 async def debug_ai_state(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    db: Session = Depends(get_db)
 ):
     """
-    Diagnostic endpoint — shows current AI + autopilot DB state for this org.
-    Use this to verify settings are saved correctly without needing Render logs.
+    Public diagnostic endpoint — shows AI + autopilot DB state (no keys exposed).
+    Open directly in browser: /api/settings/debug-ai
     """
     from app.config import settings as app_settings
-    org_id = str(current_user.organization_id)
+
+    # Query first available org (single-tenant) — safe, no keys in response
     row = db.execute(
         text("""
             SELECT ai_provider, ai_api_key, ai_model,
                    ai_auto_reply_enabled, ai_reply_mode, ai_reply_delay_seconds,
                    ai_tone, ai_payment_link, ai_business_type,
-                   whatsapp_phone_id, whatsapp_access_token, name
-            FROM organizations WHERE id = :org_id
-        """),
-        {"org_id": org_id}
+                   whatsapp_phone_id, whatsapp_access_token, name, id
+            FROM organizations LIMIT 1
+        """)
     ).fetchone()
 
     if not row:
-        raise HTTPException(status_code=404, detail="Organization not found")
+        return {"error": "No organization found in database"}
 
     has_org_key = bool(row[1])
     has_env_key = bool(app_settings.gemini_api_key)
     raw_enabled = row[3]
+    # NULL/None = never explicitly disabled → treat as enabled
     auto_enabled = str(raw_enabled).lower() not in ("false", "0", "no")
 
     return {
         "org_name": row[11],
-        "org_id": org_id,
         "ai": {
             "provider": row[0] or "gemini",
             "api_key_in_db": "SET ✅" if has_org_key else "MISSING ❌",
-            "api_key_env_var": "SET ✅" if has_env_key else "MISSING ❌",
-            "effective_key_available": has_org_key or has_env_key,
+            "api_key_env_var": "SET ✅" if has_env_key else "NOT SET",
+            "effective_key_available": "YES ✅" if (has_org_key or has_env_key) else "NO ❌",
             "model": row[2] or "gemini-3.5-flash (default)",
         },
         "auto_reply": {
-            "ai_auto_reply_enabled_raw": repr(raw_enabled),
-            "will_reply": auto_enabled,
+            "ai_auto_reply_enabled_raw_db": repr(raw_enabled),
+            "will_ai_reply": auto_enabled,
             "mode": row[4] or "auto-send",
             "delay_seconds": row[5] or 0,
+            "tone_set": bool(row[6]),
         },
         "whatsapp": {
-            "phone_id_set": bool(row[9]),
-            "access_token_set": bool(row[10]),
+            "phone_id_configured": "YES ✅" if bool(row[9]) else "NO ❌",
+            "access_token_configured": "YES ✅" if bool(row[10]) else "NO ❌",
         },
         "diagnosis": (
             "✅ AI should be auto-replying" if (auto_enabled and (has_org_key or has_env_key))
-            else "❌ AI key missing — set GEMINI_API_KEY on Render or save key in Settings" if auto_enabled
-            else "❌ Auto-reply DISABLED — go to Settings → AI Agent → toggle ON and save"
+            else "❌ AI key missing — save your Gemini API key in Settings → Integrations" if auto_enabled
+            else "❌ Auto-reply is OFF — go to Settings → AI Agent → toggle ON and click Save Integration"
         )
     }
