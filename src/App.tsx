@@ -9,6 +9,7 @@ import CampaignScheduler from './components/CampaignScheduler';
 import LiveChats from './components/LiveChats';
 import Settings from './components/Settings';
 import Auth from './components/Auth';
+import LandingPage from './components/LandingPage';
 import WorkflowsManager from './components/WorkflowsManager';
 import Groups from './pages/Groups';
 import CatalogManager from './components/CatalogManager';
@@ -174,6 +175,14 @@ function App() {
   // Authentication State
   const [user, setUser] = useState<User | null>(authService.getCurrentUserSync());
   const [authChecked, setAuthChecked] = useState(false);
+  const [authModalView, setAuthModalView] = useState<'login' | 'register' | null>(() => {
+    if (typeof window !== 'undefined') {
+      const hash = window.location.hash.toLowerCase();
+      if (hash.includes('login') || hash.includes('signin')) return 'login';
+      if (hash.includes('register') || hash.includes('signup')) return 'register';
+    }
+    return null;
+  });
 
   // Check authentication on mount
   useEffect(() => {
@@ -950,11 +959,13 @@ function App() {
   const handleLogin = async () => {
     const userData = await authService.getCurrentUser();
     setUser(userData);
+    setAuthModalView(null);
   };
 
   const handleLogout = () => {
     authService.logout();
     setUser(null);
+    setAuthModalView(null);
   };
 
   const NavItem = ({ to, icon: Icon, label, badge }: { to: string, icon: any, label: string, badge?: number }) => {
@@ -1003,7 +1014,16 @@ function App() {
   }
 
   if (!user) {
-    return <Auth onLogin={handleLogin} />;
+    if (authModalView) {
+      return (
+        <Auth
+          onLogin={handleLogin}
+          initialView={authModalView}
+          onBackToLanding={() => setAuthModalView(null)}
+        />
+      );
+    }
+    return <LandingPage onOpenAuth={(view) => setAuthModalView(view)} />;
   }
 
   return (

@@ -8,12 +8,14 @@ import shepherdSheepImage from '../shepherd-sheep.png';
 
 interface AuthProps {
   onLogin: () => void;
+  initialView?: AuthView;
+  onBackToLanding?: () => void;
 }
 
 type AuthView = 'login' | 'register' | 'forgot-password';
 
-const Auth: React.FC<AuthProps> = ({ onLogin }) => {
-  const [view, setView] = useState<AuthView>('login');
+const Auth: React.FC<AuthProps> = ({ onLogin, initialView = 'login', onBackToLanding }) => {
+  const [view, setView] = useState<AuthView>(initialView);
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -94,6 +96,15 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
         {/* Bottom/Right Side - Form Container */}
         <div className="w-full md:w-1/2 bg-emerald-900 p-5 sm:p-8 md:p-10 flex flex-col justify-center items-center relative overflow-y-auto">
+          {onBackToLanding && (
+            <button
+              onClick={onBackToLanding}
+              type="button"
+              className="absolute top-4 right-4 sm:top-6 sm:right-6 text-emerald-300 hover:text-white text-xs font-semibold flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20 transition backdrop-blur-sm"
+            >
+              <ArrowLeft size={13} /> Back to Website
+            </button>
+          )}
           <div className="w-full max-w-sm">
             {/* Header */}
             <h2 className="text-xl sm:text-2xl font-bold text-white mb-1">
@@ -102,8 +113,8 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
               {view === 'forgot-password' && 'Reset Password'}
             </h2>
             <p className="text-emerald-200 text-xs mb-4 sm:mb-5">
-              {view === 'login' && 'Sign in to access your dashboard'}
-              {view === 'register' && 'Start your journey with us'}
+              {view === 'login' && 'Sign in to access your business concierge dashboard'}
+              {view === 'register' && 'Start empowering your commerce & operations with AI'}
               {view === 'forgot-password' && 'Enter your email to reset password'}
             </p>
 
@@ -136,7 +147,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                   <input
                     required
                     type="text"
-                    placeholder="Church / Ministry Name"
+                    placeholder="Business / Organization Name"
                     className="w-full px-5 py-2.5 sm:py-3 bg-emerald-800/50 border border-emerald-700/50 text-white placeholder-emerald-300/50 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
                     value={formData.churchName}
                     onChange={e => setFormData({ ...formData, churchName: e.target.value })}
