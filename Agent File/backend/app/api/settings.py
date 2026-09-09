@@ -1574,6 +1574,7 @@ async def test_transcribe_status(test: bool = False, db: Session = Depends(get_d
             "gemini_results": test_log,
             "ffmpeg_status": ffmpeg_status
         }
+    return result
 
 
 
