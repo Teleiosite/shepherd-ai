@@ -1467,14 +1467,18 @@ async def sync_decehub_catalog_direct(
 
 
 @router.get("/test-transcribe")
-async def test_transcribe_status(db: Session = Depends(get_db)):
+async def test_transcribe_status(test: bool = False, db: Session = Depends(get_db)):
     """
     Diagnostic endpoint to verify voice note transcription services and keys.
-    Usage: GET /api/settings/test-transcribe
+    Usage: GET /api/settings/test-transcribe?test=true
     """
     import os
+    import struct
+    import base64
+    import httpx
     from app.config import settings as app_settings
     from app.models.organization import Organization
+    from app.services.agent_service import transcribe_voice_note
 
     org_with_key = db.query(Organization).filter(
         (Organization.ai_api_key.isnot(None)) & (Organization.ai_api_key != '')
@@ -1483,8 +1487,9 @@ async def test_transcribe_status(db: Session = Depends(get_db)):
     has_env_gemini = bool(app_settings.gemini_api_key)
     has_env_groq = bool(getattr(app_settings, "groq_api_key", None) or os.getenv("GROQ_API_KEY"))
     has_org_key = bool(org_with_key and org_with_key.ai_api_key)
+    key_to_use = (org_with_key.ai_api_key if org_with_key else None) or app_settings.gemini_api_key
 
-    return {
+    result = {
         "transcription_services": {
             "tier_1_groq_whisper": {
                 "available": has_env_groq,
@@ -1502,6 +1507,61 @@ async def test_transcribe_status(db: Session = Depends(get_db)):
             }
         }
     }
+
+    if test and key_to_use:
+        # Build 1 second valid 16kHz mono PCM WAV
+        sample_rate = 16000
+        num_samples = sample_rate
+        raw_pcm = bytearray(num_samples * 2)
+        # 44-byte standard RIFF WAV header
+        header = struct.pack(
+            '<4sI4s4sIHHIIHH4sI',
+            b'RIFF', 36 + len(raw_pcm), b'WAVE',
+            b'fmt ', 16, 1, 1, sample_rate, sample_rate * 2, 2, 16,
+            b'data', len(raw_pcm)
+        )
+        wav_bytes = bytes(header + raw_pcm)
+
+        test_log = []
+        # Test 1: Test Gemini 2.0 Flash directly
+        b64 = base64.b64encode(wav_bytes).decode('utf-8')
+        for model in ["gemini-2.0-flash", "gemini-1.5-flash"]:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key_to_use}"
+            try:
+                payload = {
+                    "contents": [{
+                        "parts": [
+                            {"inlineData": {"mimeType": "audio/wav", "data": b64}},
+                            {"text": "Transcribe this audio verbatim. If silence or blank, output [silence]."}
+                        ]
+                    }],
+                    "generationConfig": {"temperature": 0.0}
+                }
+                async with httpx.AsyncClient(timeout=15.0) as client:
+                    resp = await client.post(url, json=payload)
+                    test_log.append({
+                        "model": model,
+                        "status": resp.status_code,
+                        "response": resp.json() if resp.status_code == 200 else resp.text[:300]
+                    })
+            except Exception as e:
+                test_log.append({"model": model, "error": str(e)})
+
+        # Test 2: imageio_ffmpeg test
+        ffmpeg_status = "unknown"
+        try:
+            import imageio_ffmpeg
+            ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+            ffmpeg_status = f"available: {ffmpeg_exe}"
+        except Exception as fe:
+            ffmpeg_status = f"failed: {fe}"
+
+        result["live_test"] = {
+            "gemini_results": test_log,
+            "ffmpeg_status": ffmpeg_status
+        }
+
+    return result
 
 
 

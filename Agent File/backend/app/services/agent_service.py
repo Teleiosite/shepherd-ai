@@ -210,6 +210,38 @@ def parse_agent_response(raw_text: str) -> Dict[str, Any]:
 
 
 
+def _convert_audio_to_wav(audio_bytes: bytes, is_ogg: bool, clean_mime: str) -> Optional[bytes]:
+    """Helper running in thread pool to convert audio bytes to 16kHz mono PCM WAV via bundled imageio-ffmpeg."""
+    import tempfile
+    import os
+    import stat
+    import subprocess
+    try:
+        import imageio_ffmpeg
+        ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+        try:
+            st = os.stat(ffmpeg_exe)
+            os.chmod(ffmpeg_exe, st.st_mode | stat.S_IEXEC)
+        except Exception:
+            pass
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ext = ".ogg" if is_ogg else (".webm" if "webm" in clean_mime else (".mp4" if "mp4" in clean_mime else ".raw"))
+            in_path = os.path.join(tmpdir, f"in{ext}")
+            out_path = os.path.join(tmpdir, "out.wav")
+            with open(in_path, "wb") as f_in:
+                f_in.write(audio_bytes)
+
+            cmd = [ffmpeg_exe, "-y", "-i", in_path, "-ac", "1", "-ar", "16000", out_path]
+            proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=20)
+            if os.path.exists(out_path) and os.path.getsize(out_path) > 100:
+                with open(out_path, "rb") as f_out:
+                    return f_out.read()
+    except Exception as conv_err:
+        logger.warning(f"Audio conversion with imageio-ffmpeg failed: {conv_err}")
+    return None
+
+
 async def transcribe_voice_note(
     audio_bytes: bytes,
     mime_type: str = "audio/ogg",
@@ -221,8 +253,8 @@ async def transcribe_voice_note(
     Transcribes WhatsApp voice notes (OGG/Opus) and Web Widget voice notes (WebM/MP4/WAV).
     Multi-Tier Architecture:
     1. Groq Cloud Whisper API (Free tier: 7,200 req/day, <0.4s response, handles raw OGG/WebM/WAV)
-    2. Google Gemini 2.0 Flash Audio Multimodal API (Free tier: understands audio tokens natively in v1beta)
-    3. imageio-ffmpeg WAV conversion + Gemini Multimodal Fallback
+    2. imageio-ffmpeg 16kHz mono WAV conversion + Google Gemini 2.0 Flash Audio Multimodal API
+    3. Raw audio container + Gemini Multimodal Fallback
     4. Dedicated self-hosted faster-whisper microservice (if TRANSCRIBE_SERVICE_URL configured)
     5. OpenAI Whisper API (if OpenAI key configured)
     """
@@ -232,7 +264,6 @@ async def transcribe_voice_note(
 
     import os
     import time
-    import tempfile
     import base64
     import httpx
     import asyncio
@@ -296,7 +327,88 @@ async def transcribe_voice_note(
             logger.warning(f"Groq Whisper attempt error: {g_err}")
 
     # =========================================================================
-    # Tier 2: Dedicated self-hosted faster-whisper microservice (port 8001 or TRANSCRIBE_SERVICE_URL)
+    # Tier 2: Convert to 16kHz mono PCM WAV & transcribe with Gemini 2.0 Flash
+    # Gemini natively decodes 16kHz WAV with 100% precision for African/Nigerian accents
+    # =========================================================================
+    if effective_gemini_key and not effective_gemini_key.startswith("gsk_") and not effective_gemini_key.startswith("sk-"):
+        # Attempt conversion to 16kHz mono WAV in thread pool
+        wav_data = await asyncio.to_thread(_convert_audio_to_wav, audio_bytes, is_ogg, clean_mime)
+        if wav_data:
+            logger.info(f"🎙️ [Tier 2] Audio converted to 16kHz WAV ({len(wav_data)} bytes) — transcribing with Gemini 2.0 Flash...")
+            b64_wav = base64.b64encode(wav_data).decode("utf-8")
+            transcribe_prompt = (
+                "Transcribe this voice message verbatim in English or whatever language was spoken. "
+                "Output ONLY the exact transcribed words with no other text, no explanations, no formatting, and no commentary. "
+                "If the audio has no speech or is only background silence, reply with [unintelligible]."
+            )
+            for gemini_model in ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-flash-8b"]:
+                try:
+                    rest_url = f"https://generativelanguage.googleapis.com/v1beta/models/{gemini_model}:generateContent?key={effective_gemini_key}"
+                    payload = {
+                        "contents": [
+                            {
+                                "parts": [
+                                    {"inlineData": {"mimeType": "audio/wav", "data": b64_wav}},
+                                    {"text": transcribe_prompt}
+                                ]
+                            }
+                        ],
+                        "generationConfig": {"temperature": 0.0}
+                    }
+                    async with httpx.AsyncClient(timeout=30.0) as client:
+                        r = await client.post(rest_url, json=payload)
+                        if r.status_code == 200:
+                            candidates_list = r.json().get("candidates", [])
+                            if candidates_list:
+                                text_part = candidates_list[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+                                if text_part and text_part.strip():
+                                    transcript_result = text_part.strip()
+                                    if transcript_result.lower() in ("[unintelligible]", "[blank_audio]", "[silence]"):
+                                        logger.info(f"🎙️ Gemini Audio returned silence marker: '{transcript_result}'")
+                                        return ""
+                                    logger.info(f"🎙️ ✅ Gemini Audio ({gemini_model}) WAV SUCCESS: '{transcript_result[:120]}'")
+                                    return transcript_result
+                        else:
+                            logger.warning(f"Gemini WAV transcription {gemini_model} HTTP {r.status_code}: {r.text[:200]}")
+                except Exception as g_err:
+                    logger.warning(f"Gemini WAV transcription attempt with {gemini_model} failed: {g_err}")
+
+        # Fallback: If WAV conversion failed, try raw audio bytes inline
+        b64_audio = base64.b64encode(audio_bytes).decode("utf-8")
+        transcribe_prompt = (
+            "Transcribe this voice message verbatim in English or whatever language was spoken. "
+            "Output ONLY the exact transcribed words with no other text, no explanations, and no formatting."
+        )
+        for gemini_model in ["gemini-2.0-flash", "gemini-1.5-flash"]:
+            try:
+                rest_url = f"https://generativelanguage.googleapis.com/v1beta/models/{gemini_model}:generateContent?key={effective_gemini_key}"
+                payload = {
+                    "contents": [
+                        {
+                            "parts": [
+                                {"inlineData": {"mimeType": clean_mime, "data": b64_audio}},
+                                {"text": transcribe_prompt}
+                            ]
+                        }
+                    ],
+                    "generationConfig": {"temperature": 0.0}
+                }
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    r = await client.post(rest_url, json=payload)
+                    if r.status_code == 200:
+                        candidates_list = r.json().get("candidates", [])
+                        if candidates_list:
+                            text_part = candidates_list[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+                            if text_part and text_part.strip():
+                                transcript_result = text_part.strip()
+                                if transcript_result.lower() not in ("[unintelligible]", "[blank_audio]", "[silence]"):
+                                    logger.info(f"🎙️ ✅ Gemini Audio ({gemini_model}) raw SUCCESS: '{transcript_result[:120]}'")
+                                    return transcript_result
+            except Exception as g_err:
+                logger.warning(f"Gemini raw audio attempt with {gemini_model} failed: {g_err}")
+
+    # =========================================================================
+    # Tier 3: Dedicated self-hosted faster-whisper microservice (port 8001 or TRANSCRIBE_SERVICE_URL)
     # =========================================================================
     transcribe_url = os.getenv("TRANSCRIBE_SERVICE_URL", "").strip()
     transcribe_key = os.getenv("TRANSCRIBE_SERVICE_KEY", "").strip() or "17f187c37b8164bc2f038779fa9ebe886ef771e3f721793e584bd816bf1a8ac5"
@@ -307,146 +419,28 @@ async def transcribe_voice_note(
             transcribe_url = f"{transcribe_url}/transcribe"
 
         start_t = time.time()
-        logger.info(f"🎙️ [Tier 2] Calling self-hosted Whisper microservice: {transcribe_url}")
+        logger.info(f"🎙️ [Tier 3] Calling self-hosted Whisper microservice: {transcribe_url}")
         try:
             headers = {"X-Api-Key": transcribe_key}
             async with httpx.AsyncClient(timeout=20.0) as client:
                 files = {"file": ("voice.ogg", audio_bytes, clean_mime)}
                 resp = await client.post(transcribe_url, files=files, headers=headers)
                 elapsed = time.time() - start_t
-                logger.info(f"🎙️ Whisper microservice HTTP {resp.status_code} in {elapsed:.2f}s")
                 if resp.status_code == 200:
-                    data = resp.json()
-                    text = data.get("text", "").strip()
+                    text = resp.json().get("text", "").strip()
                     if text:
                         logger.info(f"🎙️ ✅ Whisper transcription SUCCESS: '{text[:120]}'")
                         return text
         except Exception as e:
-            logger.warning(f"🎙️ Tier 2 Whisper microservice error: {e}")
+            logger.warning(f"🎙️ Tier 3 Whisper microservice error: {e}")
 
     # =========================================================================
-    # Tier 3: Google Gemini Multimodal Audio API (Free tier: gemini-2.0-flash & gemini-1.5-flash)
-    # Gemini natively supports audio/ogg, audio/webm, audio/wav, audio/mp3 with extreme accuracy
-    # =========================================================================
-    if effective_gemini_key and not effective_gemini_key.startswith("gsk_") and not effective_gemini_key.startswith("sk-"):
-        b64_audio = base64.b64encode(audio_bytes).decode("utf-8")
-        transcribe_prompt = (
-            "Transcribe this voice message verbatim in English or whatever language was spoken. "
-            "Output ONLY the exact transcribed words with no other text, no explanations, no formatting, and no commentary. "
-            "If the audio has no speech or is only background silence, reply with [unintelligible]."
-        )
-
-        # Gemini 2.0 Flash is Google's newest flagship audio model; fall back to 1.5 Flash
-        models_to_try = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-flash-8b"]
-        for gemini_model in models_to_try:
-            try:
-                rest_url = f"https://generativelanguage.googleapis.com/v1beta/models/{gemini_model}:generateContent?key={effective_gemini_key}"
-                payload = {
-                    "contents": [
-                        {
-                            "parts": [
-                                {
-                                    "inlineData": {
-                                        "mimeType": clean_mime,
-                                        "data": b64_audio
-                                    }
-                                },
-                                {
-                                    "text": transcribe_prompt
-                                }
-                            ]
-                        }
-                    ],
-                    "generationConfig": {"temperature": 0.0}
-                }
-                async with httpx.AsyncClient(timeout=30.0) as client:
-                    r = await client.post(rest_url, json=payload)
-                    if r.status_code == 200:
-                        r_data = r.json()
-                        candidates_list = r_data.get("candidates", [])
-                        if candidates_list:
-                            text_part = candidates_list[0].get("content", {}).get("parts", [{}])[0].get("text", "")
-                            if text_part and text_part.strip():
-                                transcript_result = text_part.strip()
-                                if transcript_result.lower() in ("[unintelligible]", "[blank_audio]", "[silence]"):
-                                    logger.info(f"🎙️ Gemini Audio returned silence marker: '{transcript_result}'")
-                                    return ""
-                                logger.info(f"🎙️ ✅ Gemini Audio ({gemini_model}) SUCCESS: '{transcript_result[:120]}'")
-                                return transcript_result
-                    else:
-                        logger.warning(f"Gemini audio transcription {gemini_model} HTTP {r.status_code}: {r.text[:200]}")
-            except Exception as g_err:
-                logger.warning(f"Gemini audio transcription attempt with {gemini_model} failed: {g_err}")
-
-    # =========================================================================
-    # Tier 4: Convert to 16kHz Mono WAV via imageio-ffmpeg and retry with Gemini
-    # =========================================================================
-    if effective_gemini_key and not effective_gemini_key.startswith("gsk_") and not effective_gemini_key.startswith("sk-"):
-        try:
-            import imageio_ffmpeg
-            import stat
-            ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
-            try:
-                st = os.stat(ffmpeg_exe)
-                os.chmod(ffmpeg_exe, st.st_mode | stat.S_IEXEC)
-            except Exception:
-                pass
-
-            with tempfile.TemporaryDirectory() as tmpdir:
-                in_ext = ".ogg" if is_ogg else (".webm" if "webm" in clean_mime else ".raw")
-                in_path = os.path.join(tmpdir, f"in{in_ext}")
-                out_path = os.path.join(tmpdir, "audio.wav")
-                with open(in_path, "wb") as f_in:
-                    f_in.write(audio_bytes)
-
-                proc = await asyncio.create_subprocess_exec(
-                    ffmpeg_exe, "-y", "-i", in_path,
-                    "-ac", "1", "-ar", "16000", out_path,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE
-                )
-                await proc.communicate()
-
-                if os.path.exists(out_path) and os.path.getsize(out_path) > 100:
-                    with open(out_path, "rb") as f_out:
-                        wav_bytes = f_out.read()
-                    logger.info(f"🎙️ Audio converted to WAV: {len(wav_bytes)} bytes — sending to Gemini")
-                    wav_b64 = base64.b64encode(wav_bytes).decode("utf-8")
-
-                    for gemini_model in ["gemini-2.0-flash", "gemini-1.5-flash"]:
-                        rest_url = f"https://generativelanguage.googleapis.com/v1beta/models/{gemini_model}:generateContent?key={effective_gemini_key}"
-                        payload = {
-                            "contents": [
-                                {
-                                    "parts": [
-                                        {"inlineData": {"mimeType": "audio/wav", "data": wav_b64}},
-                                        {"text": "Transcribe this audio verbatim. Output only the transcribed text."}
-                                    ]
-                                }
-                            ],
-                            "generationConfig": {"temperature": 0.0}
-                        }
-                        async with httpx.AsyncClient(timeout=30.0) as client:
-                            r = await client.post(rest_url, json=payload)
-                            if r.status_code == 200:
-                                candidates_list = r.json().get("candidates", [])
-                                if candidates_list:
-                                    text_part = candidates_list[0].get("content", {}).get("parts", [{}])[0].get("text", "")
-                                    if text_part and text_part.strip():
-                                        transcript_result = text_part.strip()
-                                        if transcript_result.lower() not in ("[unintelligible]", "[blank_audio]", "[silence]"):
-                                            logger.info(f"🎙️ ✅ Gemini WAV ({gemini_model}) SUCCESS: '{transcript_result[:120]}'")
-                                            return transcript_result
-        except Exception as tier4_err:
-            logger.warning(f"🎙️ Tier 4 ffmpeg WAV conversion error: {tier4_err}")
-
-    # =========================================================================
-    # Tier 5: OpenAI Whisper fallback (if key starts with sk-)
+    # Tier 4: OpenAI Whisper fallback (if key starts with sk-)
     # =========================================================================
     if api_key and api_key.startswith("sk-"):
         try:
             whisper_url = "https://api.openai.com/v1/audio/transcriptions"
-            logger.info(f"🎙️ [Tier 5] Trying OpenAI Whisper fallback at {whisper_url}")
+            logger.info(f"🎙️ [Tier 4] Trying OpenAI Whisper fallback at {whisper_url}")
             async with httpx.AsyncClient(timeout=30.0) as client:
                 files = {"file": ("voice_message.ogg", audio_bytes, clean_mime)}
                 data_w = {"model": "whisper-1"}
@@ -457,8 +451,6 @@ async def transcribe_voice_note(
                     if text_out:
                         logger.info(f"🎙️ ✅ OpenAI Whisper fallback transcript: '{text_out[:120]}'")
                         return text_out
-                else:
-                    logger.warning(f"🎙️ OpenAI Whisper fallback HTTP {wres.status_code}: {wres.text[:200]}")
         except Exception as e_w:
             logger.error(f"🎙️ OpenAI Whisper fallback exception: {e_w}")
 
@@ -739,47 +731,71 @@ async def trigger_ai_agent_reply(
                         "Authorization": f"Bearer {_meta_token}",
                         "User-Agent": "curl/7.64.1"
                     }
-                    async with _httpx.AsyncClient(timeout=30.0, follow_redirects=True) as _client:
+                    _audio_content = None
+                    _mime = audio_mime_type or "audio/ogg"
+                    async with _httpx.AsyncClient(timeout=35.0, follow_redirects=False) as _client:
                         _info = await _client.get(
                             f"https://graph.facebook.com/v18.0/{audio_media_id}",
                             headers=_dl_headers
                         )
-                        logger.info(f"🎙️ Meta media info HTTP {_info.status_code}: {_info.text[:300]}")
+                        logger.info(f"🎙️ Meta media info HTTP {_info.status_code}: {_info.text[:200]}")
                         if _info.status_code == 200:
                             _down_url = _info.json().get("url")
                             _mime = _info.json().get("mime_type", audio_mime_type)
                             if _down_url:
-                                _bin = await _client.get(_down_url, headers=_dl_headers)
-                                logger.info(f"🎙️ Audio download HTTP {_bin.status_code}, bytes={len(_bin.content)}")
-                                if _bin.status_code == 200 and _bin.content:
-                                    _transcript = await transcribe_voice_note(
-                                        audio_bytes=_bin.content,
-                                        mime_type=_mime,
-                                        api_key=ai_api_key,
-                                        provider=getattr(org, "ai_provider", "gemini") or "gemini",
-                                        base_url=getattr(org, "ai_base_url", None)
-                                    )
-                                    if _transcript and len(_transcript) > 2:
-                                        incoming_text = f"[Voice Note]: {_transcript}"
-                                        logger.info(f"🎙️ ✅ Transcription SUCCESS: '{_transcript[:100]}'")
-                                        # Update latest inbound message in database so dashboard Live Chats displays the transcription
-                                        try:
-                                            latest_inbound = db.query(Message).filter(
-                                                Message.contact_id == contact_id,
-                                                Message.type == "Inbound"
-                                            ).order_by(Message.created_at.desc()).first()
-                                            if latest_inbound and latest_inbound.content in ("[Voice message]", "[voice message]"):
-                                                latest_inbound.content = f"🎙️ {_transcript}"
-                                                db.commit()
-                                                logger.info(f"💾 Updated inbound message content in DB with transcript")
-                                        except Exception as db_err:
-                                            logger.warning(f"Failed to update message content in DB: {db_err}")
+                                _curr_url = _down_url
+                                for _hop in range(6):
+                                    _bin = await _client.get(_curr_url, headers=_dl_headers)
+                                    logger.info(f"🎙️ Meta audio hop {_hop}: HTTP {_bin.status_code} from {_curr_url[:60]}")
+                                    if _bin.status_code in (301, 302, 303, 307, 308):
+                                        _curr_url = _bin.headers.get("Location")
+                                        if not _curr_url:
+                                            break
+                                        continue
+                                    elif _bin.status_code == 200 and _bin.content:
+                                        _audio_content = _bin.content
+                                        break
+                                    elif _bin.status_code in (401, 403):
+                                        # Retry without auth header for pre-signed CDN URLs
+                                        _bin_noauth = await _client.get(_curr_url, headers={"User-Agent": "curl/7.64.1"})
+                                        if _bin_noauth.status_code == 200 and _bin_noauth.content:
+                                            _audio_content = _bin_noauth.content
+                                            break
+                                        else:
+                                            logger.warning(f"Meta audio download non-200: {_bin.status_code}")
+                                            break
                                     else:
-                                        incoming_text = "[Voice message — could not transcribe clearly]"
-                                        logger.warning(f"🎙️ Transcription returned empty for {audio_media_id}")
+                                        break
+
+                    if _audio_content and len(_audio_content) > 100:
+                        logger.info(f"🎙️ Meta audio downloaded successfully: {len(_audio_content)} bytes (mime={_mime})")
+                        _transcript = await transcribe_voice_note(
+                            audio_bytes=_audio_content,
+                            mime_type=_mime,
+                            api_key=ai_api_key,
+                            provider=getattr(org, "ai_provider", "gemini") or "gemini",
+                            base_url=getattr(org, "ai_base_url", None)
+                        )
+                        if _transcript and len(_transcript) > 2:
+                            incoming_text = f"[Voice Note]: {_transcript}"
+                            logger.info(f"🎙️ ✅ Transcription SUCCESS: '{_transcript[:100]}'")
+                            try:
+                                latest_inbound = db.query(Message).filter(
+                                    Message.contact_id == contact_id,
+                                    Message.type == "Inbound"
+                                ).order_by(Message.created_at.desc()).first()
+                                if latest_inbound and latest_inbound.content in ("[Voice message]", "[voice message]"):
+                                    latest_inbound.content = f"🎙️ {_transcript}"
+                                    db.commit()
+                                    logger.info(f"💾 Updated inbound message content in DB with transcript")
+                            except Exception as db_err:
+                                logger.warning(f"Failed to update message content in DB: {db_err}")
                         else:
                             incoming_text = "[Voice message — could not transcribe clearly]"
-                            logger.warning(f"Failed to fetch media metadata from Meta: HTTP {_info.status_code}")
+                            logger.warning(f"🎙️ Transcription returned empty for {audio_media_id}")
+                    else:
+                        incoming_text = "[Voice message — could not transcribe clearly]"
+                        logger.warning(f"Failed to download audio content from Meta for {audio_media_id}")
                 else:
                     logger.warning("🎙️ No WhatsApp access token on org — cannot download audio")
             except Exception as _te:
@@ -935,14 +951,14 @@ VOICE NOTE RULES:
 
 
 CATALOG & INVENTORY SEARCH RULES:
-- When a customer asks about available cars, properties, products, services, prices, or requests something specific (e.g. "I want to book a black BMW for the weekend in Lagos", "Do you have 2-bedroom flats in Lekki", "How much for teeth whitening?", "Show me SUVs under 150k", "I want an Oraimo charger"):
-  - Set "type": "SEARCH_CATALOG" in action with:
-    - "query": specific item or model (e.g. "BMW", "G-Wagon", "2-bedroom", "teeth whitening", "charger")
-    - "category": category if applicable (e.g. "SUV", "Shortlet", "Dental", "Chargers")
+- CRITICAL VISUAL DISPLAY RULE: Whenever a customer asks about available cars, properties, products, services, prices, or requests a list of items (e.g. "show me the list of watch that you have in store", "do you have chargers?", "what batteries are available?", "show me BMWs", "I want an Oraimo charger"):
+  - You MUST set "type": "SEARCH_CATALOG" in action with:
+    - "query": specific item, category, or model (e.g. "watch", "charger", "battery", "BMW", "G-Wagon", "2-bedroom", "teeth whitening")
+    - "category": category if applicable (e.g. "Watches", "SUV", "Shortlet", "Dental", "Chargers")
     - "location": city or area mentioned (e.g. "Lagos", "Ikeja", "Lekki")
     - "max_budget": numeric maximum budget if mentioned (e.g. 150000)
     - "attributes": object of extra filters (e.g. {{"color": "black", "drive_mode": "self-drive", "duration": "weekend"}})
-  - In your "reply", provide an attentive, helpful response confirming you are pulling up the available options.
+  - Even if you write out the names and prices of items in your "reply", you MUST STILL set action type to "SEARCH_CATALOG". Setting SEARCH_CATALOG is what triggers the system to render interactive visual product cards with photos, prices, and direct Buy Now checkout buttons!
 
 SALES PERSUASION & ALTERNATIVE RECOMMENDATIONS:
 - You are a proactive, knowledgeable, and persuasive sales consultant for {org_name} ({biz_type}).
@@ -1098,6 +1114,61 @@ ACTION TYPE GUIDE:
                     card_summaries.append(line)
                 if card_summaries and not any(itm['title'].lower() in reply_text.lower() for itm in recommended_items):
                     reply_text += f"\n\nHere are available options:\n\n" + "\n\n".join(card_summaries)
+
+        # Automatic Visual Catalog Card Attachment Fallback:
+        # If the AI provided a text reply without setting action_type=="SEARCH_CATALOG",
+        # but the reply or user prompt mentions products in the catalog, attach them!
+        if not recommended_items:
+            try:
+                from app.models.catalog_item import CatalogItem
+                import urllib.parse
+                clean_in = incoming_text.lower().replace("[voice note]:", "").strip()
+                base_store_url = (getattr(org, "ai_payment_link", None) or getattr(org, "external_search_webhook_url", None) or "https://decehub.com").rstrip("/")
+                if not base_store_url.startswith("http"):
+                    base_store_url = "https://" + base_store_url if base_store_url else ""
+
+                all_items = db.query(CatalogItem).filter(
+                    CatalogItem.organization_id == org.id,
+                    CatalogItem.is_available == True
+                ).all()
+
+                matched = []
+                # 1. Match if any product title is mentioned in reply_text
+                for ci in all_items:
+                    title_clean = ci.title.strip()
+                    title_lower = title_clean.lower()
+                    words = [w for w in title_lower.split() if len(w) > 2]
+                    first_3 = " ".join(words[:3]) if len(words) >= 3 else title_lower
+                    if title_lower in reply_text.lower() or (first_3 and first_3 in reply_text.lower()):
+                        if ci not in matched:
+                            matched.append(ci)
+
+                # 2. If nothing matched in reply, search by incoming query keywords
+                if not matched and any(w in clean_in for w in ["watch", "charger", "battery", "cable", "earbud", "headphone", "power bank", "phone", "laptop", "sound", "speaker", "case", "pods", "oraimo", "foomee", "buy", "price", "show", "list", "have", "store", "product"]):
+                    search_tokens = [w for w in clean_in.split() if len(w) >= 3 and w not in ["the", "show", "list", "that", "you", "have", "store", "for", "with", "and", "can", "please", "want", "some"]]
+                    if search_tokens:
+                        token_q = " ".join(search_tokens)
+                        matched_dicts = await execute_catalog_search(org, {"query": token_q}, db)
+                        recommended_items = matched_dicts[:4]
+
+                if matched and not recommended_items:
+                    for mi in matched[:4]:
+                        price_display = f"{mi.price_currency or 'NGN'} {mi.price_amount:,.0f}".strip() if mi.price_amount else "Contact for pricing"
+                        safe_url = mi.action_url or (f"{base_store_url}/?s={urllib.parse.quote_plus(mi.title)}" if base_store_url else "")
+                        recommended_items.append({
+                            "id": str(mi.id),
+                            "title": mi.title,
+                            "category": mi.category or "",
+                            "description": mi.description or "",
+                            "price": price_display,
+                            "price_amount": float(mi.price_amount) if mi.price_amount else 0,
+                            "image_url": mi.image_url or "",
+                            "action_url": safe_url,
+                            "attributes": mi.attributes or {}
+                        })
+                    logger.info(f"✨ Auto-attached {len(recommended_items)} visual catalog cards to reply for '{clean_in[:50]}'")
+            except Exception as auto_cat_err:
+                logger.warning(f"Auto catalog attachment error: {auto_cat_err}")
 
         # 10. Increment SaaS usage quota counter
         try:

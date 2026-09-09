@@ -625,17 +625,18 @@
         return;
       }
 
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      audioChunks = [];
       isCancelled = false;
       clientTranscript = "";
+      audioChunks = [];
 
-      // Initialize real-time client-side Speech Recognition if browser supports it
+      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
+      // Initialize real-time client-side Speech Recognition synchronously in user gesture
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-      if (SpeechRecognition) {
+      if (SpeechRecognition && !speechRecognizer) {
         try {
           speechRecognizer = new SpeechRecognition();
-          speechRecognizer.continuous = true;
+          speechRecognizer.continuous = !isMobile;
           speechRecognizer.interimResults = true;
           speechRecognizer.lang = 'en-US';
           speechRecognizer.onresult = (event) => {
@@ -658,12 +659,16 @@
         }
       }
 
-      // Select supported mime type
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+      // Select supported mime type (on iOS Safari, audio/mp4 is the native supported container)
       let mimeType = 'audio/webm';
       if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
         mimeType = 'audio/webm;codecs=opus';
       } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
         mimeType = 'audio/mp4';
+      } else if (MediaRecorder.isTypeSupported('audio/aac')) {
+        mimeType = 'audio/aac';
       } else if (MediaRecorder.isTypeSupported('audio/ogg')) {
         mimeType = 'audio/ogg';
       }
