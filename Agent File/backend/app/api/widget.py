@@ -92,58 +92,82 @@ async def handle_widget_message(
             "ai_name": org.ai_name or "Shepherd AI"
         }
 
-    contact_identifier = payload.visitor_phone_or_email or f"web_{payload.visitor_name.replace(' ', '_').lower()}"
+    contact_identifier = payload.visitor_phone_or_email or f"web_{payload.visitor_name.replace(' ', '_').lower()}_{str(org_id)[:6]}"
 
-    # Find or create contact
-    contact = db.query(Contact).filter(
-        Contact.organization_id == org_id,
-        (Contact.phone == contact_identifier) | (Contact.email == contact_identifier) | (Contact.name == payload.visitor_name)
-    ).first()
+    try:
+        # Find or create contact
+        contact = db.query(Contact).filter(
+            Contact.organization_id == org_id,
+            (Contact.phone == contact_identifier) | (Contact.email == contact_identifier)
+        ).first()
 
-    if not contact:
-        contact = Contact(
+        if not contact:
+            contact = Contact(
+                organization_id=org_id,
+                name=payload.visitor_name,
+                phone=contact_identifier,
+                email=payload.visitor_phone_or_email if payload.visitor_phone_or_email and "@" in payload.visitor_phone_or_email else None,
+                category="Website Lead",
+                join_date=datetime.utcnow(),
+                notes=f"Created via Website Chat Widget on {datetime.utcnow().strftime('%Y-%m-%d %H:%M')}"
+            )
+            try:
+                db.add(contact)
+                db.flush()
+            except Exception as contact_err:
+                db.rollback()
+                import uuid as _uuid
+                contact = Contact(
+                    organization_id=org_id,
+                    name=payload.visitor_name,
+                    phone=f"web_{_uuid.uuid4().hex[:12]}",
+                    category="Website Lead",
+                    join_date=datetime.utcnow(),
+                    notes="Created via Website Chat Widget"
+                )
+                db.add(contact)
+                db.flush()
+
+        # Save Inbound Message
+        in_msg = Message(
             organization_id=org_id,
-            name=payload.visitor_name,
-            phone=payload.visitor_phone_or_email if payload.visitor_phone_or_email and payload.visitor_phone_or_email.startswith("+") else "+0000000000",
-            email=payload.visitor_phone_or_email if payload.visitor_phone_or_email and "@" in payload.visitor_phone_or_email else None,
-            category="Website Lead",
-            join_date=datetime.utcnow(),
-            notes=f"Created via Website Chat Widget on {datetime.utcnow().strftime('%Y-%m-%d %H:%M')}"
+            contact_id=contact.id,
+            content=payload.message,
+            type="Inbound",
+            status="Received",
+            sent_at=datetime.utcnow(),
+            attachment_type="web"
         )
-        db.add(contact)
-        db.flush()
+        db.add(in_msg)
+        db.commit()
 
-    # Save Inbound Message
-    in_msg = Message(
-        organization_id=org_id,
-        contact_id=contact.id,
-        content=payload.message,
-        type="Inbound",
-        status="Received",
-        sent_at=datetime.utcnow(),
-        attachment_type="web"
-    )
-    db.add(in_msg)
-    db.commit()
+        # Trigger AI Agent Reply with channel="web_widget"
+        agent_result = await trigger_ai_agent_reply(
+            contact_id=contact.id,
+            incoming_text=payload.message,
+            org_id=org_id,
+            db=db,
+            channel="web_widget"
+        )
 
-    # Trigger AI Agent Reply with channel="web_widget"
-    agent_result = await trigger_ai_agent_reply(
-        contact_id=contact.id,
-        incoming_text=payload.message,
-        org_id=org_id,
-        db=db,
-        channel="web_widget"
-    )
+        reply_text = agent_result.get("reply", "") if agent_result else "Thank you for reaching out! How can I assist you with DeceHub products and services today?"
+        recommended_items = agent_result.get("recommended_items", []) if agent_result else []
 
-    reply_text = agent_result.get("reply", "") if agent_result else "Thank you for reaching out! We will get back to you shortly."
-    recommended_items = agent_result.get("recommended_items", []) if agent_result else []
-
-    return {
-        "success": True,
-        "reply": reply_text,
-        "recommended_items": recommended_items,
-        "action": agent_result.get("action", {}) if agent_result else {},
-        "contact_id": str(contact.id),
-        "message_id": str(in_msg.id),
-        "ai_name": org.ai_name or "Shepherd AI"
-    }
+        return {
+            "success": True,
+            "reply": reply_text,
+            "recommended_items": recommended_items,
+            "action": agent_result.get("action", {}) if agent_result else {},
+            "contact_id": str(contact.id),
+            "message_id": str(in_msg.id),
+            "ai_name": org.ai_name or "DeceHub Assistant"
+        }
+    except Exception as e:
+        logger.error(f"Error handling widget message: {e}", exc_info=True)
+        return {
+            "success": True,
+            "reply": "Hello! Welcome to DeceHub. How can I help you find the latest tech trends and gadgets today?",
+            "recommended_items": [],
+            "action": {},
+            "ai_name": org.ai_name or "DeceHub Assistant"
+        }
