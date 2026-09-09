@@ -690,11 +690,41 @@ async def debug_ai_state(
             "whatsapp_token_configured": "SET ✅" if bool(r[9]) else "NOT SET ❌",
         })
 
+    # Query user and contact counts per org
+    users_data = []
+    try:
+        u_rows = db.execute(text("SELECT id, email, organization_id FROM users")).fetchall()
+        for u in u_rows:
+            users_data.append({"id": str(u[0]), "email": u[1], "organization_id": str(u[2])})
+    except Exception as ue:
+        users_data.append({"error": str(ue)})
+
+    contacts_breakdown = {}
+    try:
+        c_counts = db.execute(text("SELECT organization_id, count(*) FROM contacts GROUP BY organization_id")).fetchall()
+        for c in c_counts:
+            contacts_breakdown[str(c[0])] = c[1]
+    except Exception:
+        pass
+
+    messages_breakdown = {}
+    try:
+        m_counts = db.execute(text("SELECT organization_id, count(*) FROM messages GROUP BY organization_id")).fetchall()
+        for m in m_counts:
+            messages_breakdown[str(m[0])] = m[1]
+    except Exception:
+        pass
+
+    for o in orgs_data:
+        o["contacts_count"] = contacts_breakdown.get(o["id"], 0)
+        o["messages_count"] = messages_breakdown.get(o["id"], 0)
+
     # Return JSON if requested
     accept = request.headers.get("accept", "")
     if format == "json" or "application/json" in accept:
         return {
             "organizations_count": len(orgs_data),
+            "users": users_data,
             "organizations": orgs_data,
             "server_gemini_env_key": "SET ✅" if bool(app_settings.gemini_api_key) else "NOT SET ❌"
         }
