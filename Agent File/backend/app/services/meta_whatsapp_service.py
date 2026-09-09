@@ -85,6 +85,59 @@ class MetaWhatsAppService:
             logger.error(f"Error sending message via Meta: {str(e)}")
             return {"success": False, "error": str(e), "provider": "meta"}
     
+    async def send_typing_indicator(self, message_id: str) -> Dict[str, Any]:
+        """
+        Send typing indicator and mark incoming message as read on WhatsApp.
+        This immediately displays 'typing...' at the top of the chat in WhatsApp
+        for up to 25s (or until reply is delivered) and turns message ticks blue.
+        """
+        if not message_id:
+            return {"success": False, "error": "No message_id provided"}
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                # 1. Primary: Send typing indicator with status: read
+                response = await client.post(
+                    f"{self.base_url}/{self.phone_number_id}/messages",
+                    headers={
+                        "Authorization": f"Bearer {self.access_token}",
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "messaging_product": "whatsapp",
+                        "status": "read",
+                        "message_id": message_id,
+                        "typing_indicator": {
+                            "type": "text"
+                        }
+                    }
+                )
+                if response.status_code == 200:
+                    logger.info(f"💬 WhatsApp typing indicator & read receipt sent for message {message_id}")
+                    return {"success": True}
+
+                # 2. Fallback for accounts/API versions without typing_indicator payload: standard read receipt
+                fallback_resp = await client.post(
+                    f"{self.base_url}/{self.phone_number_id}/messages",
+                    headers={
+                        "Authorization": f"Bearer {self.access_token}",
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "messaging_product": "whatsapp",
+                        "status": "read",
+                        "message_id": message_id
+                    }
+                )
+                if fallback_resp.status_code == 200:
+                    logger.info(f"💬 WhatsApp read receipt sent for message {message_id}")
+                    return {"success": True}
+                else:
+                    logger.warning(f"Typing indicator / read receipt error: {fallback_resp.text[:150]}")
+                    return {"success": False, "error": fallback_resp.text}
+        except Exception as e:
+            logger.warning(f"Could not send WhatsApp typing indicator: {e}")
+            return {"success": False, "error": str(e)}
+
     async def send_media(
         self,
         to_phone: str,

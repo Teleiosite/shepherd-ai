@@ -342,13 +342,26 @@ async def _async_trigger_reply(
     content: str,
     org_id: UUID,
     audio_media_id: Optional[str] = None,
-    audio_mime_type: str = "audio/ogg"
+    audio_mime_type: str = "audio/ogg",
+    whatsapp_message_id: Optional[str] = None
 ):
     """Background task to run AI agent auto-reply so Meta webhook responds immediately."""
     from app.database import SessionLocal
     from app.services.agent_service import trigger_ai_agent_reply
     db_bg = SessionLocal()
     try:
+        # Show "typing..." indicator immediately on WhatsApp so user knows the AI is processing
+        if whatsapp_message_id:
+            try:
+                from app.api.whatsapp import get_organization_whatsapp_config
+                from app.services.meta_whatsapp_service import get_meta_whatsapp_service
+                cfg = get_organization_whatsapp_config(db_bg, org_id)
+                if cfg.get("delivery_method") == "meta" and cfg.get("phone_number_id") and cfg.get("access_token"):
+                    meta_svc = get_meta_whatsapp_service(cfg["phone_number_id"], cfg["access_token"])
+                    await meta_svc.send_typing_indicator(whatsapp_message_id)
+            except Exception as t_err:
+                logger.warning(f"Could not trigger WhatsApp typing indicator: {t_err}")
+
         logger.info(f"⚡ [ASYNC BG] Launching AI auto-reply for contact {contact_id} (org {org_id})...")
         res = await trigger_ai_agent_reply(
             contact_id=contact_id,
@@ -482,7 +495,8 @@ async def process_received_message(
             content=content,
             org_id=org_id,
             audio_media_id=audio_media_id,
-            audio_mime_type=audio_mime_type
+            audio_mime_type=audio_mime_type,
+            whatsapp_message_id=whatsapp_message_id
         )
     )
 
