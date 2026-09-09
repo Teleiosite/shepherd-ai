@@ -720,7 +720,7 @@ CATALOG & INVENTORY SEARCH RULES:
     - "category": category if applicable (e.g. "SUV", "Shortlet", "Dental")
     - "location": city or area mentioned (e.g. "Lagos", "Ikeja", "Lekki")
     - "max_budget": numeric maximum budget if mentioned (e.g. 150000)
-    - "attributes": object of extra filters (e.g. {"color": "black", "drive_mode": "self-drive", "duration": "weekend"})
+    - "attributes": object of extra filters (e.g. {{"color": "black", "drive_mode": "self-drive", "duration": "weekend"}})
   - In your "reply", provide an attentive, helpful response confirming you are pulling up the available options.
 
 RESPONSE FORMAT — You must return ONLY a JSON object:
