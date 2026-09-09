@@ -281,78 +281,79 @@ const Settings: React.FC<SettingsProps> = ({
         localStorage.setItem('shepherd_wa_config', JSON.stringify(waConfig));
         localStorage.setItem('shepherd_autorun_enabled', String(autoRunEnabled));
 
-        // Save to backend database via API
+        // Save to backend database via API — single unified call, no schema issues
         try {
             const token = localStorage.getItem('authToken');
             if (token) {
                 const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
-                
-                // 1. Save AI Config — always use the effective (unmasked) key
-                const aiSaveRes = await fetch(`${backendUrl}/api/settings/ai-config`, {
-                    method: 'PUT',
-                    headers: {
-                        'Authorization': `Bearer ${token}`,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        provider: aiConfig.provider,
-                        api_key: effectiveApiKey || '',   // ← use unmasked key
-                        model: aiConfig.model || 'gemini-3.5-flash',
-                        base_url: aiConfig.baseUrl || null
-                    })
-                });
-                if (!aiSaveRes.ok) {
-                    console.error('❌ Failed to save AI config to backend:', await aiSaveRes.text());
-                } else {
-                    console.log('✅ AI config saved to backend');
+
+                const savePayload: Record<string, any> = {
+                    // AI Config
+                    provider: aiConfig.provider || 'gemini',
+                    api_key: effectiveApiKey || '',
+                    model: aiConfig.model || 'gemini-3.5-flash',
+                    base_url: aiConfig.baseUrl || null,
+                    // Autopilot
+                    enabled: agentEnabled,
+                    mode: agentMode,
+                    reply_delay: agentDelay,
+                    tone: agentTone,
+                    payment_link: paymentLink,
+                    voice_reply_mode: voiceReplyMode,
+                    voice_name: voiceName,
+                };
+
+                // Add WhatsApp Meta credentials if using Meta
+                if (waConfig.provider === 'meta' || waConfig.phoneId) {
+                    // Recover unmasked WA token from localStorage
+                    const storedWa = localStorage.getItem('shepherd_wa_config');
+                    let unmaskedWaToken = waConfig.token || '';
+                    if (storedWa) {
+                        try {
+                            const parsedWa = JSON.parse(storedWa);
+                            if (parsedWa.token && !parsedWa.token.startsWith('***')) {
+                                unmaskedWaToken = parsedWa.token;
+                            }
+                        } catch {}
+                    }
+                    savePayload.phone_number_id = waConfig.phoneId || '';
+                    savePayload.access_token = unmaskedWaToken;
+                    savePayload.business_account_id = '';
                 }
 
-                // 2. Save AI Autopilot — sync enabled state + mode so backend has it
-                await fetch(`${backendUrl}/api/settings/ai-autopilot`, {
-                    method: 'PUT',
+                const saveRes = await fetch(`${backendUrl}/api/settings/save-all`, {
+                    method: 'POST',
                     headers: {
                         'Authorization': `Bearer ${token}`,
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({
-                        enabled: agentEnabled,
-                        mode: agentMode,
-                        reply_delay: agentDelay,
-                        tone: agentTone,
-                        payment_link: paymentLink,
-                        voice_reply_mode: voiceReplyMode,
-                        voice_name: voiceName
-                    })
+                    body: JSON.stringify(savePayload)
                 });
 
-                // 3. Save WhatsApp Config
-                if (waConfig.provider === 'meta') {
-                    await fetch(`${backendUrl}/api/settings/whatsapp-meta`, {
-                        method: 'PUT',
-                        headers: {
-                            'Authorization': `Bearer ${token}`,
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            phone_number_id: waConfig.phoneId || '',
-                            business_account_id: '',
-                            access_token: waConfig.token || ''
-                        })
-                    });
+                if (!saveRes.ok) {
+                    const errText = await saveRes.text();
+                    console.error('❌ save-all failed:', saveRes.status, errText);
+                    alert(`Settings save failed (${saveRes.status}): ${errText}`);
                 } else {
+                    const result = await saveRes.json();
+                    console.log('✅ save-all success:', result.state);
+                }
+
+                // Also save bridge URL if WPPConnect
+                if (waConfig.provider !== 'meta' && waConfig.bridgeUrl) {
                     const bridgeUrlParam = encodeURIComponent(waConfig.bridgeUrl || 'http://localhost:3001');
                     await fetch(`${backendUrl}/api/settings/bridge-config?bridge_url=${bridgeUrlParam}`, {
                         method: 'PUT',
-                        headers: {
-                            'Authorization': `Bearer ${token}`,
-                            'Content-Type': 'application/json'
-                        }
+                        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
                     });
                 }
+            } else {
+                console.warn('⚠️ No authToken in localStorage — settings NOT saved to backend');
             }
         } catch (error) {
             console.error('Failed to save settings to backend:', error);
         }
+
 
         setIsSaving(false);
         setIsSaved(true);

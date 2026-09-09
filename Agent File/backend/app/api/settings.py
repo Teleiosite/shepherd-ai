@@ -68,12 +68,146 @@ async def get_ai_config(
     }
 
 
+
+@router.post("/save-all")
+async def save_all_settings(
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Unified settings save — handles AI config + autopilot + WhatsApp in one call.
+    Accepts raw dict (no strict schema), gracefully handles masked/empty keys.
+    """
+    org_id = str(current_user.organization_id)
+    logger.info(f"💾 save-all called for org {org_id} by user {current_user.id}")
+
+    try:
+        # --- 1. AI API Key ---
+        new_api_key = payload.get("api_key", "")
+        if new_api_key and new_api_key.startswith("***"):
+            # Masked — keep existing DB value
+            existing_key = db.execute(
+                text("SELECT ai_api_key FROM organizations WHERE id = :org_id"),
+                {"org_id": org_id}
+            ).fetchone()
+            new_api_key = (existing_key[0] if existing_key and existing_key[0] else "")
+            logger.info(f"🔑 API key is masked — keeping existing DB key (set={bool(new_api_key)})")
+        else:
+            logger.info(f"🔑 API key provided: set={bool(new_api_key)}, length={len(new_api_key)}")
+
+        # --- 2. WhatsApp Access Token ---
+        new_wa_token = payload.get("access_token", "")
+        if new_wa_token and new_wa_token.startswith("***"):
+            existing_tok = db.execute(
+                text("SELECT whatsapp_access_token FROM organizations WHERE id = :org_id"),
+                {"org_id": org_id}
+            ).fetchone()
+            new_wa_token = (existing_tok[0] if existing_tok and existing_tok[0] else "")
+            logger.info(f"📱 WA token is masked — keeping existing DB token (set={bool(new_wa_token)})")
+
+        # --- 3. Build dynamic SQL for AI fields ---
+        ai_fields = []
+        ai_params: dict = {"org_id": org_id}
+
+        if new_api_key:
+            ai_fields.append("ai_api_key = :api_key")
+            ai_params["api_key"] = new_api_key
+
+        if payload.get("provider"):
+            ai_fields.append("ai_provider = :provider")
+            ai_params["provider"] = payload["provider"]
+
+        if payload.get("model"):
+            ai_fields.append("ai_model = :model")
+            ai_params["model"] = payload["model"]
+
+        if "base_url" in payload:
+            ai_fields.append("ai_base_url = :base_url")
+            ai_params["base_url"] = payload.get("base_url") or None
+
+        # Autopilot fields
+        if "enabled" in payload:
+            val = payload["enabled"]
+            ai_fields.append("ai_auto_reply_enabled = :enabled")
+            ai_params["enabled"] = "true" if val in [True, "true", "True", 1] else "false"
+
+        if "mode" in payload:
+            ai_fields.append("ai_reply_mode = :mode")
+            ai_params["mode"] = payload["mode"]
+
+        if "reply_delay" in payload:
+            ai_fields.append("ai_reply_delay_seconds = :delay")
+            ai_params["delay"] = int(payload.get("reply_delay") or 0)
+
+        if "tone" in payload:
+            ai_fields.append("ai_tone = :tone")
+            ai_params["tone"] = payload["tone"]
+
+        if "payment_link" in payload:
+            ai_fields.append("ai_payment_link = :payment_link")
+            ai_params["payment_link"] = payload["payment_link"]
+
+        if "business_type" in payload:
+            ai_fields.append("ai_business_type = :business_type")
+            ai_params["business_type"] = payload["business_type"]
+
+        # --- 4. WhatsApp Meta fields ---
+        if payload.get("phone_number_id"):
+            ai_fields.append("whatsapp_phone_id = :phone_id")
+            ai_params["phone_id"] = payload["phone_number_id"]
+
+        if new_wa_token:
+            ai_fields.append("whatsapp_access_token = :wa_token")
+            ai_params["wa_token"] = new_wa_token
+
+        if payload.get("business_account_id"):
+            ai_fields.append("whatsapp_business_account_id = :biz_id")
+            ai_params["biz_id"] = payload["business_account_id"]
+
+        # --- 5. Execute update ---
+        if ai_fields:
+            sql = f"UPDATE organizations SET {', '.join(ai_fields)} WHERE id = :org_id"
+            logger.info(f"💾 Saving fields: {[f.split(' = ')[0] for f in ai_fields]}")
+            db.execute(text(sql), ai_params)
+            db.commit()
+            logger.info(f"✅ save-all committed for org {org_id}")
+        else:
+            logger.warning("⚠️ save-all called with no valid fields to update")
+
+        # --- 6. Return current state ---
+        row = db.execute(
+            text("SELECT ai_provider, ai_api_key, ai_model, ai_auto_reply_enabled, ai_reply_mode, whatsapp_phone_id, whatsapp_access_token FROM organizations WHERE id = :org_id"),
+            {"org_id": org_id}
+        ).fetchone()
+
+        return {
+            "success": True,
+            "message": "Settings saved successfully",
+            "state": {
+                "api_key_saved": bool(row[1]) if row else False,
+                "provider": row[0] if row else "gemini",
+                "model": row[2] if row else "gemini-3.5-flash",
+                "auto_reply_enabled": row[3] if row else "false",
+                "mode": row[4] if row else "suggest",
+                "whatsapp_phone_id_saved": bool(row[5]) if row else False,
+                "whatsapp_token_saved": bool(row[6]) if row else False,
+            }
+        }
+
+    except Exception as e:
+        db.rollback()
+        logger.error(f"❌ save-all failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Save failed: {str(e)}")
+
+
 @router.put("/ai-config")
 async def update_ai_config(
     config: AIConfigCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+
     """
     Create or update AI configuration for user's organization
     Saves directly to organization table
