@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     # AI - Optional, users provide their own keys
     gemini_api_key: Optional[str] = None
     google_embedding_api_key: Optional[str] = None
+    groq_api_key: Optional[str] = None
     
     # WhatsApp
     whatsapp_api_url: str = "https://graph.facebook.com/v18.0"

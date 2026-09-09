@@ -603,12 +603,19 @@
   let recordingStartTime = 0;
   let recordingInterval = null;
   let isCancelled = false;
+  let speechRecognizer = null;
+  let clientTranscript = "";
 
   const updateRecTimer = () => {
     const elapsedSec = Math.floor((Date.now() - recordingStartTime) / 1000);
     const mins = Math.floor(elapsedSec / 60);
     const secs = elapsedSec % 60;
-    recTimer.textContent = `Recording ${mins}:${secs < 10 ? '0' : ''}${secs}`;
+    if (clientTranscript) {
+      const snippet = clientTranscript.length > 28 ? "..." + clientTranscript.slice(-25) : clientTranscript;
+      recTimer.textContent = `"${snippet}"`;
+    } else {
+      recTimer.textContent = `Recording ${mins}:${secs < 10 ? '0' : ''}${secs}`;
+    }
   };
 
   const startRecording = async () => {
@@ -621,6 +628,35 @@
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       audioChunks = [];
       isCancelled = false;
+      clientTranscript = "";
+
+      // Initialize real-time client-side Speech Recognition if browser supports it
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (SpeechRecognition) {
+        try {
+          speechRecognizer = new SpeechRecognition();
+          speechRecognizer.continuous = true;
+          speechRecognizer.interimResults = true;
+          speechRecognizer.lang = 'en-US';
+          speechRecognizer.onresult = (event) => {
+            let combined = '';
+            for (let i = 0; i < event.results.length; ++i) {
+              combined += event.results[i][0].transcript;
+            }
+            if (combined.trim()) {
+              clientTranscript = combined.trim();
+              updateRecTimer();
+            }
+          };
+          speechRecognizer.onerror = (srErr) => {
+            console.log('[Web Speech Info]:', srErr.error || srErr);
+          };
+          speechRecognizer.start();
+        } catch (initErr) {
+          console.log('[SpeechRecognition not available]:', initErr);
+          speechRecognizer = null;
+        }
+      }
 
       // Select supported mime type
       let mimeType = 'audio/webm';
@@ -646,13 +682,21 @@
         clearInterval(recordingInterval);
         recOverlay.style.display = 'none';
 
+        if (speechRecognizer) {
+          try { speechRecognizer.stop(); } catch (e) {}
+          speechRecognizer = null;
+        }
+
         if (isCancelled || !audioChunks.length) {
           audioChunks = [];
+          clientTranscript = "";
           return;
         }
 
         const audioBlob = new Blob(audioChunks, { type: mimeType });
         audioChunks = [];
+        const capturedSpeech = clientTranscript;
+        clientTranscript = "";
 
         // Convert to Base64
         const reader = new FileReader();
@@ -663,7 +707,7 @@
           // Render User Voice Note Bubble
           const userBubble = document.createElement('div');
           userBubble.className = 'shepherd-msg shepherd-msg-out';
-          userBubble.textContent = '🎙️ [Voice Note sent]';
+          userBubble.textContent = capturedSpeech ? `🎙️ "${capturedSpeech}"` : '🎙️ [Voice Note sent]';
           msgs.appendChild(userBubble);
           msgs.scrollTop = msgs.scrollHeight;
 
@@ -678,7 +722,8 @@
                 visitor_name: visitorName,
                 visitor_phone_or_email: visitorId,
                 audio_base64: base64Audio,
-                audio_mime_type: mimeType
+                audio_mime_type: mimeType,
+                speech_transcript: capturedSpeech || null
               })
             });
 
@@ -688,7 +733,7 @@
               const data = await res.json();
 
               // Update user bubble with transcribed text if available
-              if (data.transcription && data.transcription !== "Hello, I sent a voice note.") {
+              if (data.transcription) {
                 userBubble.textContent = `🎙️ "${data.transcription}"`;
               }
 
@@ -738,6 +783,9 @@
 
   const stopRecording = (cancel = false) => {
     isCancelled = cancel;
+    if (speechRecognizer) {
+      try { speechRecognizer.stop(); } catch (e) {}
+    }
     if (mediaRecorder && mediaRecorder.state !== 'inactive') {
       mediaRecorder.stop();
     } else {

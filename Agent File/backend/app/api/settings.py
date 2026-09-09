@@ -1466,6 +1466,45 @@ async def sync_decehub_catalog_direct(
     }
 
 
+@router.get("/test-transcribe")
+async def test_transcribe_status(db: Session = Depends(get_db)):
+    """
+    Diagnostic endpoint to verify voice note transcription services and keys.
+    Usage: GET /api/settings/test-transcribe
+    """
+    import os
+    from app.config import settings as app_settings
+    from app.models.organization import Organization
+
+    org_with_key = db.query(Organization).filter(
+        (Organization.ai_api_key.isnot(None)) & (Organization.ai_api_key != '')
+    ).first()
+
+    has_env_gemini = bool(app_settings.gemini_api_key)
+    has_env_groq = bool(getattr(app_settings, "groq_api_key", None) or os.getenv("GROQ_API_KEY"))
+    has_org_key = bool(org_with_key and org_with_key.ai_api_key)
+
+    return {
+        "transcription_services": {
+            "tier_1_groq_whisper": {
+                "available": has_env_groq,
+                "notes": "Free tier (7,200 req/day). Set GROQ_API_KEY to activate ultra-fast 0.3s Whisper."
+            },
+            "tier_2_gemini_multimodal_audio": {
+                "available": has_env_gemini or has_org_key,
+                "models": ["gemini-2.0-flash", "gemini-1.5-flash"],
+                "active_key_source": "org_db_key" if has_org_key else ("env_gemini_key" if has_env_gemini else "none"),
+                "notes": "Free tier (1,500 req/day). Gemini 2.0 Flash natively decodes voice notes without external microservices."
+            },
+            "tier_3_client_web_speech": {
+                "available": True,
+                "notes": "100% free browser client SpeechRecognition enabled in chat widget for Chrome, Edge, Safari, Android."
+            }
+        }
+    }
+
+
+
 
 
 

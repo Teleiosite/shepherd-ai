@@ -37,6 +37,7 @@ class WidgetVoiceMessageRequest(BaseModel):
     visitor_phone_or_email: Optional[str] = None
     audio_base64: str
     audio_mime_type: Optional[str] = "audio/webm"
+    speech_transcript: Optional[str] = None
 
 
 @router.get("/config/{org_id}")
@@ -192,10 +193,11 @@ async def handle_widget_voice_message(
 ):
     """
     Handles voice notes recorded by website visitors on the live chat widget.
-    Transcribes audio via faster-whisper microservice and processes it through the 24/7 AI agent.
+    Transcribes audio via client Web Speech API, Groq Whisper, or Google Gemini Audio API.
     """
     import base64
     from app.services.agent_service import transcribe_voice_note
+    from app.config import settings
 
     try:
         org_id = UUID(payload.org_id)
@@ -206,37 +208,49 @@ async def handle_widget_voice_message(
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
 
-    # 1. Decode audio bytes
-    try:
-        raw_b64 = payload.audio_base64
-        if "," in raw_b64:
-            raw_b64 = raw_b64.split(",", 1)[1]
-        audio_bytes = base64.b64decode(raw_b64)
-    except Exception as dec_err:
-        raise HTTPException(status_code=400, detail=f"Invalid base64 audio: {dec_err}")
+    transcription = ""
+    # 1. First priority: Check if visitor's browser already transcribed the voice note via Web Speech API
+    if payload.speech_transcript and payload.speech_transcript.strip():
+        transcription = payload.speech_transcript.strip()
+        logger.info(f"🎙️ Using visitor browser client-side transcription: '{transcription}'")
 
-    # 2. Transcribe using Whisper microservice
-    transcription = await transcribe_voice_note(
-        audio_bytes=audio_bytes,
-        mime_type=payload.audio_mime_type or "audio/webm",
-        api_key=org.ai_api_key
-    )
+    # 2. Decode audio bytes and transcribe on backend if no browser transcription was available
+    if not transcription:
+        try:
+            raw_b64 = payload.audio_base64
+            if "," in raw_b64:
+                raw_b64 = raw_b64.split(",", 1)[1]
+            audio_bytes = base64.b64decode(raw_b64)
+        except Exception as dec_err:
+            raise HTTPException(status_code=400, detail=f"Invalid base64 audio: {dec_err}")
 
-    if not transcription or not transcription.strip():
-        transcription = "Hello, I sent a voice note."
+        effective_key = org.ai_api_key or getattr(settings, "gemini_api_key", None)
+        transcription = await transcribe_voice_note(
+            audio_bytes=audio_bytes,
+            mime_type=payload.audio_mime_type or "audio/webm",
+            api_key=effective_key,
+            provider=getattr(org, "ai_provider", "gemini") or "gemini",
+            base_url=getattr(org, "ai_base_url", None)
+        )
 
-    logger.info(f"🎙️ Web Widget Voice Note transcribed: '{transcription}'")
+    has_valid_transcription = bool(transcription and transcription.strip())
+    if has_valid_transcription:
+        incoming_message = f"[Voice Note]: {transcription.strip()}"
+    else:
+        incoming_message = "[Voice message — could not transcribe clearly]"
+
+    logger.info(f"🎙️ Web Widget Voice Note processed: '{incoming_message}'")
 
     # 3. Process transcribed message through AI agent pipeline
     msg_payload = WidgetMessageRequest(
         org_id=payload.org_id,
         visitor_name=payload.visitor_name,
         visitor_phone_or_email=payload.visitor_phone_or_email,
-        message=f"[Voice Note]: {transcription}" if transcription != "Hello, I sent a voice note." else transcription
+        message=incoming_message
     )
 
     result = await handle_widget_message(msg_payload, db)
-    result["transcription"] = transcription
+    result["transcription"] = transcription.strip() if has_valid_transcription else ""
     return result
 
 
