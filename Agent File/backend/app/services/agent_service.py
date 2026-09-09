@@ -358,19 +358,30 @@ async def transcribe_voice_note(
             except Exception as list_e:
                 logger.warning(f"Could not list models via SDK: {list_e}")
 
-            # Prioritize recommended models first: gemini-3.6-flash, gemini-1.5-flash-latest, gemini-3.1-pro-preview
-            recommended_preferred = ["gemini-3.6-flash", "gemini-1.5-flash-latest", "gemini-1.5-pro-latest", "gemini-3.1-pro-preview"]
+            # Prioritize dedicated transcription model, flash-latest, and omni models first
+            recommended_preferred = [
+                "gemini-3.5-transcribe",
+                "gemini-flash-latest",
+                "gemini-3.5-flash",
+                "gemini-3.7-flash",
+                "gemini-3.8-flash",
+                "gemini-3.6-flash",
+                "gemini-3.1-flash-lite",
+                "gemini-omni-1.1-flash"
+            ]
             model_targets = [m for m in recommended_preferred]
             for d in discovered:
-                if "flash" in d and d not in model_targets and "preview-tts" not in d:
+                if "transcribe" in d and d not in model_targets:
+                    model_targets.insert(0, d)
+                elif "flash" in d and d not in model_targets and "preview-tts" not in d and not d.startswith("gemma"):
                     model_targets.append(d)
             for d in discovered:
-                if d not in model_targets and "preview-tts" not in d and not d.startswith("gemma"):
+                if d not in model_targets and "preview-tts" not in d and not d.startswith("gemma") and not d.startswith("lyria"):
                     model_targets.append(d)
 
-            logger.info(f"🎙️ [Tier 2: Gemini Multimodal SDK] Trying models {model_targets[:5]} for audio transcription...")
+            logger.info(f"🎙️ [Tier 2: Gemini Multimodal SDK] Trying models {model_targets[:6]} for audio transcription...")
 
-            for target_model in model_targets[:5]:
+            for target_model in model_targets[:6]:
                 try:
                     g_model = genai.GenerativeModel(model_name=target_model)
                     response = g_model.generate_content(

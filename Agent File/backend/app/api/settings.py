@@ -1535,8 +1535,17 @@ async def test_transcribe_status(test: bool = False, db: Session = Depends(get_d
             discovered_models.append(f"list_error: {le}")
 
         # Test audio transcription via google.generativeai SDK
-        # Specifically test recommended models and discovered models
-        test_candidates = ["gemini-3.6-flash", "gemini-1.5-flash-latest", "gemini-1.5-pro-latest"] + [m.replace("models/", "") for m in discovered_models]
+        # Specifically test dedicated transcription model, flash-latest, and discovered models
+        test_candidates = [
+            "gemini-3.5-transcribe",
+            "gemini-flash-latest",
+            "gemini-3.5-flash",
+            "gemini-3.7-flash",
+            "gemini-3.8-flash",
+            "gemini-3.6-flash",
+            "gemini-3.1-flash-lite",
+            "gemini-omni-1.1-flash"
+        ] + [m.replace("models/", "") for m in discovered_models]
         seen_cand = set()
         for cand in test_candidates:
             if cand in seen_cand:
