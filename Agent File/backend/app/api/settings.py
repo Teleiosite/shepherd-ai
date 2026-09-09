@@ -3,7 +3,8 @@ Settings API Endpoints
 Manages user/organization settings for AI and WhatsApp configuration
 """
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request, Form
+from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 from typing import Optional
 from datetime import datetime
@@ -648,57 +649,288 @@ async def generate_ai_completion(
 
 @router.get("/debug-ai")
 async def debug_ai_state(
-    db: Session = Depends(get_db)
+    request: Request,
+    db: Session = Depends(get_db),
+    format: Optional[str] = None
 ):
     """
-    Public diagnostic endpoint — shows AI + autopilot DB state (no keys exposed).
-    Open directly in browser: /api/settings/debug-ai
+    Diagnostic dashboard & direct activator.
+    Open directly in browser: https://shepherd-ai-backend.onrender.com/api/settings/debug-ai
     """
     from app.config import settings as app_settings
 
-    # Query first available org (single-tenant) — safe, no keys in response
-    row = db.execute(
+    # Query ALL organizations in the database
+    rows = db.execute(
         text("""
-            SELECT ai_provider, ai_api_key, ai_model,
+            SELECT id, name, ai_provider, ai_api_key, ai_model,
                    ai_auto_reply_enabled, ai_reply_mode, ai_reply_delay_seconds,
-                   ai_tone, ai_payment_link, ai_business_type,
-                   whatsapp_phone_id, whatsapp_access_token, name, id
-            FROM organizations LIMIT 1
+                   whatsapp_phone_id, whatsapp_access_token
+            FROM organizations
+            ORDER BY id ASC
         """)
-    ).fetchone()
+    ).fetchall()
 
-    if not row:
-        return {"error": "No organization found in database"}
+    orgs_data = []
+    for r in rows:
+        has_key = bool(r[3])
+        has_env = bool(app_settings.gemini_api_key)
+        raw_en = r[5]
+        auto_en = str(raw_en).lower() not in ("false", "0", "no")
+        orgs_data.append({
+            "id": str(r[0]),
+            "name": r[1],
+            "ai_provider": r[2] or "gemini",
+            "has_api_key": has_key,
+            "api_key_status": "SET ✅" if has_key else "MISSING ❌",
+            "model": r[4] or "gemini-3.5-flash",
+            "auto_reply_enabled_raw": repr(raw_en),
+            "will_reply": auto_en,
+            "mode": r[6] or "auto-send",
+            "whatsapp_phone_id": r[8] or "NOT SET ❌",
+            "whatsapp_token_configured": "SET ✅" if bool(r[9]) else "NOT SET ❌",
+        })
 
-    has_org_key = bool(row[1])
-    has_env_key = bool(app_settings.gemini_api_key)
-    raw_enabled = row[3]
-    # NULL/None = never explicitly disabled → treat as enabled
-    auto_enabled = str(raw_enabled).lower() not in ("false", "0", "no")
+    # Return JSON if requested
+    accept = request.headers.get("accept", "")
+    if format == "json" or "application/json" in accept:
+        return {
+            "organizations_count": len(orgs_data),
+            "organizations": orgs_data,
+            "server_gemini_env_key": "SET ✅" if bool(app_settings.gemini_api_key) else "NOT SET ❌"
+        }
 
-    return {
-        "org_name": row[11],
-        "ai": {
-            "provider": row[0] or "gemini",
-            "api_key_in_db": "SET ✅" if has_org_key else "MISSING ❌",
-            "api_key_env_var": "SET ✅" if has_env_key else "NOT SET",
-            "effective_key_available": "YES ✅" if (has_org_key or has_env_key) else "NO ❌",
-            "model": row[2] or "gemini-3.5-flash (default)",
-        },
-        "auto_reply": {
-            "ai_auto_reply_enabled_raw_db": repr(raw_enabled),
-            "will_ai_reply": auto_enabled,
-            "mode": row[4] or "auto-send",
-            "delay_seconds": row[5] or 0,
-            "tone_set": bool(row[6]),
-        },
-        "whatsapp": {
-            "phone_id_configured": "YES ✅" if bool(row[9]) else "NO ❌",
-            "access_token_configured": "YES ✅" if bool(row[10]) else "NO ❌",
-        },
-        "diagnosis": (
-            "✅ AI should be auto-replying" if (auto_enabled and (has_org_key or has_env_key))
-            else "❌ AI key missing — save your Gemini API key in Settings → Integrations" if auto_enabled
-            else "❌ Auto-reply is OFF — go to Settings → AI Agent → toggle ON and click Save Integration"
+    # Otherwise return a clean, interactive HTML dashboard
+    org_cards_html = ""
+    for o in orgs_data:
+        status_badge = '<span style="color:#16a34a;font-weight:bold;">● ACTIVE</span>' if (o["will_reply"] and o["has_api_key"] and o["whatsapp_phone_id"] != "NOT SET ❌") else '<span style="color:#dc2626;font-weight:bold;">● INCOMPLETE</span>'
+        org_cards_html += f"""
+        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:20px;margin-bottom:16px;box-shadow:0 1px 3px rgba(0,0,0,0.05);">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;border-bottom:1px solid #f1f5f9;padding-bottom:10px;">
+                <h3 style="margin:0;color:#0f172a;font-size:18px;">🏢 {o['name']}</h3>
+                <div>{status_badge}</div>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;font-size:14px;">
+                <div><strong>ID:</strong> <code style="background:#f1f5f9;padding:2px 6px;border-radius:4px;font-size:11px;">{o['id']}</code></div>
+                <div><strong>AI Provider / Model:</strong> {o['ai_provider']} ({o['model']})</div>
+                <div><strong>AI API Key:</strong> {o['api_key_status']}</div>
+                <div><strong>Auto-Reply Toggle:</strong> {'ENABLED ✅' if o['will_reply'] else 'DISABLED ❌'} (raw: {o['auto_reply_enabled_raw']})</div>
+                <div><strong>Reply Mode:</strong> <span style="background:#e0e7ff;color:#3730a3;padding:2px 8px;border-radius:6px;font-weight:600;">{o['mode']}</span></div>
+                <div><strong>WhatsApp Phone ID:</strong> <code style="background:#f1f5f9;padding:2px 6px;border-radius:4px;">{o['whatsapp_phone_id']}</code></div>
+                <div><strong>WhatsApp Access Token:</strong> {o['whatsapp_token_configured']}</div>
+            </div>
+        </div>
+        """
+
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <title>Shepherd AI — 24/7 AI Auto-Reply Activator</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <style>
+            body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #f8fafc; color: #1e293b; margin: 0; padding: 24px; }}
+            .container {{ max-width: 860px; margin: 0 auto; }}
+            .header {{ background: linear-gradient(135deg, #0f172a, #1e3a8a); color: white; padding: 28px; border-radius: 16px; margin-bottom: 24px; }}
+            .card {{ background: white; border: 1px solid #cbd5e1; border-radius: 16px; padding: 28px; margin-bottom: 24px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }}
+            label {{ display: block; font-weight: 600; margin-bottom: 6px; font-size: 14px; color: #334155; }}
+            input[type="text"], input[type="password"] {{ width: 100%; padding: 12px 14px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 15px; box-sizing: border-box; font-family: monospace; }}
+            input:focus {{ outline: none; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.15); }}
+            .btn {{ background: #16a34a; color: white; border: none; padding: 14px 28px; font-size: 16px; font-weight: 700; border-radius: 8px; cursor: pointer; width: 100%; transition: all 0.2s; }}
+            .btn:hover {{ background: #15803d; }}
+            .help {{ font-size: 12px; color: #64748b; margin-top: 4px; }}
+            .field-group {{ margin-bottom: 20px; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1 style="margin:0 0 8px 0;font-size:26px;">⚡ Shepherd AI — Auto-Reply Activator</h1>
+                <p style="margin:0;opacity:0.9;font-size:15px;">Activate and verify 24/7 WhatsApp AI Auto-Reply directly in the database.</p>
+            </div>
+
+            <div class="card" style="border: 2px solid #22c55e;">
+                <h2 style="margin-top:0;color:#0f172a;font-size:20px;display:flex;align-items:center;gap:8px;">
+                    🚀 1-Click Database Activator
+                </h2>
+                <p style="font-size:14px;color:#475569;margin-bottom:20px;">
+                    Enter your credentials below and click <strong>"Activate 24/7 AI Auto-Reply"</strong>. This saves directly to PostgreSQL, sets <code>ai_auto_reply_enabled = true</code> and <code>mode = auto-send</code> across all organizations.
+                </p>
+
+                <form method="POST" action="/api/settings/debug-ai">
+                    <div class="field-group">
+                        <label>🔑 Google Gemini API Key</label>
+                        <input type="text" name="gemini_api_key" placeholder="AIzaSy..." required>
+                        <div class="help">Free-tier key from <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:#2563eb;">Google AI Studio</a>. Powered by <strong>Gemini 3.5 Flash</strong>.</div>
+                    </div>
+
+                    <div class="field-group">
+                        <label>📱 WhatsApp Phone Number ID</label>
+                        <input type="text" name="phone_number_id" value="1122719754267706" required>
+                        <div class="help">From Meta Developer Console for phone number <strong>+234 913 891 3856</strong>.</div>
+                    </div>
+
+                    <div class="field-group">
+                        <label>🛡️ WhatsApp Permanent Access Token</label>
+                        <input type="text" name="whatsapp_token" placeholder="EAAXt1bLVZCfoB..." required>
+                        <div class="help">Copy from your Meta WhatsApp Production Setup page ("Step 1: Generate token").</div>
+                    </div>
+
+                    <div class="field-group">
+                        <label style="display:flex;align-items:center;gap:8px;font-weight:normal;cursor:pointer;">
+                            <input type="checkbox" name="apply_all" value="true" checked style="width:18px;height:18px;">
+                            <strong>Apply to ALL organizations in database</strong> (ensures no routing mismatch)
+                        </label>
+                    </div>
+
+                    <button type="submit" class="btn">⚡ ACTIVATE 24/7 AI AUTO-REPLY NOW</button>
+                </form>
+            </div>
+
+            <h2 style="color:#0f172a;font-size:20px;margin-bottom:12px;">📊 Current Database State ({len(orgs_data)} Organizations)</h2>
+            {org_cards_html}
+
+            <div style="text-align:center;margin-top:20px;">
+                <a href="/api/settings/debug-ai?format=json" style="color:#64748b;font-size:13px;text-decoration:none;">View Raw JSON</a>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+    return HTMLResponse(content=html_content)
+
+
+@router.post("/debug-ai")
+async def debug_ai_activate(
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    """
+    Handles form submission from /api/settings/debug-ai
+    Updates organizations directly in PostgreSQL
+    """
+    form_data = await request.form()
+    gemini_key = str(form_data.get("gemini_api_key") or "").strip()
+    phone_id = str(form_data.get("phone_number_id") or "").strip()
+    wa_token = str(form_data.get("whatsapp_token") or "").strip()
+    apply_all = form_data.get("apply_all") in ["true", "on", "1", True]
+
+    if not gemini_key or not phone_id or not wa_token:
+        return HTMLResponse(
+            content="<h3>❌ Error: All fields (Gemini Key, Phone Number ID, WhatsApp Token) are required.</h3><p><a href='/api/settings/debug-ai'>← Go Back</a></p>",
+            status_code=400
         )
-    }
+
+    try:
+        # Update organizations in database
+        sql = """
+            UPDATE organizations
+            SET ai_provider = 'gemini',
+                ai_api_key = :api_key,
+                ai_model = 'gemini-3.5-flash',
+                ai_auto_reply_enabled = 'true',
+                ai_reply_mode = 'auto-send',
+                whatsapp_phone_id = :phone_id,
+                whatsapp_access_token = :wa_token
+        """
+        if not apply_all:
+            sql += " WHERE id = (SELECT id FROM organizations LIMIT 1)"
+
+        db.execute(
+            text(sql),
+            {
+                "api_key": gemini_key,
+                "phone_id": phone_id,
+                "wa_token": wa_token
+            }
+        )
+        db.commit()
+
+        success_html = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <title>AI Activated!</title>
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <style>
+                body {{ font-family: system-ui, sans-serif; background: #f0fdf4; color: #14532d; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 20px; box-sizing: border-box; }}
+                .card {{ background: white; border: 2px solid #22c55e; border-radius: 16px; padding: 36px; max-width: 550px; text-align: center; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1); }}
+                .btn {{ display: inline-block; background: #16a34a; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 700; margin-top: 20px; }}
+            </style>
+        </head>
+        <body>
+            <div class="card">
+                <div style="font-size: 60px; margin-bottom: 12px;">🎉</div>
+                <h1 style="color: #15803d; margin: 0 0 12px 0;">AI Auto-Reply ACTIVATED!</h1>
+                <p style="font-size: 16px; color: #374151; line-height: 1.6;">
+                    <strong>Success!</strong> All database records have been updated:
+                </p>
+                <ul style="text-align: left; background: #f8fafc; padding: 16px 24px; border-radius: 8px; font-size: 14px; color: #334155; line-height: 1.8;">
+                    <li>✅ <strong>Auto-Reply:</strong> ENABLED (Mode: <code>auto-send</code>)</li>
+                    <li>✅ <strong>AI Model:</strong> Gemini 3.5 Flash</li>
+                    <li>✅ <strong>Phone ID:</strong> <code>{phone_id}</code> (+234 913 891 3856)</li>
+                    <li>✅ <strong>WhatsApp Token:</strong> Saved and active</li>
+                </ul>
+                <p style="font-size: 15px; color: #0f172a; font-weight: 600; margin-top: 20px;">
+                    👉 Send a test WhatsApp message to <strong>+234 913 891 3856</strong> right now. Your AI will reply automatically!
+                </p>
+                <a href="/api/settings/debug-ai" class="btn">View Updated Status Dashboard</a>
+            </div>
+        </body>
+        </html>
+        """
+        return HTMLResponse(content=success_html)
+
+    except Exception as e:
+        db.rollback()
+        return HTMLResponse(
+            content=f"<h3>❌ Database error: {str(e)}</h3><p><a href='/api/settings/debug-ai'>← Try Again</a></p>",
+            status_code=500
+        )
+
+
+@router.get("/quick-activate")
+async def quick_activate_get(
+    api_key: str,
+    phone_id: str = "1122719754267706",
+    token: str = "",
+    db: Session = Depends(get_db)
+):
+    """
+    Emergency URL activator via GET:
+    /api/settings/quick-activate?api_key=AIza...&token=EAAXt...&phone_id=1122719754267706
+    """
+    if not api_key or not token:
+        raise HTTPException(status_code=400, detail="api_key and token are required")
+
+    try:
+        db.execute(
+            text("""
+                UPDATE organizations
+                SET ai_provider = 'gemini',
+                    ai_api_key = :api_key,
+                    ai_model = 'gemini-3.5-flash',
+                    ai_auto_reply_enabled = 'true',
+                    ai_reply_mode = 'auto-send',
+                    whatsapp_phone_id = :phone_id,
+                    whatsapp_access_token = :wa_token
+            """),
+            {
+                "api_key": api_key,
+                "phone_id": phone_id,
+                "wa_token": token
+            }
+        )
+        db.commit()
+        return {
+            "success": True,
+            "message": "AI Auto-reply successfully activated across all organizations!",
+            "phone_id": phone_id,
+            "model": "gemini-3.5-flash",
+            "mode": "auto-send"
+        }
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+

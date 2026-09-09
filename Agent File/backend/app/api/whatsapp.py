@@ -413,7 +413,20 @@ async def process_received_message(
         if allowed_org_ids:
             org_id = allowed_org_ids[0]
         elif not org_id:
-            org_row = db.execute(text("SELECT id FROM organizations LIMIT 1")).fetchone()
+            org_row = db.execute(text("""
+                SELECT id FROM organizations 
+                WHERE (whatsapp_access_token IS NOT NULL AND whatsapp_access_token != '') 
+                   OR (ai_api_key IS NOT NULL AND ai_api_key != '')
+                ORDER BY CASE 
+                    WHEN (whatsapp_access_token IS NOT NULL AND whatsapp_access_token != '') 
+                     AND (ai_api_key IS NOT NULL AND ai_api_key != '') THEN 1
+                    WHEN (whatsapp_access_token IS NOT NULL AND whatsapp_access_token != '') THEN 2
+                    ELSE 3
+                END, id ASC 
+                LIMIT 1
+            """)).fetchone()
+            if not org_row:
+                org_row = db.execute(text("SELECT id FROM organizations LIMIT 1")).fetchone()
             if org_row:
                 org_id = org_row[0]
             
@@ -533,7 +546,19 @@ async def whatsapp_incoming_webhook(
                         if not org_row_data:
                             # Fallback: query organization with configured WhatsApp token or AI key
                             fallback_rows = db.execute(
-                                text("SELECT id, ai_api_key, whatsapp_access_token, ai_provider, ai_base_url FROM organizations WHERE whatsapp_access_token IS NOT NULL OR ai_api_key IS NOT NULL LIMIT 1")
+                                text("""
+                                    SELECT id, ai_api_key, whatsapp_access_token, ai_provider, ai_base_url 
+                                    FROM organizations 
+                                    WHERE (whatsapp_access_token IS NOT NULL AND whatsapp_access_token != '') 
+                                       OR (ai_api_key IS NOT NULL AND ai_api_key != '')
+                                    ORDER BY CASE 
+                                        WHEN (whatsapp_access_token IS NOT NULL AND whatsapp_access_token != '') 
+                                         AND (ai_api_key IS NOT NULL AND ai_api_key != '') THEN 1
+                                        WHEN (whatsapp_access_token IS NOT NULL AND whatsapp_access_token != '') THEN 2
+                                        ELSE 3
+                                    END, id ASC 
+                                    LIMIT 1
+                                """)
                             ).fetchall()
                             if fallback_rows:
                                 allowed_org_ids = [row[0] for row in fallback_rows]
