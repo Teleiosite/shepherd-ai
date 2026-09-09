@@ -423,28 +423,76 @@ async def execute_catalog_search(
     # Mode 2: Internal Database Catalog
     try:
         from app.models.catalog_item import CatalogItem
-        query = db.query(CatalogItem).filter(
+        from sqlalchemy import or_
+        import urllib.parse
+        import re
+
+        base_query = db.query(CatalogItem).filter(
             CatalogItem.organization_id == org.id,
             CatalogItem.is_available == True
         )
+
+        results = []
         if query_str:
-            query = query.filter(
+            # Tier 1: Exact phrase search across title, description, category
+            tier1 = base_query.filter(
                 (CatalogItem.title.ilike(f"%{query_str}%")) |
                 (CatalogItem.description.ilike(f"%{query_str}%")) |
                 (CatalogItem.category.ilike(f"%{query_str}%"))
             )
-        if max_budget:
-            try:
-                val = float(max_budget)
-                query = query.filter(CatalogItem.price_amount <= val)
-            except:
-                pass
+            if max_budget:
+                try:
+                    tier1 = tier1.filter(CatalogItem.price_amount <= float(max_budget))
+                except:
+                    pass
+            results = tier1.limit(5).all()
 
-        results = query.limit(5).all()
-        import urllib.parse
+            # Tier 2: Token-based alternative search if exact brand/model is not matched
+            # e.g. User asks for "Oraimo charger" -> if no Oraimo charger, returns other chargers (VOTWO, SHPLUS, etc.)
+            if not results:
+                stop_words = {"want", "need", "looking", "for", "please", "some", "like", "have", "with", "from", "the", "and", "buy", "good"}
+                raw_words = query_str.split()
+                clean_tokens = [re.sub(r"[^\w]", "", w).strip() for w in raw_words]
+                tokens = [t for t in clean_tokens if len(t) >= 3 and t.lower() not in stop_words]
+
+                if tokens:
+                    token_filters = []
+                    for t in tokens:
+                        token_filters.append(CatalogItem.title.ilike(f"%{t}%"))
+                        token_filters.append(CatalogItem.description.ilike(f"%{t}%"))
+                        token_filters.append(CatalogItem.category.ilike(f"%{t}%"))
+
+                    fallback_query = base_query.filter(or_(*token_filters))
+                    if max_budget:
+                        try:
+                            fallback_query = fallback_query.filter(CatalogItem.price_amount <= float(max_budget))
+                        except:
+                            pass
+                    results = fallback_query.limit(5).all()
+                    if results:
+                        logger.info(f"💡 Tier 2 fallback search found {len(results)} alternative items for '{query_str}' using tokens: {tokens}")
+        else:
+            if category:
+                base_query = base_query.filter(CatalogItem.category.ilike(f"%{category}%"))
+            if max_budget:
+                try:
+                    base_query = base_query.filter(CatalogItem.price_amount <= float(max_budget))
+                except:
+                    pass
+            results = base_query.limit(5).all()
+
+        # Dynamic organization store URL fallback (no hardcoding)
+        base_store_url = (
+            getattr(org, "external_search_webhook_url", None) or
+            getattr(org, "ai_payment_link", None) or
+            "https://decehub.com"
+        ).rstrip("/")
+        if not base_store_url.startswith("http"):
+            base_store_url = "https://" + base_store_url if base_store_url else ""
+
         for itm in results:
             price_display = f"{itm.price_currency or 'NGN'} {itm.price_amount:,.0f} {itm.price_unit or ''}".strip() if itm.price_amount else "Contact for pricing"
-            safe_action_url = itm.action_url or f"https://decehub.com/?s={urllib.parse.quote_plus(itm.title)}"
+            safe_action_url = itm.action_url or (f"{base_store_url}/?s={urllib.parse.quote_plus(itm.title)}" if base_store_url else "")
             items.append({
                 "id": str(itm.id),
                 "title": itm.title,
@@ -720,14 +768,22 @@ VOICE NOTE RULES:
 
 
 CATALOG & INVENTORY SEARCH RULES:
-- When a customer asks about available cars, properties, products, services, prices, or requests something specific (e.g. "I want to book a black BMW for the weekend in Lagos", "Do you have 2-bedroom flats in Lekki", "How much for teeth whitening?", "Show me SUVs under 150k"):
+- When a customer asks about available cars, properties, products, services, prices, or requests something specific (e.g. "I want to book a black BMW for the weekend in Lagos", "Do you have 2-bedroom flats in Lekki", "How much for teeth whitening?", "Show me SUVs under 150k", "I want an Oraimo charger"):
   - Set "type": "SEARCH_CATALOG" in action with:
-    - "query": specific item or model (e.g. "BMW", "G-Wagon", "2-bedroom", "teeth whitening")
-    - "category": category if applicable (e.g. "SUV", "Shortlet", "Dental")
+    - "query": specific item or model (e.g. "BMW", "G-Wagon", "2-bedroom", "teeth whitening", "charger")
+    - "category": category if applicable (e.g. "SUV", "Shortlet", "Dental", "Chargers")
     - "location": city or area mentioned (e.g. "Lagos", "Ikeja", "Lekki")
     - "max_budget": numeric maximum budget if mentioned (e.g. 150000)
     - "attributes": object of extra filters (e.g. {{"color": "black", "drive_mode": "self-drive", "duration": "weekend"}})
   - In your "reply", provide an attentive, helpful response confirming you are pulling up the available options.
+
+SALES PERSUASION & ALTERNATIVE RECOMMENDATIONS:
+- You are a proactive, knowledgeable, and persuasive sales consultant for {org_name} ({biz_type}).
+- If a customer asks for a specific brand or item that is not in stock or not directly available (e.g. they ask for an "Oraimo charger", but our catalog has "VOTWO 35W Fast Charger" or "SHPLUS 6 USB Charger"):
+  - NEVER say "we don't have it" or "out of stock" and stop there!
+  - Warmly acknowledge what they are looking for, enthusiastically recommend the available options from the catalog search results as top-rated alternatives.
+  - Highlight the standout benefits of the alternative (e.g. ultra-fast charging speed, durable build, safety protection against surges, universal compatibility with all Type-C & iPhone devices).
+  - Actively convince and encourage the customer to purchase the available alternative with confidence!
 
 RESPONSE FORMAT — You must return ONLY a JSON object:
 {{
@@ -867,9 +923,14 @@ ACTION TYPE GUIDE:
             if recommended_items:
                 card_summaries = []
                 for itm in recommended_items[:3]:
-                    card_summaries.append(f"• {itm['title']} ({itm['price']})")
+                    price_str = itm.get('price') or "Contact for price"
+                    act_url = itm.get('action_url') or ""
+                    line = f"📦 *{itm['title']}*\n💰 Price: *{price_str}*"
+                    if act_url and act_url.startswith("http"):
+                        line += f"\n🔗 View / Order: {act_url}"
+                    card_summaries.append(line)
                 if card_summaries and not any(itm['title'].lower() in reply_text.lower() for itm in recommended_items):
-                    reply_text += f"\n\nHere are available options:\n" + "\n".join(card_summaries)
+                    reply_text += f"\n\nHere are available options:\n\n" + "\n\n".join(card_summaries)
 
         # 10. Increment SaaS usage quota counter
         try:
@@ -953,11 +1014,27 @@ ACTION TYPE GUIDE:
                 logger.warning(f"Voice synthesis/sending failed, falling back to text: {voice_err}")
 
         if config.get("delivery_method") == "meta":
-            # Send standard text message via Meta Cloud API
             meta_service = get_meta_whatsapp_service(
                 config["phone_number_id"],
                 config["access_token"]
             )
+
+            # If catalog items have a valid image, send the top item image first with caption or after text
+            top_image_item = next((itm for itm in recommended_items if itm.get("image_url") and str(itm["image_url"]).startswith("http")), None)
+            if top_image_item:
+                try:
+                    img_caption = f"*{top_image_item.get('title')}* - {top_image_item.get('price')}"
+                    await meta_service.send_media(
+                        to_phone=contact.phone,
+                        media_type="image",
+                        media_data=top_image_item["image_url"],
+                        caption=img_caption
+                    )
+                    logger.info(f"📸 Product image sent to WhatsApp for {top_image_item.get('title')}")
+                except Exception as img_err:
+                    logger.warning(f"Could not send product image preview to WhatsApp: {img_err}")
+
+            # Send standard text message via Meta Cloud API
             send_result = await meta_service.send_message(
                 to_phone=contact.phone,
                 message=reply_text

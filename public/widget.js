@@ -204,18 +204,19 @@
       40% { transform: scale(1); }
     }
     #shepherd-widget-input-bar {
-      padding: 12px 16px;
+      padding: 10px 14px;
       background: #ffffff;
       border-top: 1px solid #e2e8f0;
       display: flex;
-      gap: 10px;
+      gap: 8px;
       align-items: center;
+      position: relative;
     }
     #shepherd-widget-input {
       flex: 1;
       border: 1px solid #cbd5e1;
-      border-radius: 24px;
-      padding: 10px 16px;
+      border-radius: 18px;
+      padding: 9px 14px;
       font-size: 14px;
       outline: none;
       transition: border-color 0.2s;
@@ -223,21 +224,73 @@
     #shepherd-widget-input:focus {
       border-color: ${primaryColor};
     }
-    #shepherd-widget-send {
+    #shepherd-widget-send, #shepherd-widget-mic {
       background: ${primaryColor};
       color: white;
       border: none;
       border-radius: 50%;
-      width: 40px;
-      height: 40px;
+      width: 38px;
+      height: 38px;
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
-      transition: transform 0.15s;
+      transition: transform 0.15s, background 0.2s;
+      flex-shrink: 0;
     }
-    #shepherd-widget-send:active {
+    #shepherd-widget-send:active, #shepherd-widget-mic:active {
       transform: scale(0.92);
+    }
+    #shepherd-widget-mic {
+      background: #f1f5f9;
+      color: #475569;
+    }
+    #shepherd-widget-mic:hover {
+      background: #e2e8f0;
+      color: #1e293b;
+    }
+    #shepherd-recording-overlay {
+      display: none;
+      position: absolute;
+      left: 10px;
+      right: 10px;
+      top: 8px;
+      bottom: 8px;
+      background: #fee2e2;
+      border: 1px solid #fca5a5;
+      border-radius: 20px;
+      align-items: center;
+      padding: 0 12px;
+      gap: 10px;
+      z-index: 5;
+    }
+    .shepherd-rec-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #ef4444;
+      animation: shepherdPulse 1s infinite alternate;
+    }
+    @keyframes shepherdPulse {
+      0% { opacity: 0.3; transform: scale(0.85); }
+      100% { opacity: 1; transform: scale(1.15); }
+    }
+    .shepherd-rec-timer {
+      font-size: 13px;
+      font-weight: 600;
+      color: #991b1b;
+      flex: 1;
+    }
+    .shepherd-rec-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 16px;
+      padding: 4px 8px;
+      border-radius: 6px;
+    }
+    .shepherd-rec-btn:hover {
+      background: rgba(0,0,0,0.06);
     }
   `;
   document.head.appendChild(style);
@@ -261,12 +314,26 @@
       </div>
       <div id="shepherd-widget-input-bar">
         <textarea id="shepherd-widget-input" rows="1" placeholder="Ask a question or inquire about products..." autocomplete="off" style="resize:none; max-height:120px; overflow-y:auto; line-height:1.4; padding:9px 14px; font-family:inherit; font-size:14px; flex:1; border:1px solid #cbd5e1; border-radius:18px; outline:none; transition:border-color 0.2s;"></textarea>
-        <button id="shepherd-widget-send">
+        <button id="shepherd-widget-mic" title="Hold or click to record voice note" type="button" aria-label="Record voice note">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+            <line x1="12" y1="19" x2="12" y2="23"></line>
+            <line x1="8" y1="23" x2="16" y2="23"></line>
+          </svg>
+        </button>
+        <button id="shepherd-widget-send" title="Send message" type="button" aria-label="Send message">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <line x1="22" y1="2" x2="11" y2="13"></line>
             <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
           </svg>
         </button>
+        <div id="shepherd-recording-overlay">
+          <div class="shepherd-rec-dot"></div>
+          <span class="shepherd-rec-timer" id="shepherd-rec-timer">Recording 0:00</span>
+          <button type="button" class="shepherd-rec-btn" id="shepherd-rec-cancel" title="Cancel recording" style="color:#ef4444; font-size:13px; font-weight:600;">Cancel</button>
+          <button type="button" class="shepherd-rec-btn" id="shepherd-rec-send" title="Send recording" style="color:#16a34a; font-size:13px; font-weight:700;">Send ✓</button>
+        </div>
       </div>
     </div>
     <button id="shepherd-widget-btn" aria-label="Open Chat">
@@ -523,4 +590,170 @@
       sendMessage();
     }
   });
+
+  // Voice Recording Implementation
+  const micBtn = document.getElementById('shepherd-widget-mic');
+  const recOverlay = document.getElementById('shepherd-recording-overlay');
+  const recTimer = document.getElementById('shepherd-rec-timer');
+  const recCancel = document.getElementById('shepherd-rec-cancel');
+  const recSend = document.getElementById('shepherd-rec-send');
+
+  let mediaRecorder = null;
+  let audioChunks = [];
+  let recordingStartTime = 0;
+  let recordingInterval = null;
+  let isCancelled = false;
+
+  const updateRecTimer = () => {
+    const elapsedSec = Math.floor((Date.now() - recordingStartTime) / 1000);
+    const mins = Math.floor(elapsedSec / 60);
+    const secs = elapsedSec % 60;
+    recTimer.textContent = `Recording ${mins}:${secs < 10 ? '0' : ''}${secs}`;
+  };
+
+  const startRecording = async () => {
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        alert("Voice recording is not supported in this browser.");
+        return;
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioChunks = [];
+      isCancelled = false;
+
+      // Select supported mime type
+      let mimeType = 'audio/webm';
+      if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+        mimeType = 'audio/webm;codecs=opus';
+      } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
+        mimeType = 'audio/mp4';
+      } else if (MediaRecorder.isTypeSupported('audio/ogg')) {
+        mimeType = 'audio/ogg';
+      }
+
+      mediaRecorder = new MediaRecorder(stream, { mimeType });
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) {
+          audioChunks.push(e.data);
+        }
+      };
+
+      mediaRecorder.onstop = async () => {
+        // Stop all audio tracks
+        stream.getTracks().forEach(track => track.stop());
+        clearInterval(recordingInterval);
+        recOverlay.style.display = 'none';
+
+        if (isCancelled || !audioChunks.length) {
+          audioChunks = [];
+          return;
+        }
+
+        const audioBlob = new Blob(audioChunks, { type: mimeType });
+        audioChunks = [];
+
+        // Convert to Base64
+        const reader = new FileReader();
+        reader.readAsDataURL(audioBlob);
+        reader.onloadend = async () => {
+          const base64Audio = reader.result;
+
+          // Render User Voice Note Bubble
+          const userBubble = document.createElement('div');
+          userBubble.className = 'shepherd-msg shepherd-msg-out';
+          userBubble.textContent = '🎙️ [Voice Note sent]';
+          msgs.appendChild(userBubble);
+          msgs.scrollTop = msgs.scrollHeight;
+
+          showTyping();
+
+          try {
+            const res = await fetch(`${apiUrl}/api/widget/voice-message`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                org_id: orgId,
+                visitor_name: visitorName,
+                visitor_phone_or_email: visitorId,
+                audio_base64: base64Audio,
+                audio_mime_type: mimeType
+              })
+            });
+
+            hideTyping();
+
+            if (res.ok) {
+              const data = await res.json();
+
+              // Update user bubble with transcribed text if available
+              if (data.transcription && data.transcription !== "Hello, I sent a voice note.") {
+                userBubble.textContent = `🎙️ "${data.transcription}"`;
+              }
+
+              if (data.message_id) seenMessageIds.add(data.message_id);
+              if (data.outbound_message_id) seenMessageIds.add(data.outbound_message_id);
+              if (data.reply) seenMessageTexts.add(data.reply.trim());
+
+              // Render AI response
+              const botBubble = document.createElement('div');
+              botBubble.className = 'shepherd-msg shepherd-msg-in';
+              botBubble.textContent = data.reply || 'Thank you for your voice note!';
+              msgs.appendChild(botBubble);
+
+              if (data.recommended_items && data.recommended_items.length > 0) {
+                const cardsEl = renderCatalogCards(data.recommended_items);
+                if (cardsEl) msgs.appendChild(cardsEl);
+              }
+
+              msgs.scrollTop = msgs.scrollHeight;
+            } else {
+              const errBubble = document.createElement('div');
+              errBubble.className = 'shepherd-msg shepherd-msg-in';
+              errBubble.textContent = "Could not process your voice note right now. Please type your message.";
+              msgs.appendChild(errBubble);
+            }
+          } catch (vErr) {
+            hideTyping();
+            console.error('[Voice Note Send Error]:', vErr);
+            const errBubble = document.createElement('div');
+            errBubble.className = 'shepherd-msg shepherd-msg-in';
+            errBubble.textContent = "Could not deliver voice note. Please try again.";
+            msgs.appendChild(errBubble);
+          }
+        };
+      };
+
+      mediaRecorder.start();
+      recordingStartTime = Date.now();
+      recOverlay.style.display = 'flex';
+      updateRecTimer();
+      recordingInterval = setInterval(updateRecTimer, 1000);
+    } catch (micErr) {
+      console.error('[Mic Permission Error]:', micErr);
+      alert("Microphone access is required to record voice notes. Please allow microphone access in your browser.");
+    }
+  };
+
+  const stopRecording = (cancel = false) => {
+    isCancelled = cancel;
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+      mediaRecorder.stop();
+    } else {
+      clearInterval(recordingInterval);
+      recOverlay.style.display = 'none';
+    }
+  };
+
+  micBtn.addEventListener('click', () => {
+    if (mediaRecorder && mediaRecorder.state === 'recording') {
+      stopRecording(false);
+    } else {
+      startRecording();
+    }
+  });
+
+  recCancel.addEventListener('click', () => stopRecording(true));
+  recSend.addEventListener('click', () => stopRecording(false));
 })();

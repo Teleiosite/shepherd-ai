@@ -31,6 +31,14 @@ class WidgetMessageRequest(BaseModel):
     message: str
 
 
+class WidgetVoiceMessageRequest(BaseModel):
+    org_id: str
+    visitor_name: str
+    visitor_phone_or_email: Optional[str] = None
+    audio_base64: str
+    audio_mime_type: Optional[str] = "audio/webm"
+
+
 @router.get("/config/{org_id}")
 async def get_widget_config(
     org_id: str,
@@ -170,11 +178,67 @@ async def handle_widget_message(
         logger.error(f"Error handling widget message: {e}", exc_info=True)
         return {
             "success": True,
-            "reply": "Hello! Welcome to DeceHub. How can I help you find the latest tech trends and gadgets today?",
+            "reply": "Hello! Welcome to our store. How can I help you find what you are looking for today?",
             "recommended_items": [],
             "action": {},
-            "ai_name": org.ai_name or "DeceHub Assistant"
+            "ai_name": org.ai_name or "Live Assistant"
         }
+
+
+@router.post("/voice-message")
+async def handle_widget_voice_message(
+    payload: WidgetVoiceMessageRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Handles voice notes recorded by website visitors on the live chat widget.
+    Transcribes audio via faster-whisper microservice and processes it through the 24/7 AI agent.
+    """
+    import base64
+    from app.services.agent_service import transcribe_voice_note
+
+    try:
+        org_id = UUID(payload.org_id)
+    except:
+        raise HTTPException(status_code=400, detail="Invalid organization ID format")
+
+    org = db.query(Organization).filter(Organization.id == org_id).first()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+
+    # 1. Decode audio bytes
+    try:
+        raw_b64 = payload.audio_base64
+        if "," in raw_b64:
+            raw_b64 = raw_b64.split(",", 1)[1]
+        audio_bytes = base64.b64decode(raw_b64)
+    except Exception as dec_err:
+        raise HTTPException(status_code=400, detail=f"Invalid base64 audio: {dec_err}")
+
+    # 2. Transcribe using Whisper microservice
+    transcription = await transcribe_voice_note(
+        audio_bytes=audio_bytes,
+        mime_type=payload.audio_mime_type or "audio/webm",
+        api_key=org.ai_api_key
+    )
+
+    if not transcription or not transcription.strip():
+        transcription = "Hello, I sent a voice note."
+
+    logger.info(f"🎙️ Web Widget Voice Note transcribed: '{transcription}'")
+
+    # 3. Process transcribed message through AI agent pipeline
+    msg_payload = WidgetMessageRequest(
+        org_id=payload.org_id,
+        visitor_name=payload.visitor_name,
+        visitor_phone_or_email=payload.visitor_phone_or_email,
+        message=f"[Voice Note]: {transcription}" if transcription != "Hello, I sent a voice note." else transcription
+    )
+
+    result = await handle_widget_message(msg_payload, db)
+    result["transcription"] = transcription
+    return result
+
 
 
 @router.get("/poll/{org_id}/{visitor_id}")

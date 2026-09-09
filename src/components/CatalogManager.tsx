@@ -26,6 +26,9 @@ export default function CatalogManager() {
 
   // Bulk Excel/CSV Upload State
   const [showUploadModal, setShowUploadModal] = useState(false);
+  const [showSyncModal, setShowSyncModal] = useState(false);
+  const [syncStoreUrl, setSyncStoreUrl] = useState('');
+  const [clearExistingOnSync, setClearExistingOnSync] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadStats, setUploadStats] = useState<{ total: number; success: number; sheetName?: string } | null>(null);
   const [isSyncingWc, setIsSyncingWc] = useState(false);
@@ -323,9 +326,13 @@ export default function CatalogManager() {
     reader.readAsBinaryString(file);
   };
 
-  const handleSyncWooCommerce = async () => {
-    const storeUrl = prompt('Enter your WooCommerce store URL:', 'https://decehub.com');
-    if (!storeUrl) return;
+  const handleSyncWooCommerce = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const storeUrl = (syncStoreUrl || '').trim();
+    if (!storeUrl) {
+      alert('Please enter your online store URL (e.g. https://yourstore.com)');
+      return;
+    }
 
     setIsSyncingWc(true);
     setSyncMessage(null);
@@ -337,15 +344,16 @@ export default function CatalogManager() {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ store_url: storeUrl, clear_existing: false })
+        body: JSON.stringify({ store_url: storeUrl, clear_existing: clearExistingOnSync })
       });
       const data = await res.json();
       if (res.ok && data.success) {
         setSyncMessage(`Successfully synced ${data.synced_count} products directly from ${data.store_url}!`);
+        setShowSyncModal(false);
         fetchItems();
-        setTimeout(() => setSyncMessage(null), 6000);
+        setTimeout(() => setSyncMessage(null), 7000);
       } else {
-        alert(data.detail || 'Could not sync from store. Please check the URL.');
+        alert(data.detail || 'Could not sync from store. Please verify that the website has WooCommerce enabled and REST API accessible.');
       }
     } catch (err: any) {
       alert('Error syncing store: ' + err.message);
@@ -550,12 +558,11 @@ export default function CatalogManager() {
 
             <div className="flex flex-wrap items-center gap-2.5 shrink-0">
               <button
-                onClick={handleSyncWooCommerce}
-                disabled={isSyncingWc}
-                className="bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 font-bold text-sm px-4 py-2.5 rounded-xl flex items-center justify-center gap-2 transition-all shadow-2xs active:scale-95 disabled:opacity-50"
+                onClick={() => setShowSyncModal(true)}
+                className="bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 font-bold text-sm px-4 py-2.5 rounded-xl flex items-center justify-center gap-2 transition-all shadow-2xs active:scale-95"
               >
-                {isSyncingWc ? <RefreshCw size={16} className="animate-spin text-purple-600" /> : <Globe size={16} className="text-purple-600" />}
-                <span>{isSyncingWc ? 'Syncing Products...' : 'Sync from decehub.com'}</span>
+                <Globe size={16} className="text-purple-600" />
+                <span>Sync Online Store</span>
               </button>
 
               <button
@@ -908,6 +915,77 @@ export default function CatalogManager() {
                 Close
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Universal Online Store Sync */}
+      {showSyncModal && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-5 animate-fade-in">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-purple-50 text-purple-600 rounded-xl">
+                  <Globe size={20} />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-800 text-base">Sync Online Store</h3>
+                  <p className="text-[11px] text-slate-500">WooCommerce, WordPress, or e-commerce catalog</p>
+                </div>
+              </div>
+              <button onClick={() => setShowSyncModal(false)} className="text-slate-400 hover:text-slate-600 text-lg">✕</button>
+            </div>
+
+            <form onSubmit={handleSyncWooCommerce} className="space-y-4 text-xs">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1.5">Store Website URL *</label>
+                <input
+                  type="url"
+                  required
+                  value={syncStoreUrl}
+                  onChange={(e) => setSyncStoreUrl(e.target.value)}
+                  placeholder="https://yourstore.com"
+                  className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-purple-500 outline-none"
+                />
+                <p className="text-[11px] text-slate-500 mt-1">
+                  Enter your WordPress/WooCommerce site address. The system automatically reads published products, prices, images, and buy links.
+                </p>
+              </div>
+
+              <div className="p-3 bg-purple-50/60 border border-purple-100 rounded-xl">
+                <label className="flex items-start gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={clearExistingOnSync}
+                    onChange={(e) => setClearExistingOnSync(e.target.checked)}
+                    className="mt-0.5 rounded text-purple-600 focus:ring-purple-500"
+                  />
+                  <div>
+                    <span className="font-bold text-purple-900 text-xs">Replace existing catalog items</span>
+                    <p className="text-[11px] text-purple-700/80">Check this if you want to replace all current items with newly synced store items.</p>
+                  </div>
+                </label>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  disabled={isSyncingWc}
+                  onClick={() => setShowSyncModal(false)}
+                  className="px-4 py-2 bg-slate-100 text-slate-700 font-bold text-xs rounded-xl hover:bg-slate-200 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSyncingWc}
+                  className="px-5 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl transition-all shadow-xs flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  {isSyncingWc ? <RefreshCw size={14} className="animate-spin" /> : <Globe size={14} />}
+                  <span>{isSyncingWc ? 'Syncing Catalog...' : 'Start Sync'}</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
