@@ -329,6 +329,7 @@
 
   // Track seen messages to avoid duplicates
   const seenMessageIds = new Set();
+  const seenMessageTexts = new Set();
 
   // Poll for replies from human agents in the dashboard
   const pollAgentMessages = async () => {
@@ -340,8 +341,10 @@
         if (pData.messages && pData.messages.length > 0) {
           let hasNew = false;
           pData.messages.forEach(m => {
-            if (!seenMessageIds.has(m.id)) {
+            const cleanContent = (m.content || '').trim();
+            if (!seenMessageIds.has(m.id) && !seenMessageTexts.has(cleanContent)) {
               seenMessageIds.add(m.id);
+              seenMessageTexts.add(cleanContent);
               hasNew = true;
               const botBubble = document.createElement('div');
               botBubble.className = 'shepherd-msg shepherd-msg-in';
@@ -398,7 +401,7 @@
 
       let imgHtml = '';
       if (itm.image_url) {
-        imgHtml = `<img src="${itm.image_url}" class="shepherd-card-img" alt="${itm.title}" onerror="this.style.display='none'" />`;
+        imgHtml = `<img src="${itm.image_url}" class="shepherd-card-img" alt="${itm.title}" onerror="this.onerror=null; this.src='https://decehub.com/wp-content/uploads/2024/07/cropped-PHEMpion-9-1-180x180.png';" />`;
       }
 
       let tagsHtml = '';
@@ -411,8 +414,8 @@
         if (tagSpans) tagsHtml = `<div class="shepherd-card-tags">${tagSpans}</div>`;
       }
 
-      const actionLink = itm.action_url || '#';
-      const actionText = itm.action_url ? 'Book / View Details →' : 'Inquire Now';
+      const actionLink = itm.action_url || ('https://decehub.com/?s=' + encodeURIComponent(itm.title));
+      const actionText = 'Buy Now →';
 
       card.innerHTML = `
         ${imgHtml}
@@ -478,8 +481,11 @@
       if (res && res.ok) {
         const data = await res.json();
         
-        // Track message id
+        // Track message IDs and reply content to prevent duplicate bubble from poller
         if (data.message_id) seenMessageIds.add(data.message_id);
+        if (data.outbound_message_id) seenMessageIds.add(data.outbound_message_id);
+        if (data.inbound_message_id) seenMessageIds.add(data.inbound_message_id);
+        if (data.reply) seenMessageTexts.add(data.reply.trim());
 
         // AI Text Reply
         const botBubble = document.createElement('div');

@@ -27,7 +27,9 @@ export default function CatalogManager() {
   // Bulk Excel/CSV Upload State
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
-  const [uploadStats, setUploadStats] = useState<{ total: number; success: number } | null>(null);
+  const [uploadStats, setUploadStats] = useState<{ total: number; success: number; sheetName?: string } | null>(null);
+  const [isSyncingWc, setIsSyncingWc] = useState(false);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // External Webhook State
@@ -150,68 +152,120 @@ export default function CatalogManager() {
       try {
         const bstr = evt.target?.result;
         const wb = XLSX.read(bstr, { type: 'binary' });
-        const wsname = wb.SheetNames[0];
-        const ws = wb.Sheets[wsname];
+
+        // Smart Sheet Selection:
+        // Prioritize sheets named 'Cleaned Products', 'Products', 'Catalog', 'Inventory', 'Offerings'
+        let chosenSheetName = wb.SheetNames[0];
+        if (wb.SheetNames.length > 1) {
+          const matchSheet = wb.SheetNames.find(name => 
+            /clean|product|catalog|inventory|item|offering/i.test(name)
+          );
+          if (matchSheet) {
+            chosenSheetName = matchSheet;
+          }
+        }
+
+        const ws = wb.Sheets[chosenSheetName];
         const data = XLSX.utils.sheet_to_json(ws) as Record<string, any>[];
 
         const parsedItems: any[] = [];
 
         data.forEach((row) => {
           const normalized: Record<string, any> = {};
+          const compact: Record<string, any> = {};
+
           Object.keys(row).forEach((k) => {
-            normalized[k.trim().toLowerCase()] = row[k];
+            const cleanKey = k.replace(/^\ufeff/, '').trim().toLowerCase().replace(/[\r\n\t_]+/g, ' ').replace(/\s+/g, ' ');
+            normalized[cleanKey] = row[k];
+            compact[cleanKey.replace(/[^a-z0-9]/g, '')] = row[k];
           });
 
           const title =
+            compact['title'] ||
+            compact['name'] ||
+            compact['productname'] ||
+            compact['item'] ||
+            compact['product'] ||
+            compact['posttitle'] ||
             normalized['title'] ||
             normalized['name'] ||
-            normalized['product name'] ||
-            normalized['post_title'] ||
-            normalized['item'] ||
-            normalized['product'] ||
-            normalized['service'];
+            normalized['product name'];
 
           if (!title) return;
 
-          const category = normalized['category'] || normalized['categories'] || normalized['type'] || 'Gadgets';
+          const category =
+            compact['category'] ||
+            compact['categories'] ||
+            compact['type'] ||
+            normalized['category'] ||
+            normalized['categories'] ||
+            'Gadgets';
+
           const priceRaw =
+            compact['saleprice'] ||
+            compact['regularprice'] ||
+            compact['price'] ||
+            compact['priceamount'] ||
+            compact['amount'] ||
+            compact['rate'] ||
             normalized['sale price'] ||
             normalized['regular price'] ||
             normalized['price'] ||
-            normalized['_regular_price'] ||
-            normalized['_sale_price'] ||
-            normalized['price amount'] ||
-            normalized['rate'] ||
-            normalized['amount'] ||
             0;
-          const price_amount = typeof priceRaw === 'number' ? priceRaw : parseFloat(String(priceRaw).replace(/[^0-9.]/g, '')) || 0;
-          const price_unit = normalized['unit'] || normalized['price unit'] || 'each';
-          
-          let image_url = normalized['images'] || normalized['image url'] || normalized['image'] || normalized['photo'] || '';
-          if (typeof image_url === 'string' && image_url.includes(',')) {
-            image_url = image_url.split(',')[0].trim();
+
+          let price_amount = 0;
+          if (typeof priceRaw === 'number') {
+            price_amount = priceRaw;
+          } else if (priceRaw) {
+            const cleanStr = String(priceRaw).replace(/[^0-9.]/g, '');
+            price_amount = parseFloat(cleanStr) || 0;
           }
 
-          const action_url =
-            normalized['permalink'] ||
-            normalized['external url'] ||
-            normalized['url'] ||
-            normalized['product url'] ||
-            normalized['link'] ||
+          const price_unit = compact['unit'] || compact['priceunit'] || normalized['unit'] || 'each';
+
+          let image_url =
+            compact['imageurl'] ||
+            compact['images'] ||
+            compact['image'] ||
+            compact['photo'] ||
+            compact['photourl'] ||
+            compact['picture'] ||
+            normalized['image url'] ||
+            normalized['images'] ||
+            normalized['image'] ||
+            '';
+
+          if (typeof image_url === 'string') {
+            image_url = image_url.split(/[,|\n]/)[0].trim();
+          }
+
+          let action_url =
+            compact['bookinglink'] ||
+            compact['actionurl'] ||
+            compact['permalink'] ||
+            compact['producturl'] ||
+            compact['url'] ||
+            compact['link'] ||
             normalized['booking link'] ||
             normalized['action url'] ||
             '';
 
+          if (!action_url && title) {
+            action_url = `https://decehub.com/?s=${encodeURIComponent(String(title).trim())}`;
+          }
+
           const description =
+            compact['shortdescription'] ||
+            compact['description'] ||
+            compact['postcontent'] ||
+            compact['postexcerpt'] ||
+            compact['details'] ||
             normalized['short description'] ||
             normalized['description'] ||
-            normalized['post_content'] ||
-            normalized['post_excerpt'] ||
-            normalized['details'] ||
             '';
 
           const attributes: Record<string, any> = {};
-          const tags = normalized['tags'] || normalized['features'] || normalized['specs'] || '';
+          const tags = compact['tags'] || compact['features'] || compact['specs'] || normalized['tags'] || '';
           if (tags) {
             String(tags).split(/[,;|]/).map(t => t.trim()).filter(Boolean).forEach((tag, idx) => {
               attributes[`feature_${idx + 1}`] = tag;
@@ -249,12 +303,12 @@ export default function CatalogManager() {
 
         if (res.ok) {
           const resData = await res.json();
-          setUploadStats({ total: data.length, success: resData.created_count || parsedItems.length });
+          setUploadStats({ total: data.length, success: resData.created_count || parsedItems.length, sheetName: chosenSheetName });
           fetchItems();
           setTimeout(() => {
             setShowUploadModal(false);
             setUploadStats(null);
-          }, 2000);
+          }, 2500);
         } else {
           alert('Upload failed. Please check your file format and try again.');
         }
@@ -267,6 +321,37 @@ export default function CatalogManager() {
       }
     };
     reader.readAsBinaryString(file);
+  };
+
+  const handleSyncWooCommerce = async () => {
+    const storeUrl = prompt('Enter your WooCommerce store URL:', 'https://decehub.com');
+    if (!storeUrl) return;
+
+    setIsSyncingWc(true);
+    setSyncMessage(null);
+    try {
+      const token = localStorage.getItem('authToken');
+      const res = await fetch(`${BACKEND_URL}/api/catalog/sync-woocommerce`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ store_url: storeUrl, clear_existing: false })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setSyncMessage(`Successfully synced ${data.synced_count} products directly from ${data.store_url}!`);
+        fetchItems();
+        setTimeout(() => setSyncMessage(null), 6000);
+      } else {
+        alert(data.detail || 'Could not sync from store. Please check the URL.');
+      }
+    } catch (err: any) {
+      alert('Error syncing store: ' + err.message);
+    } finally {
+      setIsSyncingWc(false);
+    }
   };
 
   const downloadSampleTemplate = () => {
@@ -463,7 +548,16 @@ export default function CatalogManager() {
               />
             </div>
 
-            <div className="flex items-center gap-2.5 shrink-0">
+            <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+              <button
+                onClick={handleSyncWooCommerce}
+                disabled={isSyncingWc}
+                className="bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 font-bold text-sm px-4 py-2.5 rounded-xl flex items-center justify-center gap-2 transition-all shadow-2xs active:scale-95 disabled:opacity-50"
+              >
+                {isSyncingWc ? <RefreshCw size={16} className="animate-spin text-purple-600" /> : <Globe size={16} className="text-purple-600" />}
+                <span>{isSyncingWc ? 'Syncing Products...' : 'Sync from decehub.com'}</span>
+              </button>
+
               <button
                 onClick={() => setShowUploadModal(true)}
                 className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 font-bold text-sm px-4 py-2.5 rounded-xl flex items-center justify-center gap-2 transition-all shadow-2xs active:scale-95"
@@ -482,6 +576,14 @@ export default function CatalogManager() {
             </div>
           </div>
 
+          {/* Sync Success Message */}
+          {syncMessage && (
+            <div className="p-3 bg-green-50 border border-green-200 text-green-800 text-xs font-bold rounded-xl flex items-center gap-2 animate-fade-in">
+              <Check size={16} className="text-green-600 shrink-0" />
+              <span>{syncMessage}</span>
+            </div>
+          )}
+
           {/* Items Grid */}
           {items.length === 0 && !loading ? (
             <div className="bg-white rounded-2xl border border-slate-100 p-12 text-center text-slate-400 space-y-4 shadow-sm">
@@ -489,11 +591,19 @@ export default function CatalogManager() {
               <div>
                 <div className="font-bold text-slate-700 text-base">Your Catalog is Empty</div>
                 <p className="text-xs text-slate-500 max-w-md mx-auto mt-1">
-                  Add the cars, properties, or services you offer. The AI will recommend them dynamically whenever customers inquire!
+                  Add the products, cars, properties, or services you offer. The AI will recommend them dynamically whenever customers inquire!
                 </p>
               </div>
 
-              <div className="flex justify-center items-center gap-3 pt-1">
+              <div className="flex flex-wrap justify-center items-center gap-3 pt-1">
+                <button
+                  onClick={handleSyncWooCommerce}
+                  disabled={isSyncingWc}
+                  className="bg-purple-50 hover:bg-purple-100 border border-purple-200 text-purple-700 text-xs font-bold px-4 py-2.5 rounded-xl transition-colors flex items-center gap-1.5 shadow-2xs"
+                >
+                  <Globe size={15} className="text-purple-600" />
+                  Sync from decehub.com
+                </button>
                 <button
                   onClick={() => setShowUploadModal(true)}
                   className="bg-white border border-slate-200 text-slate-700 text-xs font-bold px-4 py-2.5 rounded-xl hover:bg-slate-50 transition-colors flex items-center gap-1.5 shadow-2xs"
@@ -516,7 +626,14 @@ export default function CatalogManager() {
                 <div key={item.id} className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden flex flex-col hover:shadow-md transition-shadow">
                   {item.image_url ? (
                     <div className="h-44 bg-slate-100 overflow-hidden relative">
-                      <img src={item.image_url} alt={item.title} className="w-full h-full object-cover" />
+                      <img 
+                        src={item.image_url} 
+                        alt={item.title} 
+                        className="w-full h-full object-cover" 
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src = 'https://decehub.com/wp-content/uploads/2024/07/cropped-PHEMpion-9-1-180x180.png';
+                        }}
+                      />
                       <span className="absolute top-2.5 right-2.5 bg-white/90 backdrop-blur-xs text-slate-800 text-[10px] font-bold px-2.5 py-1 rounded-full shadow-2xs">
                         {item.category}
                       </span>
@@ -530,10 +647,12 @@ export default function CatalogManager() {
                   <div className="p-5 flex-1 flex flex-col justify-between space-y-3">
                     <div>
                       <h4 className="font-bold text-slate-800 text-base">{item.title}</h4>
-                      {item.price_amount && (
+                      {item.price_amount ? (
                         <div className="text-teal-600 font-bold text-sm mt-0.5">
-                          {item.price_currency} {item.price_amount.toLocaleString()} {item.price_unit}
+                          {item.price_currency || 'NGN'} {item.price_amount.toLocaleString()} {item.price_unit ? `(${item.price_unit})` : ''}
                         </div>
+                      ) : (
+                        <div className="text-slate-400 text-xs mt-0.5 font-medium">Contact for pricing</div>
                       )}
                       {item.description && (
                         <p className="text-xs text-slate-500 mt-2 line-clamp-2">{item.description}</p>
@@ -543,7 +662,7 @@ export default function CatalogManager() {
                     <div className="pt-2 border-t border-slate-100 flex justify-between items-center text-xs">
                       {item.action_url ? (
                         <a href={item.action_url} target="_blank" rel="noopener" className="text-teal-600 font-bold flex items-center gap-1 hover:underline">
-                          View Link <ExternalLink size={12} />
+                          View / Buy <ExternalLink size={12} />
                         </a>
                       ) : (
                         <span className="text-slate-400 text-[11px]">No direct link</span>
@@ -769,7 +888,7 @@ export default function CatalogManager() {
 
               {uploadStats && (
                 <div className="p-2.5 bg-green-100 text-green-800 text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 animate-fade-in">
-                  <Check size={16} /> Successfully imported {uploadStats.success} of {uploadStats.total} items!
+                  <Check size={16} /> Successfully imported {uploadStats.success} of {uploadStats.total} items {uploadStats.sheetName ? `from sheet "${uploadStats.sheetName}"` : ''}!
                 </div>
               )}
             </div>

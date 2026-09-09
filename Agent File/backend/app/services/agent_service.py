@@ -441,8 +441,10 @@ async def execute_catalog_search(
                 pass
 
         results = query.limit(5).all()
+        import urllib.parse
         for itm in results:
             price_display = f"{itm.price_currency or 'NGN'} {itm.price_amount:,.0f} {itm.price_unit or ''}".strip() if itm.price_amount else "Contact for pricing"
+            safe_action_url = itm.action_url or f"https://decehub.com/?s={urllib.parse.quote_plus(itm.title)}"
             items.append({
                 "id": str(itm.id),
                 "title": itm.title,
@@ -451,7 +453,7 @@ async def execute_catalog_search(
                 "price": price_display,
                 "price_amount": float(itm.price_amount) if itm.price_amount else 0,
                 "image_url": itm.image_url or "",
-                "action_url": itm.action_url or "",
+                "action_url": safe_action_url,
                 "attributes": itm.attributes or {}
             })
         logger.info(f"📦 Internal catalog search found {len(items)} items for org {org.id}")
@@ -700,6 +702,10 @@ APPOINTMENT & BOOKING RULES:
 3. When confirming an appointment or when the contact says "yes", "correct", or confirms details:
    - Set "type": "CREATE_BOOKING" with finalized "purpose", "preferredDate" (YYYY-MM-DD), and "preferredTime" (HH:MM AM/PM).
    - Your "reply" MUST explicitly confirm the booking to the contact (e.g. "Awesome, {contact.name}! Your appointment for [Topic] is booked for tomorrow, {tomorrow_dt.strftime('%B %d, %Y')} at {current_time_str}. Looking forward to speaking with you!").
+4. MANDATORY CONTACT DETAILS FOR CONSULTATIONS & WEBSITE LEADS:
+   - When a user on the website widget or chat asks to book a consultation, demo, repair check, or appointment:
+   - You MUST politely ask for their WhatsApp phone number or email address (e.g. "I would be happy to book a consultation for you! What date and time works best, and could you please provide your WhatsApp number or email address so our team can contact you and confirm?").
+   - Do NOT confirm the booking without first obtaining their WhatsApp phone number or email address!
 
 NO EMOJIS RULE:
 - NEVER use emojis, smileys, or emoticons in your replies (do NOT use emojis like 😊, 🙌, 🎉, etc.).
@@ -813,20 +819,36 @@ ACTION TYPE GUIDE:
             else:
                 resolved_time = raw_time
 
+            # Extract contact phone or email if provided by website visitor
+            found_email = re.search(r"[\w\.-]+@[\w\.-]+\.\w+", incoming_text)
+            found_phone = re.search(r"(?:\+?\d{1,4}[\s-]?)?(?:\(?\d{3}\)?[\s-]?)?\d{3}[\s-]?\d{4,6}", incoming_text)
+            
+            contact_number = contact.phone
+            if found_phone:
+                digits = re.sub(r"\D", "", found_phone.group(0))
+                if len(digits) >= 10:
+                    clean_phone = found_phone.group(0).strip()
+                    contact.phone = clean_phone
+                    contact_number = clean_phone
+            if found_email:
+                contact.email = found_email.group(0).strip().lower()
+                if not contact_number or contact_number.startswith("web_"):
+                    contact_number = contact.email
+
             # Create confirmed booking in DB
             booking = Booking(
                 contact_id=contact.id,
                 contact_name=contact.name,
-                contact_phone=contact.phone,
+                contact_phone=contact_number,
                 purpose=purpose,
                 date=resolved_date,
                 time=resolved_time,
-                notes=f"Auto-created by AI Agent on {now.strftime('%Y-%m-%d %H:%M')}",
+                notes=f"Auto-created by AI Agent on {now.strftime('%Y-%m-%d %H:%M')}" + (f" | Email: {contact.email}" if contact.email else ""),
                 status="confirmed"
             )
             db.add(booking)
             db.commit()
-            logger.info(f"📅 Booking confirmed for {contact.name}: {purpose} on {resolved_date} at {resolved_time}")
+            logger.info(f"📅 Booking confirmed for {contact.name}: {purpose} on {resolved_date} at {resolved_time} (Contact: {contact_number})")
 
             if session:
                 db.delete(session)

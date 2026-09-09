@@ -153,13 +153,17 @@ async def handle_widget_message(
         reply_text = agent_result.get("reply", "") if agent_result else "Thank you for reaching out! How can I assist you with DeceHub products and services today?"
         recommended_items = agent_result.get("recommended_items", []) if agent_result else []
 
+        outbound_msg_id = agent_result.get("message_id") if agent_result else None
+
         return {
             "success": True,
             "reply": reply_text,
             "recommended_items": recommended_items,
             "action": agent_result.get("action", {}) if agent_result else {},
             "contact_id": str(contact.id),
-            "message_id": str(in_msg.id),
+            "message_id": outbound_msg_id or str(in_msg.id),
+            "outbound_message_id": outbound_msg_id,
+            "inbound_message_id": str(in_msg.id),
             "ai_name": org.ai_name or "DeceHub Assistant"
         }
     except Exception as e:

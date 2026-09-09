@@ -1352,5 +1352,119 @@ async def configure_ecommerce(
     }
 
 
+@router.get("/sync-decehub-catalog")
+async def sync_decehub_catalog_direct(
+    org_id: str = "37423e5c-e2d0-44d3-ab5b-48c7fcf2d9c2",
+    clear_existing: bool = True,
+    db: Session = Depends(get_db)
+):
+    """
+    Directly syncs all 200+ products from decehub.com WooCommerce Store API
+    into the specified organization with authentic images, prices, categories, and permalinks.
+    """
+    import httpx
+    import re
+    import urllib.parse
+    from app.models.catalog_item import CatalogItem
+
+    try:
+        org_uuid = UUID(org_id)
+    except:
+        raise HTTPException(status_code=400, detail="Invalid org_id UUID")
+
+    if clear_existing:
+        db.query(CatalogItem).filter(CatalogItem.organization_id == org_uuid).delete()
+        db.commit()
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "application/json, text/plain, */*"
+    }
+
+    synced_items = []
+    page = 1
+    max_pages = 4
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        while page <= max_pages:
+            url = f"https://decehub.com/wp-json/wc/store/v1/products?per_page=100&page={page}"
+            try:
+                resp = await client.get(url, headers=headers)
+                if not resp.is_success:
+                    break
+                wc_products = resp.json()
+                if not wc_products or not isinstance(wc_products, list):
+                    break
+
+                for itm in wc_products:
+                    title = (itm.get("name") or "").strip()
+                    if not title:
+                        continue
+
+                    # Parse price
+                    prices = itm.get("prices", {})
+                    raw_price = prices.get("price") or prices.get("regular_price") or 0
+                    minor = prices.get("currency_minor_unit", 2)
+                    try:
+                        price_amount = float(raw_price) / (10 ** minor) if raw_price else 0.0
+                    except:
+                        price_amount = 0.0
+                    currency = prices.get("currency_code", "NGN")
+
+                    # Parse images
+                    imgs = itm.get("images", [])
+                    img_url = imgs[0].get("src") if imgs and isinstance(imgs[0], dict) else None
+
+                    # Parse permalink
+                    permalink = itm.get("permalink") or f"https://decehub.com/?s={urllib.parse.quote_plus(title)}"
+
+                    # Clean description
+                    raw_desc = itm.get("short_description") or itm.get("description") or ""
+                    clean_desc = re.sub(r"<[^>]+>", "", raw_desc).strip()
+
+                    # Categories
+                    cats = [c.get("name") for c in itm.get("categories", []) if isinstance(c, dict) and c.get("name")]
+                    category = cats[0] if cats else "Gadgets"
+
+                    # Tags / attributes
+                    attributes = {}
+                    tags = [t.get("name") for t in itm.get("tags", []) if isinstance(t, dict) and t.get("name")]
+                    for idx, t in enumerate(tags[:5]):
+                        attributes[f"feature_{idx + 1}"] = t
+
+                    new_item = CatalogItem(
+                        organization_id=org_uuid,
+                        title=title,
+                        category=category,
+                        description=clean_desc,
+                        price_amount=price_amount,
+                        price_currency=currency,
+                        price_unit="each",
+                        image_url=img_url,
+                        action_url=permalink,
+                        attributes=attributes,
+                        is_available=True
+                    )
+                    db.add(new_item)
+                    synced_items.append({"title": title, "price": price_amount, "image": bool(img_url)})
+
+                db.commit()
+                if len(wc_products) < 100:
+                    break
+                page += 1
+            except Exception as page_err:
+                logger.warning(f"Error fetching WooCommerce page {page}: {page_err}")
+                break
+
+    return {
+        "success": True,
+        "message": f"Successfully synced {len(synced_items)} products from decehub.com directly!",
+        "organization_id": str(org_uuid),
+        "total_synced": len(synced_items),
+        "sample": synced_items[:5]
+    }
+
+
+
 
 
