@@ -358,15 +358,15 @@ async def transcribe_voice_note(
             except Exception as list_e:
                 logger.warning(f"Could not list models via SDK: {list_e}")
 
-            # Prioritize dedicated transcription model, flash-latest, and omni models first
+            # Prioritize verified working audio models first
             recommended_preferred = [
-                "gemini-3.5-transcribe",
-                "gemini-flash-latest",
                 "gemini-3.5-flash",
                 "gemini-3.7-flash",
+                "gemini-3.1-flash-lite",
+                "gemini-3.5-transcribe",
+                "gemini-flash-latest",
                 "gemini-3.8-flash",
                 "gemini-3.6-flash",
-                "gemini-3.1-flash-lite",
                 "gemini-omni-1.1-flash"
             ]
             model_targets = [m for m in recommended_preferred]
@@ -388,8 +388,17 @@ async def transcribe_voice_note(
                         [audio_part, transcribe_prompt],
                         generation_config={"temperature": 0.0}
                     )
-                    if response and response.text:
-                        res_text = response.text.strip()
+                    if response:
+                        res_text = ""
+                        try:
+                            res_text = (response.text or "").strip()
+                        except Exception:
+                            try:
+                                parts = response.candidates[0].content.parts
+                                res_text = "".join(getattr(p, "text", "") for p in parts).strip()
+                            except Exception:
+                                res_text = ""
+
                         if res_text and res_text.lower() not in ("[silence]", "[blank]", "[unintelligible]"):
                             logger.info(f"🎙️ ✅ Gemini SDK ({target_model}) transcription SUCCESS: '{res_text[:120]}'")
                             return res_text
