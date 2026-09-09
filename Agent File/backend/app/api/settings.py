@@ -1523,29 +1523,35 @@ async def test_transcribe_status(test: bool = False, db: Session = Depends(get_d
         wav_bytes = bytes(header + raw_pcm)
 
         test_log = []
-        # Test 1: Test Gemini 2.0 Flash directly
-        b64 = base64.b64encode(wav_bytes).decode('utf-8')
-        for model in ["gemini-2.0-flash", "gemini-1.5-flash"]:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key_to_use}"
+        discovered_models = []
+        try:
+            import google.generativeai as genai
+            genai.configure(api_key=key_to_use)
+            for m in genai.list_models():
+                methods = getattr(m, "supported_generation_methods", []) or []
+                if "generateContent" in methods:
+                    discovered_models.append(m.name)
+        except Exception as le:
+            discovered_models.append(f"list_error: {le}")
+
+        # Test audio transcription via google.generativeai SDK
+        for m_name in discovered_models[:5]:
             try:
-                payload = {
-                    "contents": [{
-                        "parts": [
-                            {"inlineData": {"mimeType": "audio/wav", "data": b64}},
-                            {"text": "Transcribe this audio verbatim. If silence or blank, output [silence]."}
-                        ]
-                    }],
-                    "generationConfig": {"temperature": 0.0}
-                }
-                async with httpx.AsyncClient(timeout=15.0) as client:
-                    resp = await client.post(url, json=payload)
-                    test_log.append({
-                        "model": model,
-                        "status": resp.status_code,
-                        "response": resp.json() if resp.status_code == 200 else resp.text[:300]
-                    })
-            except Exception as e:
-                test_log.append({"model": model, "error": str(e)})
+                clean_name = m_name.replace("models/", "")
+                g_model = genai.GenerativeModel(model_name=clean_name)
+                audio_part = {"mime_type": "audio/wav", "data": wav_bytes}
+                resp = g_model.generate_content([audio_part, "Transcribe this audio verbatim. If blank, output [silence]."])
+                test_log.append({
+                    "model": clean_name,
+                    "success": True,
+                    "text": resp.text if resp else None
+                })
+            except Exception as me:
+                test_log.append({
+                    "model": m_name,
+                    "success": False,
+                    "error": str(me)[:200]
+                })
 
         # Test 2: imageio_ffmpeg test
         ffmpeg_status = "unknown"

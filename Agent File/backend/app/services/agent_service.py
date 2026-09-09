@@ -327,85 +327,71 @@ async def transcribe_voice_note(
             logger.warning(f"Groq Whisper attempt error: {g_err}")
 
     # =========================================================================
-    # Tier 2: Convert to 16kHz mono PCM WAV & transcribe with Gemini 2.0 Flash
-    # Gemini natively decodes 16kHz WAV with 100% precision for African/Nigerian accents
+    # Tier 2: Google Generative AI Multimodal Audio (Official SDK + 16kHz PCM WAV)
+    # Uses official google.generativeai SDK dynamically discovering supported models
     # =========================================================================
     if effective_gemini_key and not effective_gemini_key.startswith("gsk_") and not effective_gemini_key.startswith("sk-"):
-        # Attempt conversion to 16kHz mono WAV in thread pool
-        wav_data = await asyncio.to_thread(_convert_audio_to_wav, audio_bytes, is_ogg, clean_mime)
-        if wav_data:
-            logger.info(f"🎙️ [Tier 2] Audio converted to 16kHz WAV ({len(wav_data)} bytes) — transcribing with Gemini 2.0 Flash...")
-            b64_wav = base64.b64encode(wav_data).decode("utf-8")
+        try:
+            import google.generativeai as genai
+            genai.configure(api_key=effective_gemini_key)
+
+            # 1. Convert to 16kHz mono WAV in thread pool for universal compatibility
+            wav_data = await asyncio.to_thread(_convert_audio_to_wav, audio_bytes, is_ogg, clean_mime)
+            audio_part = {
+                "mime_type": "audio/wav" if wav_data else clean_mime,
+                "data": wav_data if wav_data else audio_bytes
+            }
             transcribe_prompt = (
                 "Transcribe this voice message verbatim in English or whatever language was spoken. "
                 "Output ONLY the exact transcribed words with no other text, no explanations, no formatting, and no commentary. "
-                "If the audio has no speech or is only background silence, reply with [unintelligible]."
+                "If the audio has no speech or is only background silence, reply with [silence]."
             )
-            for gemini_model in ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-flash-8b"]:
-                try:
-                    rest_url = f"https://generativelanguage.googleapis.com/v1beta/models/{gemini_model}:generateContent?key={effective_gemini_key}"
-                    payload = {
-                        "contents": [
-                            {
-                                "parts": [
-                                    {"inlineData": {"mimeType": "audio/wav", "data": b64_wav}},
-                                    {"text": transcribe_prompt}
-                                ]
-                            }
-                        ],
-                        "generationConfig": {"temperature": 0.0}
-                    }
-                    async with httpx.AsyncClient(timeout=30.0) as client:
-                        r = await client.post(rest_url, json=payload)
-                        if r.status_code == 200:
-                            candidates_list = r.json().get("candidates", [])
-                            if candidates_list:
-                                text_part = candidates_list[0].get("content", {}).get("parts", [{}])[0].get("text", "")
-                                if text_part and text_part.strip():
-                                    transcript_result = text_part.strip()
-                                    if transcript_result.lower() in ("[unintelligible]", "[blank_audio]", "[silence]"):
-                                        logger.info(f"🎙️ Gemini Audio returned silence marker: '{transcript_result}'")
-                                        return ""
-                                    logger.info(f"🎙️ ✅ Gemini Audio ({gemini_model}) WAV SUCCESS: '{transcript_result[:120]}'")
-                                    return transcript_result
-                        else:
-                            logger.warning(f"Gemini WAV transcription {gemini_model} HTTP {r.status_code}: {r.text[:200]}")
-                except Exception as g_err:
-                    logger.warning(f"Gemini WAV transcription attempt with {gemini_model} failed: {g_err}")
 
-        # Fallback: If WAV conversion failed, try raw audio bytes inline
-        b64_audio = base64.b64encode(audio_bytes).decode("utf-8")
-        transcribe_prompt = (
-            "Transcribe this voice message verbatim in English or whatever language was spoken. "
-            "Output ONLY the exact transcribed words with no other text, no explanations, and no formatting."
-        )
-        for gemini_model in ["gemini-2.0-flash", "gemini-1.5-flash"]:
+            # 2. Discover models that support generateContent for this API key
+            discovered = []
             try:
-                rest_url = f"https://generativelanguage.googleapis.com/v1beta/models/{gemini_model}:generateContent?key={effective_gemini_key}"
-                payload = {
-                    "contents": [
-                        {
-                            "parts": [
-                                {"inlineData": {"mimeType": clean_mime, "data": b64_audio}},
-                                {"text": transcribe_prompt}
-                            ]
-                        }
-                    ],
-                    "generationConfig": {"temperature": 0.0}
-                }
-                async with httpx.AsyncClient(timeout=30.0) as client:
-                    r = await client.post(rest_url, json=payload)
-                    if r.status_code == 200:
-                        candidates_list = r.json().get("candidates", [])
-                        if candidates_list:
-                            text_part = candidates_list[0].get("content", {}).get("parts", [{}])[0].get("text", "")
-                            if text_part and text_part.strip():
-                                transcript_result = text_part.strip()
-                                if transcript_result.lower() not in ("[unintelligible]", "[blank_audio]", "[silence]"):
-                                    logger.info(f"🎙️ ✅ Gemini Audio ({gemini_model}) raw SUCCESS: '{transcript_result[:120]}'")
-                                    return transcript_result
-            except Exception as g_err:
-                logger.warning(f"Gemini raw audio attempt with {gemini_model} failed: {g_err}")
+                for m in genai.list_models():
+                    methods = getattr(m, "supported_generation_methods", []) or []
+                    if "generateContent" in methods:
+                        clean_name = m.name.replace("models/", "")
+                        discovered.append(clean_name)
+            except Exception as list_e:
+                logger.warning(f"Could not list models via SDK: {list_e}")
+
+            # Prioritize models: flash models first, then pro models
+            model_targets = []
+            for d in discovered:
+                if "flash" in d and d not in model_targets:
+                    model_targets.append(d)
+            for d in discovered:
+                if d not in model_targets:
+                    model_targets.append(d)
+
+            if not model_targets:
+                model_targets = ["gemini-1.5-flash", "gemini-1.5-flash-latest", "gemini-2.0-flash", "gemini-pro"]
+
+            logger.info(f"🎙️ [Tier 2: Gemini Multimodal SDK] Trying models {model_targets[:4]} for audio transcription...")
+
+            for target_model in model_targets[:4]:
+                try:
+                    g_model = genai.GenerativeModel(model_name=target_model)
+                    response = g_model.generate_content(
+                        [audio_part, transcribe_prompt],
+                        generation_config={"temperature": 0.0}
+                    )
+                    if response and response.text:
+                        res_text = response.text.strip()
+                        if res_text and res_text.lower() not in ("[silence]", "[blank]", "[unintelligible]"):
+                            logger.info(f"🎙️ ✅ Gemini SDK ({target_model}) transcription SUCCESS: '{res_text[:120]}'")
+                            return res_text
+                        elif res_text.lower() in ("[silence]", "[blank]", "[unintelligible]"):
+                            logger.info(f"🎙️ Gemini SDK ({target_model}) reported blank/silence audio.")
+                            return ""
+                except Exception as g_err:
+                    logger.warning(f"Gemini SDK audio attempt with '{target_model}' failed: {g_err}")
+
+        except Exception as tier2_err:
+            logger.error(f"🎙️ Tier 2 Gemini SDK audio transcription error: {tier2_err}")
 
     # =========================================================================
     # Tier 3: Dedicated self-hosted faster-whisper microservice (port 8001 or TRANSCRIBE_SERVICE_URL)
