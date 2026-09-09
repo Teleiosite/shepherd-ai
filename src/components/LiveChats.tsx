@@ -115,6 +115,13 @@ const LiveChats: React.FC<LiveChatsProps> = ({
       });
   }, [contacts, searchTerm, statusFilter, contactLastMessageTimes, lastMessagedContactId]);
 
+  // Auto-select first contact on desktop if none selected
+  useEffect(() => {
+    if (!selectedContactId && filteredContacts.length > 0 && window.innerWidth >= 768) {
+      setSelectedContactId(filteredContacts[0].id);
+    }
+  }, [filteredContacts, selectedContactId]);
+
   // Get messages for selected contact
   const currentMessages = logs
     .filter(l => l.contactId === selectedContactId)

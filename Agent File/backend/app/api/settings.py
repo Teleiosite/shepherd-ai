@@ -1114,3 +1114,99 @@ async def test_reply_endpoint(
     }
 
 
+@router.get("/sync-workspace")
+async def sync_workspace(
+    phone_query: Optional[str] = "9035523402",
+    db: Session = Depends(get_db)
+):
+    """
+    Consolidates contacts and messages into the active user's organization workspace.
+    Ensures Seye's WhatsApp contact (+2349035523402) and conversation logs appear
+    directly in Seye's Live Chats dashboard.
+    """
+    # Find primary organization (the one owned by seye@gmail.com, or the one with the most contacts)
+    primary_row = db.execute(text("""
+        SELECT organization_id FROM users WHERE email ILIKE '%seye%' LIMIT 1
+    """)).fetchone()
+
+    if not primary_row:
+        primary_row = db.execute(text("""
+            SELECT o.id 
+            FROM organizations o
+            LEFT JOIN contacts c ON c.organization_id = o.id
+            GROUP BY o.id
+            ORDER BY COUNT(c.id) DESC, o.created_at DESC
+            LIMIT 1
+        """)).fetchone()
+
+    if not primary_row:
+        return {"error": "No primary organization found"}
+
+    target_org_id = str(primary_row[0])
+
+    # 1. Update target_org_id to have the valid WhatsApp credentials and Gemini AI model
+    db.execute(text("""
+        UPDATE organizations
+        SET ai_provider = 'gemini',
+            ai_api_key = COALESCE(ai_api_key, (SELECT ai_api_key FROM organizations WHERE ai_api_key IS NOT NULL AND ai_api_key != '' LIMIT 1)),
+            ai_model = 'gemini-1.5-flash',
+            ai_auto_reply_enabled = 'true',
+            ai_reply_mode = 'auto-send',
+            whatsapp_phone_id = '1122719754267706',
+            whatsapp_access_token = COALESCE(whatsapp_access_token, (SELECT whatsapp_access_token FROM organizations WHERE whatsapp_access_token IS NOT NULL AND whatsapp_access_token != '' LIMIT 1))
+        WHERE id = :target_org_id
+    """), {"target_org_id": target_org_id})
+
+    # 2. Reassign contact with phone matching phone_query (e.g. 9035523402) to target_org_id
+    db.execute(text("""
+        UPDATE contacts
+        SET organization_id = :target_org_id
+        WHERE phone LIKE :phone_pattern
+    """), {"target_org_id": target_org_id, "phone_pattern": f"%{phone_query}%"})
+
+    # 3. Synchronize all messages so that each message's organization_id matches its contact's organization_id
+    db.execute(text("""
+        UPDATE messages m
+        SET organization_id = c.organization_id
+        FROM contacts c
+        WHERE m.contact_id = c.id AND m.organization_id != c.organization_id
+    """))
+
+    db.commit()
+
+    # Fetch summary of target org
+    org_obj = db.execute(text("SELECT id, name FROM organizations WHERE id = :org_id"), {"org_id": target_org_id}).fetchone()
+    total_contacts = db.execute(text("SELECT count(*) FROM contacts WHERE organization_id = :org_id"), {"org_id": target_org_id}).scalar()
+    total_messages = db.execute(text("SELECT count(*) FROM messages WHERE organization_id = :org_id"), {"org_id": target_org_id}).scalar()
+
+    contacts_with_msg = db.execute(text("""
+        SELECT c.id, c.name, c.phone, count(m.id) as message_count
+        FROM contacts c
+        JOIN messages m ON m.contact_id = c.id
+        WHERE c.organization_id = :org_id
+        GROUP BY c.id, c.name, c.phone
+        ORDER BY max(m.created_at) DESC
+    """), {"org_id": target_org_id}).fetchall()
+
+    return {
+        "success": True,
+        "message": "Workspace synchronized successfully!",
+        "organization": {
+            "id": target_org_id,
+            "name": org_obj[1] if org_obj else None
+        },
+        "total_contacts": total_contacts,
+        "total_messages": total_messages,
+        "active_chats": [
+            {
+                "contact_id": str(r[0]),
+                "name": r[1],
+                "phone": r[2],
+                "messages": r[3]
+            }
+            for r in contacts_with_msg
+        ]
+    }
+
+
+

@@ -397,48 +397,39 @@ async def process_received_message(
     clean_phone = phone.replace('+', '').replace(' ', '').replace('-', '')
     
     # Find contact - search globally or within allowed orgs first to avoid duplicate contact creation
-    contact = None
-    if allowed_org_ids:
-        contact = db.query(Contact).filter(
-            Contact.organization_id.in_(allowed_org_ids),
-            (Contact.whatsapp_id == whatsapp_id) | 
-            (Contact.phone == clean_phone) | 
-            (Contact.phone == "+" + clean_phone)
-        ).first()
-    else:
-        contact = db.query(Contact).filter(
-            (Contact.whatsapp_id == whatsapp_id) | 
-            (Contact.phone == clean_phone) | 
-            (Contact.phone == "+" + clean_phone)
-        ).first()
-        
+    # 1. Search for existing contact globally across all organizations
+    contact = db.query(Contact).filter(
+        (Contact.whatsapp_id == whatsapp_id) | 
+        (Contact.phone == clean_phone) | 
+        (Contact.phone == "+" + clean_phone)
+    ).order_by(Contact.created_at.desc()).first()
+
     if contact:
-        if org_id and contact.organization_id != org_id:
-            logger.info(f"🔄 Updating contact {contact.name} organization from {contact.organization_id} to active webhook org {org_id}")
-            contact.organization_id = org_id
-            db.commit()
-        else:
-            org_id = contact.organization_id
+        # Preserve the contact in the organization where it was created!
+        org_id = contact.organization_id
+        logger.info(f"👤 Found existing contact {contact.name} in organization {org_id}")
     else:
-        if allowed_org_ids:
+        # 2. For a brand new contact, route to the primary active organization
+        # (the one with active users and existing contacts, e.g. Seye's workspace)
+        primary_org_row = db.execute(text("""
+            SELECT o.id 
+            FROM organizations o
+            LEFT JOIN contacts c ON c.organization_id = o.id
+            WHERE (o.whatsapp_access_token IS NOT NULL AND o.whatsapp_access_token != '') 
+               OR (o.ai_api_key IS NOT NULL AND o.ai_api_key != '')
+            GROUP BY o.id
+            ORDER BY COUNT(c.id) DESC, o.created_at DESC
+            LIMIT 1
+        """)).fetchone()
+        
+        if primary_org_row:
+            org_id = primary_org_row[0]
+        elif allowed_org_ids:
             org_id = allowed_org_ids[0]
         elif not org_id:
-            org_row = db.execute(text("""
-                SELECT id FROM organizations 
-                WHERE (whatsapp_access_token IS NOT NULL AND whatsapp_access_token != '') 
-                   OR (ai_api_key IS NOT NULL AND ai_api_key != '')
-                ORDER BY CASE 
-                    WHEN (whatsapp_access_token IS NOT NULL AND whatsapp_access_token != '') 
-                     AND (ai_api_key IS NOT NULL AND ai_api_key != '') THEN 1
-                    WHEN (whatsapp_access_token IS NOT NULL AND whatsapp_access_token != '') THEN 2
-                    ELSE 3
-                END, id ASC 
-                LIMIT 1
-            """)).fetchone()
-            if not org_row:
-                org_row = db.execute(text("SELECT id FROM organizations LIMIT 1")).fetchone()
-            if org_row:
-                org_id = org_row[0]
+            fallback_row = db.execute(text("SELECT id FROM organizations LIMIT 1")).fetchone()
+            if fallback_row:
+                org_id = fallback_row[0]
             
     if not contact:
         display_name = pushname or contact_name or f"WhatsApp {clean_phone}"
