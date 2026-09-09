@@ -358,21 +358,19 @@ async def transcribe_voice_note(
             except Exception as list_e:
                 logger.warning(f"Could not list models via SDK: {list_e}")
 
-            # Prioritize models: flash models first, then pro models
-            model_targets = []
+            # Prioritize recommended models first: gemini-3.6-flash, gemini-1.5-flash-latest, gemini-3.1-pro-preview
+            recommended_preferred = ["gemini-3.6-flash", "gemini-1.5-flash-latest", "gemini-1.5-pro-latest", "gemini-3.1-pro-preview"]
+            model_targets = [m for m in recommended_preferred]
             for d in discovered:
-                if "flash" in d and d not in model_targets:
+                if "flash" in d and d not in model_targets and "preview-tts" not in d:
                     model_targets.append(d)
             for d in discovered:
-                if d not in model_targets:
+                if d not in model_targets and "preview-tts" not in d and not d.startswith("gemma"):
                     model_targets.append(d)
 
-            if not model_targets:
-                model_targets = ["gemini-1.5-flash", "gemini-1.5-flash-latest", "gemini-2.0-flash", "gemini-pro"]
+            logger.info(f"🎙️ [Tier 2: Gemini Multimodal SDK] Trying models {model_targets[:5]} for audio transcription...")
 
-            logger.info(f"🎙️ [Tier 2: Gemini Multimodal SDK] Trying models {model_targets[:4]} for audio transcription...")
-
-            for target_model in model_targets[:4]:
+            for target_model in model_targets[:5]:
                 try:
                     g_model = genai.GenerativeModel(model_name=target_model)
                     response = g_model.generate_content(

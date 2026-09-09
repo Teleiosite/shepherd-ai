@@ -1535,20 +1535,27 @@ async def test_transcribe_status(test: bool = False, db: Session = Depends(get_d
             discovered_models.append(f"list_error: {le}")
 
         # Test audio transcription via google.generativeai SDK
-        for m_name in discovered_models[:5]:
+        # Specifically test recommended models and discovered models
+        test_candidates = ["gemini-3.6-flash", "gemini-1.5-flash-latest", "gemini-1.5-pro-latest"] + [m.replace("models/", "") for m in discovered_models]
+        seen_cand = set()
+        for cand in test_candidates:
+            if cand in seen_cand:
+                continue
+            seen_cand.add(cand)
+            if len(test_log) >= 8:
+                break
             try:
-                clean_name = m_name.replace("models/", "")
-                g_model = genai.GenerativeModel(model_name=clean_name)
+                g_model = genai.GenerativeModel(model_name=cand)
                 audio_part = {"mime_type": "audio/wav", "data": wav_bytes}
                 resp = g_model.generate_content([audio_part, "Transcribe this audio verbatim. If blank, output [silence]."])
                 test_log.append({
-                    "model": clean_name,
+                    "model": cand,
                     "success": True,
                     "text": resp.text if resp else None
                 })
             except Exception as me:
                 test_log.append({
-                    "model": m_name,
+                    "model": cand,
                     "success": False,
                     "error": str(me)[:200]
                 })
@@ -1563,11 +1570,10 @@ async def test_transcribe_status(test: bool = False, db: Session = Depends(get_d
             ffmpeg_status = f"failed: {fe}"
 
         result["live_test"] = {
+            "all_discovered_models": discovered_models,
             "gemini_results": test_log,
             "ffmpeg_status": ffmpeg_status
         }
-
-    return result
 
 
 
