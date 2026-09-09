@@ -55,7 +55,7 @@ async def get_ai_config(
         return {
             "provider": "gemini",
             "api_key_masked": "",
-            "model": "gemini-3.5-flash",
+            "model": "gemini-1.5-flash",
             "base_url": None,
             "configured": False
         }
@@ -63,7 +63,7 @@ async def get_ai_config(
     return {
         "provider": result[0] or "gemini",
         "api_key_masked": mask_api_key(result[1]),
-        "model": result[2] or "gemini-3.5-flash",
+        "model": result[2] or "gemini-1.5-flash",
         "base_url": result[3],
         "configured": True
     }
@@ -188,7 +188,7 @@ async def save_all_settings(
             "state": {
                 "api_key_saved": bool(row[1]) if row else False,
                 "provider": row[0] if row else "gemini",
-                "model": row[2] if row else "gemini-3.5-flash",
+                "model": row[2] if row else "gemini-1.5-flash",
                 "auto_reply_enabled": row[3] if row else "false",
                 "mode": row[4] if row else "suggest",
                 "whatsapp_phone_id_saved": bool(row[5]) if row else False,
@@ -580,7 +580,7 @@ async def generate_ai_completion(
 
     system_prompt = payload.get("system_prompt", "")
     user_turn = payload.get("user_turn", "")
-    model = payload.get("model", "gemini-3.5-flash")
+    model = payload.get("model", "gemini-1.5-flash")
     temperature = float(payload.get("temperature", 0.75))
 
     # Retrieve organization's AI configuration
@@ -602,8 +602,8 @@ async def generate_ai_completion(
         if provider == "gemini":
             genai.configure(api_key=api_key)
             model_name = selected_model
-            if "gemini" not in model_name:
-                model_name = "gemini-3.5-flash"
+            if not model_name or "gemini" not in model_name or model_name == "gemini-3.5-flash":
+                model_name = "gemini-1.5-flash"
             g_model = genai.GenerativeModel(model_name)
             combined_prompt = f"{system_prompt}\n\n{user_turn}" if system_prompt else user_turn
             res = g_model.generate_content(
@@ -682,7 +682,7 @@ async def debug_ai_state(
             "ai_provider": r[2] or "gemini",
             "has_api_key": has_key,
             "api_key_status": "SET ✅" if has_key else "MISSING ❌",
-            "model": r[4] or "gemini-3.5-flash",
+            "model": r[4] or "gemini-1.5-flash",
             "auto_reply_enabled_raw": repr(raw_en),
             "will_reply": auto_en,
             "mode": r[6] or "auto-send",
@@ -827,7 +827,7 @@ async def debug_ai_activate(
             UPDATE organizations
             SET ai_provider = 'gemini',
                 ai_api_key = :api_key,
-                ai_model = 'gemini-3.5-flash',
+                ai_model = 'gemini-1.5-flash',
                 ai_auto_reply_enabled = 'true',
                 ai_reply_mode = 'auto-send',
                 whatsapp_phone_id = :phone_id,
@@ -868,7 +868,7 @@ async def debug_ai_activate(
                 </p>
                 <ul style="text-align: left; background: #f8fafc; padding: 16px 24px; border-radius: 8px; font-size: 14px; color: #334155; line-height: 1.8;">
                     <li>✅ <strong>Auto-Reply:</strong> ENABLED (Mode: <code>auto-send</code>)</li>
-                    <li>✅ <strong>AI Model:</strong> Gemini 3.5 Flash</li>
+                    <li>✅ <strong>AI Model:</strong> Gemini 1.5 Flash</li>
                     <li>✅ <strong>Phone ID:</strong> <code>{phone_id}</code> (+234 913 891 3856)</li>
                     <li>✅ <strong>WhatsApp Token:</strong> Saved and active</li>
                 </ul>
@@ -910,7 +910,7 @@ async def quick_activate_get(
                 UPDATE organizations
                 SET ai_provider = 'gemini',
                     ai_api_key = :api_key,
-                    ai_model = 'gemini-3.5-flash',
+                    ai_model = 'gemini-1.5-flash',
                     ai_auto_reply_enabled = 'true',
                     ai_reply_mode = 'auto-send',
                     whatsapp_phone_id = :phone_id,
@@ -973,6 +973,12 @@ async def test_reply_endpoint(
 
     org_id = org_row[0]
     org = db.query(Organization).filter(Organization.id == org_id).first()
+
+    # Auto-heal: ensure org.ai_model in DB is a valid active model (gemini-1.5-flash)
+    if org and (not org.ai_model or org.ai_model in ("gemini-3.5-flash", "models/gemini-3.5-flash")):
+        org.ai_model = "gemini-1.5-flash"
+        db.commit()
+        db.refresh(org)
 
     steps["1_org_check"] = {
         "org_id": str(org_id),

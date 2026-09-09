@@ -59,6 +59,10 @@ async def search_knowledge_base(
                         resources.append((resource, similarity))
                         seen_ids.add(resource_id)
         except Exception as vec_err:
+            try:
+                db.rollback()
+            except Exception:
+                pass
             print(f"Vector search failed, falling back to keyword search: {vec_err}")
 
     # 2. Text/Keyword fallback search if vector search returned no results

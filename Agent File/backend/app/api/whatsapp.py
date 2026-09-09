@@ -349,7 +349,8 @@ async def _async_trigger_reply(
     from app.services.agent_service import trigger_ai_agent_reply
     db_bg = SessionLocal()
     try:
-        await trigger_ai_agent_reply(
+        logger.info(f"⚡ [ASYNC BG] Launching AI auto-reply for contact {contact_id} (org {org_id})...")
+        res = await trigger_ai_agent_reply(
             contact_id=contact_id,
             incoming_text=content,
             org_id=org_id,
@@ -357,8 +358,12 @@ async def _async_trigger_reply(
             audio_media_id=audio_media_id,
             audio_mime_type=audio_mime_type
         )
+        if isinstance(res, dict) and "error" in res:
+            logger.error(f"❌ [ASYNC BG] AI auto-reply error: {res}")
+        else:
+            logger.info(f"✅ [ASYNC BG] AI auto-reply completed: {res}")
     except Exception as agent_err:
-        logger.error(f"Error in background AI agent auto-reply: {agent_err}", exc_info=True)
+        logger.error(f"❌ [ASYNC BG] Exception in background AI auto-reply: {agent_err}", exc_info=True)
     finally:
         db_bg.close()
 
@@ -408,7 +413,12 @@ async def process_received_message(
         ).first()
         
     if contact:
-        org_id = contact.organization_id
+        if org_id and contact.organization_id != org_id:
+            logger.info(f"🔄 Updating contact {contact.name} organization from {contact.organization_id} to active webhook org {org_id}")
+            contact.organization_id = org_id
+            db.commit()
+        else:
+            org_id = contact.organization_id
     else:
         if allowed_org_ids:
             org_id = allowed_org_ids[0]

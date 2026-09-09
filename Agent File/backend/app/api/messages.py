@@ -193,7 +193,7 @@ async def generate_ai_message(
         organization_name=org.name if org else "Church",
         ai_provider=ai_config_result[0] if ai_config_result else "gemini",
         ai_api_key=ai_config_result[1] if ai_config_result else None,
-        ai_model=ai_config_result[2] if ai_config_result else "gemini-3.5-flash",
+        ai_model=ai_config_result[2] if ai_config_result else "gemini-1.5-flash",
         ai_base_url=ai_config_result[3] if ai_config_result else None
     )
     

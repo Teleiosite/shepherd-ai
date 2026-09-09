@@ -22,7 +22,7 @@ class Organization(Base):
     # AI Provider & Agent Configuration
     ai_provider = Column(String(50), nullable=True, default="gemini")
     ai_api_key = Column(String, nullable=True)
-    ai_model = Column(String(100), nullable=True, default="gemini-3.5-flash")
+    ai_model = Column(String(100), nullable=True, default="gemini-1.5-flash")
     ai_base_url = Column(String, nullable=True)
     ai_auto_reply_enabled = Column(String, nullable=True, default="false")  # "true" or "false"
     ai_reply_mode = Column(String(50), nullable=True, default="suggest")    # "suggest" or "auto-send"

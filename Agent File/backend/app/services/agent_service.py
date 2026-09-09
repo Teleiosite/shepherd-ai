@@ -479,7 +479,7 @@ async def trigger_ai_agent_reply(
         org = db.query(Organization).filter(Organization.id == org_id).first()
         if not org:
             logger.warning(f"Organization {org_id} not found for agent reply.")
-            return None
+            return {"error": f"Organization {org_id} not found"}
 
         # Check if auto-reply is enabled (stored as string "true" or boolean True)
         # IMPORTANT: NULL/None means "never explicitly disabled" → treat as ENABLED
@@ -489,7 +489,7 @@ async def trigger_ai_agent_reply(
         logger.info(f"🤖 AI Auto-reply check for org '{org.name}' ({org.id}): ai_auto_reply_enabled={repr(raw_enabled)} → auto_enabled={auto_enabled}")
         if not auto_enabled:
             logger.info(f"⛔ AI Auto-reply is DISABLED for org {org.name}. Go to Settings → AI Agent → enable the toggle and save.")
-            return None
+            return {"error": f"AI Auto-reply is disabled for org {org.name}"}
 
         # Get API key — use org's stored key, or fall back to server environment GEMINI_API_KEY
         from app.config import settings as _app_settings
@@ -498,7 +498,7 @@ async def trigger_ai_agent_reply(
         logger.info(f"🔑 API key: {'org DB key' if org.ai_api_key else 'server GEMINI_API_KEY env var'} | provider={ai_provider} | key_set={bool(ai_api_key)}")
         if not ai_api_key:
             logger.error(f"❌ No AI API key for org {org.name}. Set GEMINI_API_KEY env var on Render OR save a key in Settings → Integrations.")
-            return None
+            return {"error": f"No AI API key for org {org.name}"}
 
         # 1b. If a voice note was sent, transcribe it NOW
         from app.api.whatsapp import get_organization_whatsapp_config
@@ -577,7 +577,7 @@ async def trigger_ai_agent_reply(
         contact = db.query(Contact).filter(Contact.id == contact_id).first()
         if not contact:
             logger.warning(f"Contact {contact_id} not found.")
-            return None
+            return {"error": f"Contact {contact_id} not found"}
 
         now = datetime.utcnow()
         if contact.ai_paused_until:
@@ -585,7 +585,7 @@ async def trigger_ai_agent_reply(
             paused_time = contact.ai_paused_until.replace(tzinfo=None)
             if paused_time > now:
                 logger.info(f"AI is paused for contact {contact.name} until {contact.ai_paused_until} (human in control).")
-                return None
+                return {"error": f"AI is paused for contact {contact.name} until {contact.ai_paused_until}"}
 
         # 3. Retrieve conversation history (last 8 messages)
         history_msgs = db.query(Message).filter(
@@ -606,6 +606,10 @@ async def trigger_ai_agent_reply(
             for res, sim in results:
                 kb_chunks.append(f"--- {res.title} ---\n{res.content[:500]}")
         except Exception as rag_err:
+            try:
+                db.rollback()
+            except Exception:
+                pass
             logger.warning(f"RAG search error: {rag_err}")
 
         kb_context = "\n\n".join(kb_chunks) if kb_chunks else "No specific knowledge base entry matched."
@@ -752,10 +756,14 @@ ACTION TYPE GUIDE:
         user_turn = f"New message from {contact.name}:\n\"{incoming_text}\"\n\nGenerate your JSON response."
 
         # 8. Call AI Provider
+        model_to_use = org.ai_model
+        if not model_to_use or model_to_use in ("gemini-3.5-flash", "models/gemini-3.5-flash"):
+            model_to_use = "gemini-1.5-flash"
+
         raw_reply = await call_ai_provider(
             provider=org.ai_provider or "gemini",
             api_key=ai_api_key,
-            model=org.ai_model or "gemini-3.5-flash",
+            model=model_to_use,
             system_prompt=system_prompt,
             user_turn=user_turn,
             base_url=org.ai_base_url
@@ -767,8 +775,10 @@ ACTION TYPE GUIDE:
         action_type = action.get("type", "NONE")
 
         if not reply_text:
-            logger.warning("AI Agent returned empty reply.")
-            return None
+            logger.warning(f"AI Agent returned empty reply parsed from: {repr(raw_reply)}")
+            reply_text = strip_emojis(raw_reply).strip() if raw_reply else ""
+            if not reply_text:
+                reply_text = "Hello! How can I help you today?"
 
         # 9. Process Intent Actions
         if action_type == "FLAG_FOR_HUMAN":
@@ -873,6 +883,7 @@ ACTION TYPE GUIDE:
         import base64
 
         config = get_organization_whatsapp_config(db, org_id)
+        logger.info(f"📡 WhatsApp delivery config: method={config.get('delivery_method')}, phone_id={config.get('phone_number_id')}, has_token={bool(config.get('access_token'))}")
 
         # Check voice reply settings
         voice_reply_mode = getattr(org, "ai_voice_reply_mode", "text") or "text"
@@ -881,42 +892,45 @@ ACTION TYPE GUIDE:
         is_inbound_voice = incoming_text.startswith("[Voice Note") or incoming_text.startswith("[Voice message")
         should_send_voice = (voice_reply_mode == "voice") or (voice_reply_mode == "match_input" and is_inbound_voice)
 
-        if should_send_voice and config["delivery_method"] == "meta":
+        if should_send_voice and config.get("delivery_method") == "meta":
             logger.info(f"🎙️ Synthesizing voice note response using voice: {voice_name}")
-            voice_bytes = await synthesize_voice_note(reply_text, voice_name)
-            if voice_bytes:
-                meta_service = get_meta_whatsapp_service(
-                    config["phone_number_id"],
-                    config["access_token"]
-                )
-                # Use send_voice_note to get native green WhatsApp voice bubble (OGG/OPUS)
-                send_result = await meta_service.send_voice_note(
-                    to_phone=contact.phone,
-                    audio_bytes=voice_bytes,
-                    mime_type="audio/ogg; codecs=opus"
-                )
-                out_msg = Message(
-                    organization_id=org_id,
-                    contact_id=contact.id,
-                    content=reply_text,
-                    attachment_url="voice_note_response",
-                    attachment_type="audio",
-                    type="Outbound",
-                    status="Sent" if send_result.get("success") else "Failed",
-                    sent_at=now,
-                    whatsapp_message_id=send_result.get("messageId")
-                )
-                db.add(out_msg)
-                db.commit()
-                logger.info(f"🎙️ AI Voice Note auto-reply sent to {contact.phone} via Meta Cloud API")
-                return {
-                    "reply": reply_text,
-                    "action": action,
-                    "message_id": str(out_msg.id),
-                    "is_voice": True
-                }
+            try:
+                voice_bytes = await synthesize_voice_note(reply_text, voice_name)
+                if voice_bytes:
+                    meta_service = get_meta_whatsapp_service(
+                        config["phone_number_id"],
+                        config["access_token"]
+                    )
+                    send_result = await meta_service.send_voice_note(
+                        to_phone=contact.phone,
+                        audio_bytes=voice_bytes,
+                        mime_type="audio/ogg; codecs=opus"
+                    )
+                    out_msg = Message(
+                        organization_id=org_id,
+                        contact_id=contact.id,
+                        content=reply_text,
+                        attachment_url="voice_note_response",
+                        attachment_type="audio",
+                        type="Outbound",
+                        status="Sent" if send_result.get("success") else "Failed",
+                        sent_at=now,
+                        whatsapp_message_id=send_result.get("messageId")
+                    )
+                    db.add(out_msg)
+                    db.commit()
+                    logger.info(f"🎙️ AI Voice Note auto-reply sent to {contact.phone} via Meta Cloud API")
+                    return {
+                        "reply": reply_text,
+                        "action": action,
+                        "message_id": str(out_msg.id),
+                        "is_voice": True,
+                        "delivery_result": send_result
+                    }
+            except Exception as voice_err:
+                logger.warning(f"Voice synthesis/sending failed, falling back to text: {voice_err}")
 
-        if config["delivery_method"] == "meta":
+        if config.get("delivery_method") == "meta":
             # Send standard text message via Meta Cloud API
             meta_service = get_meta_whatsapp_service(
                 config["phone_number_id"],
@@ -937,7 +951,13 @@ ACTION TYPE GUIDE:
             )
             db.add(out_msg)
             db.commit()
-            logger.info(f"🚀 AI Auto-reply sent to {contact.phone} via Meta Cloud API")
+            logger.info(f"🚀 AI Auto-reply sent to {contact.phone} via Meta Cloud API (success={send_result.get('success')})")
+            return {
+                "reply": reply_text,
+                "action": action,
+                "message_id": str(out_msg.id),
+                "delivery_result": send_result
+            }
 
         else:
             # WPPConnect: Queue pending outbound message for bridge polling
@@ -952,14 +972,19 @@ ACTION TYPE GUIDE:
             db.add(out_msg)
             db.commit()
             logger.info(f"📬 AI Auto-reply queued for WPPConnect bridge to send to {contact.phone}")
-
-        return {
-            "reply": reply_text,
-            "action": action,
-            "message_id": str(out_msg.id)
-        }
+            return {
+                "reply": reply_text,
+                "action": action,
+                "message_id": str(out_msg.id),
+                "warning": "Queued for WPPConnect bridge (Meta credentials not found)"
+            }
 
     except Exception as e:
-        logger.error(f"❌ Error in trigger_ai_agent_reply: {str(e)}", exc_info=True)
-        db.rollback()
-        return None
+        import traceback
+        tb = traceback.format_exc()
+        logger.error(f"❌ Error in trigger_ai_agent_reply: {str(e)}\n{tb}")
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        return {"error": str(e), "traceback": tb}
