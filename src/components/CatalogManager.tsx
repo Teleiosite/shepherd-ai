@@ -165,21 +165,50 @@ export default function CatalogManager() {
           const title =
             normalized['title'] ||
             normalized['name'] ||
+            normalized['product name'] ||
+            normalized['post_title'] ||
             normalized['item'] ||
-            normalized['car'] ||
-            normalized['vehicle'] ||
-            normalized['service'] ||
-            normalized['product'];
+            normalized['product'] ||
+            normalized['service'];
 
           if (!title) return;
 
-          const category = normalized['category'] || normalized['type'] || 'General';
-          const priceRaw = normalized['price'] || normalized['price amount'] || normalized['rate'] || normalized['daily rate'] || normalized['amount'] || 0;
+          const category = normalized['category'] || normalized['categories'] || normalized['type'] || 'Gadgets';
+          const priceRaw =
+            normalized['sale price'] ||
+            normalized['regular price'] ||
+            normalized['price'] ||
+            normalized['_regular_price'] ||
+            normalized['_sale_price'] ||
+            normalized['price amount'] ||
+            normalized['rate'] ||
+            normalized['amount'] ||
+            0;
           const price_amount = typeof priceRaw === 'number' ? priceRaw : parseFloat(String(priceRaw).replace(/[^0-9.]/g, '')) || 0;
-          const price_unit = normalized['unit'] || normalized['price unit'] || 'per day';
-          const image_url = normalized['image url'] || normalized['image'] || normalized['photo'] || '';
-          const action_url = normalized['booking link'] || normalized['booking url'] || normalized['link'] || normalized['action url'] || '';
-          const description = normalized['description'] || normalized['details'] || '';
+          const price_unit = normalized['unit'] || normalized['price unit'] || 'each';
+          
+          let image_url = normalized['images'] || normalized['image url'] || normalized['image'] || normalized['photo'] || '';
+          if (typeof image_url === 'string' && image_url.includes(',')) {
+            image_url = image_url.split(',')[0].trim();
+          }
+
+          const action_url =
+            normalized['permalink'] ||
+            normalized['external url'] ||
+            normalized['url'] ||
+            normalized['product url'] ||
+            normalized['link'] ||
+            normalized['booking link'] ||
+            normalized['action url'] ||
+            '';
+
+          const description =
+            normalized['short description'] ||
+            normalized['description'] ||
+            normalized['post_content'] ||
+            normalized['post_excerpt'] ||
+            normalized['details'] ||
+            '';
 
           const attributes: Record<string, any> = {};
           const tags = normalized['tags'] || normalized['features'] || normalized['specs'] || '';

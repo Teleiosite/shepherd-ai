@@ -6,6 +6,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { whatsappService } from '../services/whatsappService';
 import { findFileByName } from '../services/mediaLibraryService';
 import { ChatStatusBar } from './ChatStatusBar';
+import { BACKEND_URL } from '../services/env';
 
 interface LiveChatsProps {
   contacts: Contact[];
@@ -138,7 +139,8 @@ const LiveChats: React.FC<LiveChatsProps> = ({
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
-      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 160)}px`;
+      const scrollH = textareaRef.current.scrollHeight;
+      textareaRef.current.style.height = `${Math.min(Math.max(scrollH, 36), 240)}px`;
     }
   }, [newMessage]);
 
@@ -187,8 +189,37 @@ const LiveChats: React.FC<LiveChatsProps> = ({
     setShowEmojiPicker(false);
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
 
-    // Send via WhatsApp API in background
+    // Send via WhatsApp API or Direct Web Message for website visitors
     try {
+      const isWebVisitor = selectedContact.phone.startsWith('web_') || selectedContact.category === 'Website Lead';
+
+      if (isWebVisitor) {
+        const token = localStorage.getItem('authToken');
+        const res = await fetch(`${BACKEND_URL}/api/messages/`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            contact_id: selectedContactId,
+            content: messageToSend,
+            type: 'Outbound',
+            status: 'Delivered',
+            attachment_url: attachmentToSend?.url,
+            attachment_type: attachmentToSend?.type
+          })
+        });
+
+        if (res.ok) {
+          const savedMsg = await res.json();
+          setLogs(prev => prev.map(l => l.id === optimisticMessage.id ? { ...l, id: savedMsg.id, status: MessageStatus.DELIVERED } : l));
+        } else {
+          setLogs(prev => prev.map(l => l.id === optimisticMessage.id ? { ...l, status: MessageStatus.SENT } : l));
+        }
+        return;
+      }
+
       const waConfig = whatsappService.getConfig();
 
       if (waConfig) {
@@ -824,11 +855,17 @@ const LiveChats: React.FC<LiveChatsProps> = ({
                   <div className="flex-1 bg-slate-100 border border-transparent rounded-2xl px-4 py-3 focus-within:bg-white focus-within:ring-2 focus-within:ring-primary-100 focus-within:border-primary-400 transition-all shadow-sm">
                     <textarea
                       ref={textareaRef}
-                      className="w-full bg-transparent border-none focus:ring-0 outline-none resize-none max-h-48 min-h-[24px] text-base text-slate-800 placeholder:text-slate-400 leading-relaxed"
+                      className="w-full bg-transparent border-none focus:ring-0 outline-none resize-none max-h-60 min-h-[36px] text-base text-slate-800 placeholder:text-slate-400 leading-relaxed overflow-y-auto py-1"
                       rows={1}
                       placeholder="Type a message..."
                       value={newMessage}
-                      onChange={(e) => setNewMessage(e.target.value)}
+                      onChange={(e) => {
+                        setNewMessage(e.target.value);
+                        if (textareaRef.current) {
+                          textareaRef.current.style.height = 'auto';
+                          textareaRef.current.style.height = `${Math.min(Math.max(textareaRef.current.scrollHeight, 36), 240)}px`;
+                        }
+                      }}
                       onKeyDown={handleKeyDown}
                     />
                   </div>

@@ -260,7 +260,7 @@
         </div>
       </div>
       <div id="shepherd-widget-input-bar">
-        <input type="text" id="shepherd-widget-input" placeholder="Ask a question or inquire about products..." autocomplete="off" />
+        <textarea id="shepherd-widget-input" rows="1" placeholder="Ask a question or inquire about products..." autocomplete="off" style="resize:none; max-height:120px; overflow-y:auto; line-height:1.4; padding:9px 14px; font-family:inherit; font-size:14px; flex:1; border:1px solid #cbd5e1; border-radius:18px; outline:none; transition:border-color 0.2s;"></textarea>
         <button id="shepherd-widget-send">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <line x1="22" y1="2" x2="11" y2="13"></line>
@@ -285,6 +285,12 @@
   const msgs = document.getElementById('shepherd-widget-messages');
   const headerTitle = document.getElementById('shepherd-header-title');
   const welcomeBubble = document.getElementById('shepherd-welcome-bubble');
+
+  // Auto-expand textarea as user types
+  input.addEventListener('input', () => {
+    input.style.height = 'auto';
+    input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+  });
 
   // Load Dynamic Configuration
   if (orgId) {
@@ -321,6 +327,35 @@
     try { localStorage.setItem('shepherd_visitor_id', visitorId); } catch (e) {}
   }
 
+  // Track seen messages to avoid duplicates
+  const seenMessageIds = new Set();
+
+  // Poll for replies from human agents in the dashboard
+  const pollAgentMessages = async () => {
+    if (!orgId || !visitorId || box.style.display !== 'flex') return;
+    try {
+      const pRes = await fetch(`${apiUrl}/api/widget/poll/${orgId}/${visitorId}`);
+      if (pRes.ok) {
+        const pData = await pRes.json();
+        if (pData.messages && pData.messages.length > 0) {
+          let hasNew = false;
+          pData.messages.forEach(m => {
+            if (!seenMessageIds.has(m.id)) {
+              seenMessageIds.add(m.id);
+              hasNew = true;
+              const botBubble = document.createElement('div');
+              botBubble.className = 'shepherd-msg shepherd-msg-in';
+              botBubble.textContent = m.content;
+              msgs.appendChild(botBubble);
+            }
+          });
+          if (hasNew) msgs.scrollTop = msgs.scrollHeight;
+        }
+      }
+    } catch (e) {}
+  };
+  setInterval(pollAgentMessages, 4000);
+
   // Toggle Box
   btn.addEventListener('click', () => {
     const isVisible = box.style.display === 'flex';
@@ -328,6 +363,7 @@
     if (!isVisible) {
       input.focus();
       msgs.scrollTop = msgs.scrollHeight;
+      pollAgentMessages();
     }
   });
 
@@ -399,6 +435,7 @@
     if (!text) return;
 
     input.value = '';
+    input.style.height = 'auto';
 
     // Render User Bubble
     const userBubble = document.createElement('div');
@@ -441,6 +478,9 @@
       if (res && res.ok) {
         const data = await res.json();
         
+        // Track message id
+        if (data.message_id) seenMessageIds.add(data.message_id);
+
         // AI Text Reply
         const botBubble = document.createElement('div');
         botBubble.className = 'shepherd-msg shepherd-msg-in';
@@ -472,6 +512,9 @@
 
   sendBtn.addEventListener('click', sendMessage);
   input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') sendMessage();
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
   });
 })();

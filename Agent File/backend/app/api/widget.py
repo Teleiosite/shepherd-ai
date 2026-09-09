@@ -171,3 +171,47 @@ async def handle_widget_message(
             "action": {},
             "ai_name": org.ai_name or "DeceHub Assistant"
         }
+
+
+@router.get("/poll/{org_id}/{visitor_id}")
+async def poll_widget_messages(
+    org_id: str,
+    visitor_id: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Allows the website chat widget to receive replies sent by human agents from the dashboard.
+    """
+    try:
+        org_uuid = UUID(org_id)
+    except:
+        return {"messages": []}
+
+    contact = db.query(Contact).filter(
+        Contact.organization_id == org_uuid,
+        (Contact.phone == visitor_id) | (Contact.email == visitor_id)
+    ).first()
+
+    if not contact:
+        return {"messages": []}
+
+    outbound_msgs = db.query(Message).filter(
+        Message.organization_id == org_uuid,
+        Message.contact_id == contact.id,
+        Message.type == "Outbound"
+    ).order_by(Message.created_at.desc()).limit(15).all()
+
+    outbound_msgs.reverse()
+
+    return {
+        "messages": [
+            {
+                "id": str(m.id),
+                "content": m.content,
+                "type": m.type,
+                "created_at": m.created_at.isoformat() if m.created_at else None
+            }
+            for m in outbound_msgs
+        ]
+    }
+
