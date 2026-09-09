@@ -942,13 +942,18 @@ async def test_reply_endpoint(
     db: Session = Depends(get_db)
 ):
     """
-    Live test endpoint — forces trigger_ai_agent_reply for the given phone number
-    and returns a complete diagnostic execution report.
+    Live test endpoint — forces AI agent auto-reply and returns step-by-step diagnostics.
     Usage: /api/settings/test-reply?phone=+2349035523402&text_message=Hello
     """
-    from app.services.agent_service import trigger_ai_agent_reply
-    from app.models.contact import Contact
+    import traceback
     from datetime import datetime
+    from app.services.agent_service import trigger_ai_agent_reply, call_ai_provider, parse_agent_response
+    from app.services.meta_whatsapp_service import get_meta_whatsapp_service
+    from app.models.contact import Contact
+    from app.models.organization import Organization
+    from app.config import settings as app_settings
+
+    steps = {}
 
     # 1. Find or create contact
     clean_p = phone.replace(" ", "").replace("-", "")
@@ -967,6 +972,18 @@ async def test_reply_endpoint(
         return {"error": "No organization found"}
 
     org_id = org_row[0]
+    org = db.query(Organization).filter(Organization.id == org_id).first()
+
+    steps["1_org_check"] = {
+        "org_id": str(org_id),
+        "org_name": org.name if org else None,
+        "ai_auto_reply_enabled": org.ai_auto_reply_enabled if org else None,
+        "has_ai_api_key": bool(org.ai_api_key) if org else False,
+        "has_env_gemini_key": bool(app_settings.gemini_api_key),
+        "model": org.ai_model if org else None,
+        "phone_id": org.whatsapp_phone_id if org else None,
+        "has_whatsapp_token": bool(org.whatsapp_access_token) if org else False
+    }
 
     if not contact:
         contact = Contact(
@@ -980,27 +997,84 @@ async def test_reply_endpoint(
         db.commit()
         db.refresh(contact)
 
-    # 2. Trigger AI reply directly
+    steps["2_contact_check"] = {
+        "contact_id": str(contact.id),
+        "contact_name": contact.name,
+        "contact_phone": contact.phone,
+        "ai_paused_until": str(contact.ai_paused_until) if contact.ai_paused_until else None,
+        "is_paused": bool(contact.ai_paused_until and contact.ai_paused_until.replace(tzinfo=None) > datetime.utcnow())
+    }
+
+    # Clear paused state for testing if it was paused
+    if contact.ai_paused_until:
+        contact.ai_paused_until = None
+        db.commit()
+        steps["2_contact_check"]["ai_paused_until_cleared"] = True
+
+    # 3. Direct AI Generation Test
+    effective_api_key = (org.ai_api_key if org else None) or app_settings.gemini_api_key
     try:
-        reply_result = await trigger_ai_agent_reply(
+        raw_ai = await call_ai_provider(
+            provider="gemini",
+            api_key=effective_api_key,
+            model="gemini-1.5-flash",
+            system_prompt="You are Shepherd AI, a helpful church/business assistant. Respond concisely in JSON format: {\"reply\": \"Your response here\", \"action\": {\"type\": \"NONE\"}}",
+            user_turn=f"Customer says: {text_message}"
+        )
+        parsed = parse_agent_response(raw_ai)
+        steps["3_ai_generation"] = {
+            "success": True,
+            "raw_preview": raw_ai[:200],
+            "parsed_reply": parsed.get("reply")
+        }
+    except Exception as ai_e:
+        steps["3_ai_generation"] = {
+            "success": False,
+            "error": str(ai_e),
+            "traceback": traceback.format_exc()
+        }
+
+    # 4. Direct Meta WhatsApp Send Test
+    reply_to_send = steps.get("3_ai_generation", {}).get("parsed_reply") or "Hello from Shepherd AI! How can I help you today?"
+    if org and org.whatsapp_phone_id and org.whatsapp_access_token:
+        try:
+            meta = get_meta_whatsapp_service(org.whatsapp_phone_id, org.whatsapp_access_token)
+            meta_res = await meta.send_message(to_phone=contact.phone, message=reply_to_send)
+            steps["4_meta_delivery"] = {
+                "success": meta_res.get("success", False),
+                "response": meta_res
+            }
+        except Exception as meta_e:
+            steps["4_meta_delivery"] = {
+                "success": False,
+                "error": str(meta_e),
+                "traceback": traceback.format_exc()
+            }
+    else:
+        steps["4_meta_delivery"] = {
+            "success": False,
+            "error": "Missing phone_number_id or whatsapp_access_token on organization"
+        }
+
+    # 5. Also run standard trigger_ai_agent_reply
+    try:
+        std_reply = await trigger_ai_agent_reply(
             contact_id=contact.id,
             incoming_text=text_message,
             org_id=org_id,
             db=db
         )
-        return {
-            "success": True,
-            "phone": contact.phone,
-            "contact_name": contact.name,
-            "org_id": str(org_id),
-            "incoming_text": text_message,
-            "ai_result": reply_result
+        steps["5_standard_orchestrator"] = {
+            "returned_value": std_reply
         }
-    except Exception as err:
-        import traceback
-        return {
-            "success": False,
-            "error": str(err),
+    except Exception as std_e:
+        steps["5_standard_orchestrator"] = {
+            "error": str(std_e),
             "traceback": traceback.format_exc()
         }
+
+    return {
+        "diagnostic_report": steps
+    }
+
 
