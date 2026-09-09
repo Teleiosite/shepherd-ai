@@ -1365,12 +1365,13 @@ async def sync_decehub_catalog_direct(
     import httpx
     import re
     import urllib.parse
+    from uuid import UUID
     from app.models.catalog_item import CatalogItem
 
     try:
         org_uuid = UUID(org_id)
-    except:
-        raise HTTPException(status_code=400, detail="Invalid org_id UUID")
+    except Exception as uuid_err:
+        raise HTTPException(status_code=400, detail=f"Invalid org_id UUID: {uuid_err}")
 
     if clear_existing:
         db.query(CatalogItem).filter(CatalogItem.organization_id == org_uuid).delete()
