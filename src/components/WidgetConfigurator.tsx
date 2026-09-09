@@ -33,6 +33,22 @@ export default function WidgetConfigurator() {
     { label: 'Luxury Black', value: '#0f172a' }
   ];
 
+  useEffect(() => {
+    if (orgId) {
+      fetch(`${BACKEND_URL}/api/widget/config/${orgId}`)
+        .then(res => res.ok ? res.json() : null)
+        .then(cfg => {
+          if (cfg) {
+            if (cfg.primary_color) setPrimaryColor(cfg.primary_color);
+            if (cfg.ai_name) setAiName(cfg.ai_name);
+            if (cfg.welcome_message) setWelcomeMessage(cfg.welcome_message);
+            if (cfg.position) setPosition(cfg.position);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [orgId]);
+
   const handleCopy = () => {
     navigator.clipboard.writeText(embedCode);
     setCopied(true);
@@ -52,6 +68,7 @@ export default function WidgetConfigurator() {
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({
+            ai_name: aiName,
             widget_primary_color: primaryColor,
             widget_welcome_message: welcomeMessage,
             widget_position: position

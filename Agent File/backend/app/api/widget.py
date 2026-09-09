@@ -53,9 +53,10 @@ async def get_widget_config(
         "org_id": str(org.id),
         "name": org.name,
         "ai_name": org.ai_name or "Live Assistant",
-        "primary_color": getattr(org, "widget_primary_color", "#0d9488") or "#0d9488",
-        "welcome_message": getattr(org, "widget_welcome_message", "Hello! How can we help you today?") or "Hello! How can we help you today?",
+        "primary_color": getattr(org, "widget_primary_color", "#10b981") or "#10b981",
+        "welcome_message": getattr(org, "widget_welcome_message", "Welcome! How can we help you today?") or "Welcome! How can we help you today?",
         "position": getattr(org, "widget_position", "bottom-right") or "bottom-right",
+        "placeholder": getattr(org, "widget_placeholder", "Ask a question or inquire about products...") or "Ask a question or inquire about products...",
         "avatar_url": getattr(org, "widget_avatar_url", None)
     }
 

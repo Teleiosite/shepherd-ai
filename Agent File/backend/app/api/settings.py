@@ -1209,4 +1209,148 @@ async def sync_workspace(
     }
 
 
+@router.get("/configure-ecommerce")
+async def configure_ecommerce(
+    store_name: Optional[str] = "DeceHub",
+    ai_name: Optional[str] = "DeceHub Assistant",
+    business_type: Optional[str] = "E-Commerce Tech & Electronics Store",
+    primary_color: Optional[str] = "#10b981",
+    welcome_message: Optional[str] = "Welcome to DeceHub! How can I help you find the latest tech trends and gadgets today?",
+    clear_spiritual_knowledge: bool = True,
+    db: Session = Depends(get_db)
+):
+    """
+    Switches AI persona from default church/spiritual mentor to an e-commerce tech store for DeceHub.
+    Purges old sample church knowledge base articles and sets up store knowledge.
+    """
+    # Find primary organization
+    primary_row = db.execute(text("""
+        SELECT organization_id FROM users WHERE email ILIKE '%seye%' LIMIT 1
+    """)).fetchone()
+
+    if not primary_row:
+        primary_row = db.execute(text("""
+            SELECT o.id 
+            FROM organizations o
+            LEFT JOIN contacts c ON c.organization_id = o.id
+            GROUP BY o.id
+            ORDER BY COUNT(c.id) DESC, o.created_at DESC
+            LIMIT 1
+        """)).fetchone()
+
+    if not primary_row:
+        return {"error": "No organization found"}
+
+    target_org_id = str(primary_row[0])
+
+    # 1. Update Organization branding & AI persona
+    db.execute(text("""
+        UPDATE organizations
+        SET name = :store_name,
+            ai_name = :ai_name,
+            ai_business_type = :business_type,
+            ai_tone = 'Professional, friendly, and expert tech sales assistant for DeceHub. Assist customers with product recommendations, technical specifications, orders, warranty, shipping, and shopping inquiries. Keep answers concise, helpful, and natural.',
+            widget_primary_color = :primary_color,
+            widget_welcome_message = :welcome_message,
+            ai_auto_reply_enabled = 'true',
+            ai_reply_mode = 'auto-send'
+        WHERE id = :org_id
+    """), {
+        "store_name": store_name,
+        "ai_name": ai_name,
+        "business_type": business_type,
+        "primary_color": primary_color,
+        "welcome_message": welcome_message,
+        "org_id": target_org_id
+    })
+
+    # 2. Clear old church / spiritual knowledge resources
+    deleted_count = 0
+    if clear_spiritual_knowledge:
+        # Delete embeddings first
+        db.execute(text("""
+            DELETE FROM knowledge_embeddings
+            WHERE resource_id IN (
+                SELECT id FROM knowledge_resources 
+                WHERE organization_id = :org_id
+                AND (
+                    title ILIKE '%convert%' OR title ILIKE '%believer%' OR title ILIKE '%operation win%' 
+                    OR title ILIKE '%spiritual%' OR title ILIKE '%sermon%' OR title ILIKE '%bible%'
+                    OR title ILIKE '%discipleship%' OR content ILIKE '%operation win bu%'
+                    OR content ILIKE '%altar call%' OR content ILIKE '%give their life to christ%'
+                )
+            )
+        """), {"org_id": target_org_id})
+
+        del_res = db.execute(text("""
+            DELETE FROM knowledge_resources
+            WHERE organization_id = :org_id
+            AND (
+                title ILIKE '%convert%' OR title ILIKE '%believer%' OR title ILIKE '%operation win%' 
+                OR title ILIKE '%spiritual%' OR title ILIKE '%sermon%' OR title ILIKE '%bible%'
+                OR title ILIKE '%discipleship%' OR content ILIKE '%operation win bu%'
+                OR content ILIKE '%altar call%' OR content ILIKE '%give their life to christ%'
+            )
+        """), {"org_id": target_org_id})
+        deleted_count = del_res.rowcount
+
+    # 3. Add clean DeceHub tech store knowledge
+    sample_kb = [
+        (
+            "DeceHub Store & Product Catalog",
+            "DeceHub is an online electronics and tech hub offering the latest tech trends, brand new and certified smartphones, laptops, audio gear, smart accessories, computer components, and consumer gadgets. All items are 100% authentic and covered by standard manufacturer warranties."
+        ),
+        (
+            "Shipping, Delivery & Payment Policy",
+            "DeceHub offers fast nationwide shipping across all states. Major city orders are delivered within 24 to 48 hours. Express same-day delivery is available for orders placed before 12pm. We accept secure card payments, bank transfers, and Paystack."
+        ),
+        (
+            "Warranty & 7-Day Return Policy",
+            "Every product from DeceHub includes a 1-year limited warranty against hardware manufacturing defects. Customers enjoy a 7-day return or exchange policy if an item arrives damaged or defective in original packaging."
+        ),
+        (
+            "DeceHub Customer Support",
+            "Our tech support and sales team is available Monday to Saturday from 8:00 AM to 8:00 PM. For live order inquiries, customers can chat directly with this AI Concierge or contact support via WhatsApp."
+        )
+    ]
+
+    import uuid
+    for title, content in sample_kb:
+        existing = db.execute(text("""
+            SELECT id FROM knowledge_resources 
+            WHERE organization_id = :org_id AND title = :title
+        """), {"org_id": target_org_id, "title": title}).fetchone()
+        
+        if not existing:
+            db.execute(text("""
+                INSERT INTO knowledge_resources (id, organization_id, title, content, type, created_at)
+                VALUES (:id, :org_id, :title, :content, 'Guide', NOW())
+            """), {
+                "id": str(uuid.uuid4()),
+                "org_id": target_org_id,
+                "title": title,
+                "content": content
+            })
+
+    db.commit()
+
+    # Fetch updated state
+    current_kbs = db.execute(text("""
+        SELECT title FROM knowledge_resources WHERE organization_id = :org_id
+    """), {"org_id": target_org_id}).fetchall()
+
+    return {
+        "success": True,
+        "message": "Store successfully reconfigured for DeceHub!",
+        "organization_id": target_org_id,
+        "store_name": store_name,
+        "ai_name": ai_name,
+        "business_type": business_type,
+        "primary_color": primary_color,
+        "deleted_old_church_resources": deleted_count,
+        "active_knowledge_resources": [r[0] for r in current_kbs]
+    }
+
+
+
 

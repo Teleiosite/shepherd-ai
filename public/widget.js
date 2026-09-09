@@ -18,6 +18,11 @@
   let welcomeMsg = 'Hello! How can I assist you today?';
   let position = 'bottom-right';
 
+  // Pre-warm backend server immediately to eliminate cold start sleep
+  try {
+    fetch(`${apiUrl}/health`, { method: 'GET', mode: 'no-cors' }).catch(() => {});
+  } catch (e) {}
+
   // Inject Styles
   const style = document.createElement('style');
   style.id = 'shepherd-widget-styles';
@@ -255,7 +260,7 @@
         </div>
       </div>
       <div id="shepherd-widget-input-bar">
-        <input type="text" id="shepherd-widget-input" placeholder="Ask about cars, services, bookings..." autocomplete="off" />
+        <input type="text" id="shepherd-widget-input" placeholder="Ask a question or inquire about products..." autocomplete="off" />
         <button id="shepherd-widget-send">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <line x1="22" y1="2" x2="11" y2="13"></line>
@@ -294,6 +299,9 @@
           welcomeMsg = cfg.welcome_message;
           if (welcomeBubble) welcomeBubble.textContent = welcomeMsg;
         }
+        if (cfg.placeholder) {
+          input.placeholder = cfg.placeholder;
+        }
         if (cfg.primary_color && cfg.primary_color !== primaryColor) {
           primaryColor = cfg.primary_color;
           btn.style.backgroundColor = primaryColor;
@@ -307,6 +315,11 @@
   // Session persistence
   const storageKey = `shepherd_chat_${orgId || 'default'}`;
   let visitorName = localStorage.getItem('shepherd_visitor_name') || 'Web Visitor';
+  let visitorId = localStorage.getItem('shepherd_visitor_id');
+  if (!visitorId) {
+    visitorId = 'web_' + Math.random().toString(36).substring(2, 9);
+    try { localStorage.setItem('shepherd_visitor_id', visitorId); } catch (e) {}
+  }
 
   // Toggle Box
   btn.addEventListener('click', () => {
@@ -397,19 +410,35 @@
     showTyping();
 
     try {
-      const res = await fetch(`${apiUrl}/api/widget/message`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          org_id: orgId,
-          visitor_name: visitorName,
-          message: text
-        })
-      });
+      let res;
+      let attempts = 0;
+      while (attempts < 2) {
+        attempts++;
+        try {
+          res = await fetch(`${apiUrl}/api/widget/message`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              org_id: orgId,
+              visitor_name: visitorName,
+              visitor_phone_or_email: visitorId,
+              message: text
+            })
+          });
+          if (res && res.ok) break;
+        } catch (fetchErr) {
+          if (attempts < 2) {
+            // Server may be warming up on Render, pause 2.5s and retry automatically
+            await new Promise(r => setTimeout(r, 2500));
+          } else {
+            throw fetchErr;
+          }
+        }
+      }
 
       hideTyping();
 
-      if (res.ok) {
+      if (res && res.ok) {
         const data = await res.json();
         
         // AI Text Reply
@@ -436,7 +465,7 @@
       console.error('[Shepherd Widget Error]:', err);
       const errBubble = document.createElement('div');
       errBubble.className = 'shepherd-msg shepherd-msg-in';
-      errBubble.textContent = "Network error. Please check your internet connection.";
+      errBubble.textContent = "Server was warming up. Please send your message again now.";
       msgs.appendChild(errBubble);
     }
   };

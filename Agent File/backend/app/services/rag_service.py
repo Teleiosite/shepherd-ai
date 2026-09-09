@@ -29,44 +29,51 @@ async def search_knowledge_base(
     resources = []
     seen_ids = set()
 
-    # 1. Generate embedding for query
-    query_embedding = await generate_embedding(query, api_key=api_key)
-    if query_embedding:
-        try:
-            sql = text("""
-                SELECT resource_id, chunk_text, 1 - (embedding <=> :embedding) as similarity
-                FROM knowledge_embeddings
-                JOIN knowledge_resources ON knowledge_embeddings.resource_id = knowledge_resources.id
-                WHERE knowledge_resources.organization_id = :org_id
-                ORDER BY embedding <=> :embedding
-                LIMIT :limit
-            """)
-            results = db.execute(
-                sql, 
-                {
-                    "embedding": str(query_embedding), 
-                    "org_id": str(organization_id),
-                    "limit": limit
-                }
-            ).fetchall()
-            
-            for row in results:
-                resource_id = row[0]
-                similarity = row[2]
-                if resource_id not in seen_ids:
-                    resource = db.query(KnowledgeResource).filter(KnowledgeResource.id == resource_id).first()
-                    if resource:
-                        resources.append((resource, similarity))
-                        seen_ids.add(resource_id)
-        except Exception as vec_err:
+    clean_q = query.strip().lower()
+    is_greeting_or_short = len(clean_q) < 8 or clean_q in [
+        "hello", "hi", "hey", "good morning", "good afternoon", "good evening", 
+        "ok", "okay", "wow", "great", "wow that's great", "thanks", "thank you", "bye", "are you there"
+    ]
+
+    # 1. Generate embedding for query (skip for short greetings to ensure sub-second response)
+    if not is_greeting_or_short:
+        query_embedding = await generate_embedding(query, api_key=api_key)
+        if query_embedding:
             try:
-                db.rollback()
-            except Exception:
-                pass
-            print(f"Vector search failed, falling back to keyword search: {vec_err}")
+                sql = text("""
+                    SELECT resource_id, chunk_text, 1 - (embedding <=> :embedding) as similarity
+                    FROM knowledge_embeddings
+                    JOIN knowledge_resources ON knowledge_embeddings.resource_id = knowledge_resources.id
+                    WHERE knowledge_resources.organization_id = :org_id
+                    ORDER BY embedding <=> :embedding
+                    LIMIT :limit
+                """)
+                results = db.execute(
+                    sql, 
+                    {
+                        "embedding": str(query_embedding), 
+                        "org_id": str(organization_id),
+                        "limit": limit
+                    }
+                ).fetchall()
+                
+                for row in results:
+                    resource_id = row[0]
+                    similarity = row[2]
+                    if resource_id not in seen_ids:
+                        resource = db.query(KnowledgeResource).filter(KnowledgeResource.id == resource_id).first()
+                        if resource:
+                            resources.append((resource, similarity))
+                            seen_ids.add(resource_id)
+            except Exception as vec_err:
+                try:
+                    db.rollback()
+                except Exception:
+                    pass
+                print(f"Vector search failed, falling back to keyword search: {vec_err}")
 
     # 2. Text/Keyword fallback search if vector search returned no results
-    if not resources and query:
+    if not resources and query and not is_greeting_or_short:
         words = [w.strip() for w in query.split() if len(w.strip()) > 3]
         query_filters = []
         for word in words[:3]:
@@ -86,8 +93,8 @@ async def search_knowledge_base(
                 resources.append((res, 0.8))
                 seen_ids.add(res.id)
 
-    # 3. If still empty, return top general knowledge resources for the org
-    if not resources:
+    # 3. If still empty, return top general knowledge resources only if query is an inquiry
+    if not resources and not is_greeting_or_short and len(query.split()) > 2:
         top_res = db.query(KnowledgeResource).filter(
             KnowledgeResource.organization_id == organization_id
         ).limit(limit).all()
