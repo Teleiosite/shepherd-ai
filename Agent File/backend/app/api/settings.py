@@ -927,10 +927,80 @@ async def quick_activate_get(
             "success": True,
             "message": "AI Auto-reply successfully activated across all organizations!",
             "phone_id": phone_id,
-            "model": "gemini-3.5-flash",
+            "model": "gemini-1.5-flash / gemini-2.0-flash",
             "mode": "auto-send"
         }
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/test-reply")
+async def test_reply_endpoint(
+    phone: str = "+2349035523402",
+    text_message: str = "Hello",
+    db: Session = Depends(get_db)
+):
+    """
+    Live test endpoint — forces trigger_ai_agent_reply for the given phone number
+    and returns a complete diagnostic execution report.
+    Usage: /api/settings/test-reply?phone=+2349035523402&text_message=Hello
+    """
+    from app.services.agent_service import trigger_ai_agent_reply
+    from app.models.contact import Contact
+    from datetime import datetime
+
+    # 1. Find or create contact
+    clean_p = phone.replace(" ", "").replace("-", "")
+    contact = db.query(Contact).filter(
+        (Contact.phone == clean_p) | 
+        (Contact.phone == "+" + clean_p.lstrip("+"))
+    ).first()
+
+    org_row = db.execute(
+        text("SELECT id FROM organizations WHERE (whatsapp_access_token IS NOT NULL AND whatsapp_access_token != '') LIMIT 1")
+    ).fetchone()
+    if not org_row:
+        org_row = db.execute(text("SELECT id FROM organizations LIMIT 1")).fetchone()
+
+    if not org_row:
+        return {"error": "No organization found"}
+
+    org_id = org_row[0]
+
+    if not contact:
+        contact = Contact(
+            organization_id=org_id,
+            name="Test User",
+            phone=clean_p if clean_p.startswith("+") else "+" + clean_p,
+            category="New Convert",
+            join_date=datetime.now()
+        )
+        db.add(contact)
+        db.commit()
+        db.refresh(contact)
+
+    # 2. Trigger AI reply directly
+    try:
+        reply_result = await trigger_ai_agent_reply(
+            contact_id=contact.id,
+            incoming_text=text_message,
+            org_id=org_id,
+            db=db
+        )
+        return {
+            "success": True,
+            "phone": contact.phone,
+            "contact_name": contact.name,
+            "org_id": str(org_id),
+            "incoming_text": text_message,
+            "ai_result": reply_result
+        }
+    except Exception as err:
+        import traceback
+        return {
+            "success": False,
+            "error": str(err),
+            "traceback": traceback.format_exc()
+        }
 

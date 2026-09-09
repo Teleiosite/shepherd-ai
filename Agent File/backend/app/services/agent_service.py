@@ -43,17 +43,68 @@ async def call_ai_provider(
     if provider == "gemini":
         import google.generativeai as genai
         genai.configure(api_key=api_key)
-        # Use provided model or fallback to standard flash
-        model_name = model if model and "gemini" in model else "gemini-3.5-flash"
-        generative_model = genai.GenerativeModel(
-            model_name=model_name,
-            system_instruction=system_prompt
-        )
-        response = generative_model.generate_content(
-            user_turn,
-            generation_config={"temperature": 0.7}
-        )
-        return response.text.strip() if response and response.text else "{}"
+
+        # Build prioritized list of valid models to try
+        candidates = []
+        if model and all(x not in model for x in ["3.5", "3.8", "3.7", "3.6", "3.1"]):
+            candidates.append(model)
+        candidates.extend([
+            "gemini-1.5-flash",
+            "gemini-2.0-flash",
+            "gemini-2.5-flash",
+            "gemini-1.5-flash-latest",
+            "gemini-1.5-pro",
+            "gemini-pro"
+        ])
+
+        last_err = None
+        for cand in candidates:
+            try:
+                logger.info(f"🤖 Calling Gemini SDK with model '{cand}'...")
+                generative_model = genai.GenerativeModel(
+                    model_name=cand,
+                    system_instruction=system_prompt
+                )
+                response = generative_model.generate_content(
+                    user_turn,
+                    generation_config={"temperature": 0.7}
+                )
+                if response and response.text:
+                    logger.info(f"✅ Gemini model '{cand}' succeeded! Response length: {len(response.text)}")
+                    return response.text.strip()
+            except Exception as m_err:
+                logger.warning(f"⚠️ Gemini model '{cand}' failed: {m_err}")
+                last_err = m_err
+                continue
+
+        # If SDK attempts failed, fallback to direct REST API
+        try:
+            logger.info("🔄 Falling back to Google Generative Language REST API...")
+            import httpx
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                for rest_model in ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro"]:
+                    rest_url = f"https://generativelanguage.googleapis.com/v1beta/models/{rest_model}:generateContent?key={api_key}"
+                    payload = {
+                        "contents": [
+                            {"role": "user", "parts": [{"text": f"{system_prompt}\n\n{user_turn}"}]}
+                        ],
+                        "generationConfig": {"temperature": 0.7}
+                    }
+                    r = await client.post(rest_url, json=payload)
+                    if r.status_code == 200:
+                        r_data = r.json()
+                        candidates_list = r_data.get("candidates", [])
+                        if candidates_list:
+                            text_part = candidates_list[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+                            if text_part:
+                                logger.info(f"✅ REST API model '{rest_model}' succeeded!")
+                                return text_part.strip()
+                    else:
+                        logger.warning(f"⚠️ REST model '{rest_model}' HTTP {r.status_code}: {r.text[:200]}")
+        except Exception as rest_err:
+            logger.error(f"❌ REST API fallback failed: {rest_err}")
+
+        raise last_err or Exception("All Gemini models failed")
 
     # OpenAI-compatible providers (OpenAI, DeepSeek, Groq, Custom)
     url = base_url
