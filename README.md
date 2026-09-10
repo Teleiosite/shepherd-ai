@@ -1,507 +1,321 @@
-# 🚀 Shepherd AI — Multi-Industry WhatsApp Engagement & Automation Platform
+# 🚀 Shepherd AI — Enterprise Multi-Channel AI Agent & CRM Platform
 
-> **A comprehensive, privacy-first CRM and AI automation platform for any business or organization. Acts as a smart digital assistant — tracking customer journeys, auto-responding in your tone, managing bookings, and automating personalized communication via WhatsApp.**
+> **A unified, privacy-first conversational AI and multi-channel automation platform. Shepherd AI empowers businesses, service providers, and organizations to engage leads, automate sales, showcase dynamic visual product catalogs, manage bookings, and deliver 24/7 personalized customer support across WhatsApp and Website Chat Widgets.**
 
-[![Live Demo](https://img.shields.io/badge/Live-Demo-blue?style=for-the-badge)](https://shepherd-ai.vercel.app)
-[![Backend](https://img.shields.io/badge/Backend-Online-green?style=for-the-badge)](https://shepherd-ai-backend.onrender.com)
-[![Database](https://img.shields.io/badge/Database-Supabase%20%2F%20PostgreSQL-3ECF8E?style=for-the-badge&logo=supabase)](https://supabase.com)
+[![Live Web App](https://img.shields.io/badge/Web%20App-Vercel-black?style=for-the-badge&logo=vercel)](https://shepherd-ai.vercel.app)
+[![API Backend](https://img.shields.io/badge/FastAPI-Render-46E3B7?style=for-the-badge&logo=render)](https://shepherd-ai-backend.onrender.com)
+[![Database](https://img.shields.io/badge/PostgreSQL-Supabase-3ECF8E?style=for-the-badge&logo=supabase)](https://supabase.com)
+[![AI Engine](https://img.shields.io/badge/Google%20Gemini-3.7%20Flash-4285F4?style=for-the-badge&logo=google)](https://ai.google.dev/)
+[![WhatsApp](https://img.shields.io/badge/Meta%20Cloud%20API-v18.0-25D366?style=for-the-badge&logo=whatsapp)](https://developers.facebook.com/docs/whatsapp/cloud-api)
 
 ---
 
-## ✨ Feature Overview
+## 🌟 Platform Highlights
 
-### 🤖 AI Agent Auto-Reply System ✨ NEW!
-- **Responds in your tone** — The AI learns your communication style and auto-replies to incoming WhatsApp messages on your behalf
-- **Smart Intent Detection** — Identifies if a customer wants to book, needs a document, has a question, wants to pay, or needs a human
-- **Configurable Reply Mode** — Choose between `Auto-reply`, `Suggestions Only`, or `Manual`
-- **Adjustable Delay** — Set a realistic response delay (e.g., 3–30 seconds) so replies feel human
-- **Supported AI Actions:**
-  - 📅 **Bookings** — AI captures appointment details and creates a booking record automatically
-  - 📂 **Send Documents/Images** — Matches and auto-delivers files from your Media Library
-  - 🌐 **Web Search** — Searches the internet for real-time answers to customer questions
-  - 💳 **Payment Links** — Sends configured Paystack or custom payment links
-  - 🙋 **Flag for Human** — Escalates complex queries to you with a notification
-  - 💬 **RAG Q&A** — Answers questions using your uploaded Knowledge Base
+Shepherd AI operates as an intelligent 24/7 digital representative for your organization. It combines a **zero-token rule engine**, **generative RAG intelligence**, **bi-directional WhatsApp Cloud synchronization**, **interactive visual commerce**, and **voice note processing** into a single multi-tenant workspace.
 
-### 📋 Advanced Contact Management
-- Bulk import via Excel (`.xlsx`) or CSV
-- Dynamic categorization (Customer, Lead, + Custom categories)
-- Instant search and filtering
-- Join date tracking for automated workflows
-- Full contact history and notes
-- Auto-creation from incoming WhatsApp messages
-- **Contacts sort to the top** of the list automatically after a message is sent
+```
+                  ┌──────────────────────────────────────────────────────────┐
+                  │                 Shepherd AI Ecosystem                    │
+                  └────────────────────────────┬─────────────────────────────┘
+                                               │
+               ┌───────────────────────────────┼───────────────────────────────┐
+               ▼                               ▼                               ▼
+       💬 WhatsApp Cloud API           🌐 Website Widget               👥 Team Dashboard
+    • Official Meta Graph API       • Zero-dependency script        • Real-time Live Chats
+    • Multi-Product Visual Cards    • Client Speech Recognition     • Booking & Lead Manager
+    • Inbound Voice Audio (OGG)     • Responsive Catalog Cards      • Media Library & RAG Docs
+    • Audio Voice Notes (Opus)      • Customizable Brand Theme      • Workflows & Group Broadcasts
+```
 
-### 💬 Live WhatsApp Messaging
-- ✅ **Send messages** directly to WhatsApp
-- ✅ **Receive messages** in real-time
-- ✅ **Bi-directional communication** with polling architecture
-- Rich media support (images, attachments with captions)
-- Message scheduling and queuing
-- Chat history tracking
-- **Two connection methods:**
-  - **WPPConnect Bridge** (Free, desktop-based)
-  - **WhatsApp Business Cloud API** (Official, cloud-based, mobile-friendly)
+---
 
-### 📂 Media Library ✨ NEW!
-- Upload and manage **documents**, **images**, **PDFs**, and other files
-- Assign custom **matching names** and descriptions to each file
-- The AI Agent automatically picks the best matching file to send when a customer asks for it
-- Files stored securely and synced with the backend
+## ⚡ Key Capabilities
 
-### 📅 Bookings Manager ✨ NEW!
-- View and manage all appointments created via the AI Agent or manually
-- Actions: **Confirm**, **Complete**, and **Cancel** bookings with one click
-- Table view with contact name, phone, purpose, date/time, and status badge
-- Syncs with the Supabase/PostgreSQL `bookings` database table
+### 1. 🤖 24/7 Conversational AI Agent & Orchestrator
+- **Natural Tone Calibration:** Responds dynamically in your business persona (warm, professional, consultative, or sales-driven).
+- **Rule-Based Intent Engine (Zero-Token Cost Optimizer):**
+  - High-speed pattern matcher resolving common inquiries (**Greetings, Operating Hours, Store Location, Nationwide Delivery/Waybill fees, Payment Methods, Warranties, and Human Escalation**) in **<10ms with 0 LLM tokens**, preserving quota and eliminating latency.
+- **Smart Tool & Intent Execution:**
+  - `CREATE_BOOKING`: Automatically schedules appointments with strict date normalization (`YYYY-MM-DD`, `HH:MM AM/PM`) and customer contact validation.
+  - `SEARCH_CATALOG`: Real-time inventory matching with title-boosted relevance algorithms.
+  - `FLAG_FOR_HUMAN`: Automatically detects crisis, dissatisfaction, or customer request for human triage and pauses the AI for 12 hours.
+  - `SEND_DOCUMENT` / `SEND_IMAGE`: Delivers matching brochures, invoices, and spec sheets directly from the Media Library.
+  - `SEND_PAYMENT_LINK`: Integrates with Paystack, Flutterwave, or direct checkout links.
 
-### 👥 WhatsApp Groups Management
-- Sync all your WhatsApp groups automatically
-- **Auto-welcome** new group members with personalized DMs
-- **Auto-add group members** as contacts with configurable categories
-- **Broadcast scheduling** — send messages to groups immediately or at a future date/time
-- **Queue / Scheduled tab** ✨ NEW! — View, edit, reschedule, or cancel pending broadcast messages before they are sent
+### 2. 🛍️ Interactive Visual Catalog & WhatsApp Product Cards
+- **Multi-Product Rich Cards on WhatsApp:**
+  - Instead of dumping plain text links, the agent dispatches up to 3 individual visual media cards with high-resolution photos, bold titles, localized currency prices, stock availability, and direct checkout URLs.
+- **Web Widget Interactive Carousel:**
+  - Embeddable visual cards with direct "View & Order" action buttons, optimized for mobile and desktop screens.
+- **Catalog Management:**
+  - Internal catalog inventory with custom attribute schemas (brand, year, specifications).
+  - External inventory webhook support to integrate with existing WooCommerce, Shopify, or custom ERP inventory systems.
 
-### 🧠 Context-Aware AI (RAG)
-- Upload product guides, manuals, FAQs, or any reference material
-- AI references your specific Knowledge Base in every response
-- Understands customer journey stages
-- Multi-format support (PDF, DOCX, TXT)
+### 3. 🎙️ Voice Note Intelligence (Two-Way Audio)
+- **Inbound WhatsApp Voice Notes:**
+  - Automatically downloads binary voice notes (`audio/ogg; codecs=opus`) from Meta Cloud Graph API, inspects CDN redirects, and transcribes audio via Gemini Multimodal Audio / Whisper.
+- **Web Chat Widget Voice Notes:**
+  - Browser Web Speech API integration capturing instant text transcripts with audio blob fallback.
+  - Resilient network delivery with automatic 2-attempt backoff retry and payload optimization.
+- **Outbound Voice Synthesis:**
+  - Generates natural synthesized voice replies (`ai_voice_reply_mode: "voice" | "match_input" | "text"`) using natural neural voices (e.g. `en-NG-EzinneNeural`).
 
-### ⚡ Custom Workflow Automation
-- Upload custom workflows via Excel/CSV
-- Create unlimited multi-step engagement tracks
-- **Multi-industry support:**
-  - 🛍️ E-commerce: Order follow-up sequences
-  - 🏘️ Real Estate: Lead nurturing campaigns
-  - 💪 Fitness: Member onboarding journeys
-  - 📚 Education: Student engagement tracks
-  - 💼 Consulting: Client onboarding workflows
-  - ⛪ Ministry: Discipleship and follow-up tracks
-- Assign different workflows to different contact categories
-- Day-based automation (Day 0, 1, 3, 7, 14, etc.)
-- Bulk message generation and queuing
+### 4. 📋 Lead Management & CRM
+- **Automatic Contact Creation:** Automatically captures phone numbers, visitor identities, and lead sources from incoming chats and web sessions.
+- **Dynamic Categorization:** Segment contacts by lifecycle stage (`Website Lead`, `Customer`, `VIP`, `Follow-up`).
+- **Full Conversation History:** Persistent conversation threads tracking inbound, outbound, and AI automated responses.
+- **Human Handover & Triage:** One-click toggle to pause the AI agent and hand control over to a human representative.
 
-### 📊 Analytics Dashboard
-- Contact distribution charts
-- Message activity tracking
-- Knowledge base statistics
-- Engagement metrics
-- Workflow completion rates
+### 5. 📅 Bookings & Appointment Manager
+- Captures consultation, demo, inspection, and service bookings.
+- Interactive workflow: Confirm, Complete, or Cancel appointments.
+- Strict anti-hallucination validation ensuring phone number or email verification before confirming appointments.
+
+### 6. 👥 WhatsApp Groups & Broadcast Scheduling
+- Automated group member synchronization.
+- **Auto-Welcome:** Sends personalized private direct messages to new members who join synced WhatsApp groups.
+- **Broadcast Queue:** Schedule targeted group broadcasts immediately or at future timestamps with rescheduling and cancellation controls.
+
+### 7. 🧠 Context-Aware Knowledge Base (RAG)
+- Semantic vector knowledge search indexing company PDFs, documents, policies, price sheets, and FAQs.
+- Embeddings dynamically referenced during generative turns to answer bespoke domain questions without hallucination.
 
 ---
 
 ## 🏗️ System Architecture
 
 ```mermaid
-graph TD
-    User((User))
-
-    subgraph Frontend [Frontend - Vercel]
-        UI[React + Vite App]
+flowchart TD
+    subgraph ClientLayer ["Clients & Channels"]
+        WA[Customer on WhatsApp]
+        WebVisitor[Website Visitor]
+        Staff[Business Staff Dashboard]
     end
 
-    subgraph Backend [Backend - Render]
-        API[FastAPI Server]
-        DB[(Supabase / PostgreSQL)]
+    subgraph Ingestion ["Ingestion & Edge Gateways"]
+        MetaAPI["Meta Cloud API (Webhook)"]
+        WidgetAPI["Web Widget API (/api/widget)"]
+        DashboardUI["React 19 Frontend (Vercel)"]
     end
 
-    subgraph Bridge [Bridge - User's PC]
-        BridgeApp[Electron Bridge App]
-        WPP[WPPConnect Client]
+    subgraph BackendCore ["FastAPI Backend (Render)"]
+        Router["API Gateway / Routers"]
+        Auth["JWT Auth & Permissions"]
+        QuotaGuard["SaaS Quota Guard"]
+        RuleEngine["Rule-Based Intent Engine (0-Token)"]
+        GenerativePipeline["Generative AI Pipeline"]
+        CatalogEngine["Universal Catalog Engine"]
+        MediaDispatcher["WhatsApp Media Card Dispatcher"]
     end
 
-    subgraph AI [AI Layer]
-        Gemini[Google Gemini]
-        Agent[AI Agent Engine]
-        RAG[Knowledge Base RAG]
+    subgraph DataLayer ["Data & AI Services"]
+        Postgres[(Supabase PostgreSQL)]
+        GeminiAI["Google Gemini API (3.7 Flash)"]
+        MediaStorage["Supabase Storage / CDN"]
     end
 
-    User -->|Interacts| UI
-    UI <-->|REST API| API
-    API <-->|Store/Retrieve| DB
-    API <-->|AI Generation| Gemini
-    API --> Agent
-    Agent --> RAG
-    Agent -->|Browse Web| Web[Internet]
+    WA <-->|HTTPS Webhook / Send| MetaAPI
+    MetaAPI <--> Router
+    WebVisitor <-->|widget.js / Fetch| WidgetAPI
+    WidgetAPI <--> Router
+    Staff <--> DashboardUI
+    DashboardUI <-->|REST API / Bearer Token| Router
 
-    BridgeApp -->|Polls for pending| API
-    BridgeApp -->|Sends messages via| WPP
-    WPP <-->|WhatsApp Web| WA[WhatsApp Servers]
-    WPP -->|Incoming messages| BridgeApp
-    BridgeApp -->|WebSocket| UI
-    UI -->|Triggers Auto-reply| Agent
+    Router --> Auth --> QuotaGuard
+    QuotaGuard --> RuleEngine
+    RuleEngine -->|Rule Matched (0 Tokens)| MediaDispatcher
+    RuleEngine -->|Unmatched / Complex| GenerativePipeline
+    GenerativePipeline <--> GeminiAI
+    GenerativePipeline <--> Postgres
+    GenerativePipeline --> CatalogEngine
+    CatalogEngine <--> Postgres
+    CatalogEngine --> MediaDispatcher
+    MediaDispatcher --> MetaAPI
+    MediaDispatcher --> Postgres
+    Router <--> MediaStorage
 ```
 
-### Component Breakdown
+---
 
-#### 1. **Frontend** (React 19 + Vite) — Deployed on Vercel
-- Full CRM user interface
-- Live chat with AI Agent suggestions panel
-- Bookings, Media Library, Groups, Workflows management
-- Settings: AI tone, reply mode, business type, payment links
+## 📁 Repository Structure
 
-#### 2. **Backend** (FastAPI + Python) — Deployed on Render
-- Central API orchestrator
-- AI message generation and agent logic
-- Message queuing system
-- Contact, booking, and knowledge storage
-- Bridge polling endpoints
-- Web browsing proxy for real-time answers
-
-#### 3. **Database** (Supabase / PostgreSQL)
-- `organizations`, `users`, `contacts`, `messages`
-- `knowledge_resources`, `knowledge_embeddings` (vector search)
-- `workflow_steps`, `categories`
-- `groups`, `group_members`, `group_messages`
-- `bookings` ✨ NEW
-
-#### 4. **Bridge App** (Electron + Node.js) — Runs on User's PC
-- Local WhatsApp connection via WPPConnect
-- Polls backend every 5 seconds for pending messages
-- Sends queued messages to WhatsApp
-- Forwards incoming messages to frontend in real-time
+```
+shepherd-ai/
+├── Agent File/
+│   └── backend/                    # Core FastAPI Backend Server
+│       ├── app/
+│       │   ├── api/                # API Route Controllers
+│       │   │   ├── auth.py         # Registration, JWT login, profile
+│       │   │   ├── bookings.py     # Appointment scheduling
+│       │   │   ├── catalog.py      # Universal inventory & webhook test
+│       │   │   ├── contacts.py     # Lead and contact management
+│       │   │   ├── conversations.py# Status triage & human pause controls
+│       │   │   ├── groups.py       # WhatsApp group sync & broadcasts
+│       │   │   ├── knowledge.py    # RAG knowledge base resources
+│       │   │   ├── media_library.py# Document and image storage
+│       │   │   ├── messages.py     # Inbound/outbound message history
+│       │   │   ├── settings.py     # Organization configurations & AI keys
+│       │   │   ├── whatsapp.py     # Meta webhook & message dispatcher
+│       │   │   ├── widget.py       # Public website widget API & voice
+│       │   │   └── workflows.py    # Custom sequence automation
+│       │   ├── models/             # SQLAlchemy ORM Database Schemas
+│       │   ├── schemas/            # Pydantic Request/Response Models
+│       │   ├── services/           # Business Logic & Integrations
+│       │   │   ├── agent_service.py# Orchestrator & WhatsApp card dispatcher
+│       │   │   ├── ai_provider_service.py # Multi-LLM provider client
+│       │   │   ├── meta_whatsapp_service.py # Meta Graph API v18 client
+│       │   │   ├── rag_service.py  # Vector search and embeddings
+│       │   │   └── rule_engine.py  # Zero-token intent classification
+│       │   ├── config.py           # Environment settings loader
+│       │   ├── database.py         # SQLAlchemy engine & session pool
+│       │   └── main.py             # FastAPI entrypoint & middleware
+│       ├── requirements.txt        # Python backend dependencies
+│       └── Dockerfile              # Container deployment spec
+├── public/
+│   ├── widget.js                   # Universal embeddable website widget script
+│   └── ...                         # Static icons & assets
+├── src/                            # React 19 Frontend Dashboard
+│   ├── components/                 # UI Views (LiveChat, Contacts, Catalog, Settings)
+│   ├── services/                   # Frontend API connectors & storage
+│   ├── types/                      # TypeScript declarations
+│   └── App.tsx                     # Main layout & route router
+├── dist/                           # Production built frontend bundle
+├── package.json                    # Node dependencies and build scripts
+├── vite.config.ts                  # Vite build configuration
+└── README.md                       # Platform documentation
+```
 
 ---
 
-## 🚀 Getting Started
+## 🛠️ Tech Stack
 
-### For End Users
-
-#### 1. **Access the Web App**
-Visit: [https://shepherd-ai.vercel.app](https://shepherd-ai.vercel.app)
-
-#### 2. **Create an Account**
-- Sign up with email and password
-- Set your organization/business name
-
-#### 3. **Configure AI Provider**
-- Go to **Settings → AI Provider**
-- Enter your API key:
-  - Free Gemini key: [Google AI Studio](https://aistudio.google.com/)
-  - Or use OpenAI / Groq
-
-#### 4. **Configure the AI Agent** ✨ NEW!
-- Go to **Settings → AI Agent Auto-Reply Settings**
-- Set your **Business Type** (e.g., "Salon & Spa", "Real Estate Agency", "Logistics")
-- Write your **Tone Instructions** (e.g., "friendly, professional, uses first names")
-- Set **Reply Mode**: Auto, Suggestions Only, or Off
-- Add a **Payment Link** (e.g., Paystack, Flutterwave)
-
-#### 5. **Download Bridge App** (For WhatsApp)
-- Go to **Settings → WhatsApp Integration**
-- Download the Shepherd AI Bridge (Windows)
-- Extract and run `Shepherd AI Bridge.exe`
-- Enter your connection code from Settings
-- Scan WhatsApp QR code
-- Done! Messages now route through your WhatsApp
-
-#### 6. **Upload Media Files** ✨ NEW!
-- Go to **Media Library** in the sidebar
-- Upload documents, PDFs, or images
-- Set a matching name (e.g., "price list", "product catalogue", "brochure")
-- The AI will auto-send the right file when customers ask for it
-
-#### 7. **Manage Bookings** ✨ NEW!
-- Go to **Bookings** in the sidebar
-- View all appointments created by the AI or manually
-- Confirm, complete, or cancel bookings with one click
-
-#### 8. **Group Messaging with Scheduling**
-- Go to **Groups** and sync your WhatsApp groups
-- Send a broadcast message immediately or schedule for later
-- Click **Settings → Queue / Scheduled** on any group to **edit** or **cancel** any pending message
-
-#### 9. **Add Contacts & Start Messaging**
-- Navigate to **Contacts**
-- Bulk import via Excel or add manually
-- Use **Live Chats** for 1-on-1 conversations
-- Use **Generate & Send** for bulk campaigns
+| Domain | Technology | Description |
+| --- | --- | --- |
+| **Frontend** | React 19, TypeScript, Vite 6, Vanilla CSS | Fast, responsive dashboard with zero UI bloat |
+| **Backend** | Python 3.11+, FastAPI, Uvicorn, Pydantic v2 | High-performance asynchronous API framework |
+| **Database** | PostgreSQL 15+ via Supabase / SQLAlchemy | Relational storage with JSONB attribute indexing |
+| **AI Models** | Google Gemini 3.7 Flash, Groq Whisper | High-speed, multimodal LLM reasoning & transcription |
+| **Messaging** | Meta WhatsApp Business Cloud API (v18.0) | Official, scalable messaging delivery |
+| **Voice & Media** | Web Speech API, Azure Speech / Edge TTS | Voice transcription and neural audio synthesis |
+| **Hosting** | Vercel (Frontend), Render (Backend), Supabase (DB) | Fully managed modern cloud architecture |
 
 ---
 
-## 💻 For Developers
+## 📡 API Reference Overview
 
-### Tech Stack
+### 1. Website Chat Widget API (Public Endpoints)
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| `GET` | `/api/widget/config/{org_id}` | Returns widget brand styling, colors, and welcome greeting |
+| `POST` | `/api/widget/message` | Sends customer text inquiry; returns AI reply + interactive product cards |
+| `POST` | `/api/widget/voice-message` | Uploads client speech transcript or audio WebM blob for AI processing |
+| `GET` | `/api/widget/poll/{org_id}/{visitor_id}` | Polls for outbound responses sent by human agents |
 
-**Frontend:**
-- React 19 (Hooks, Context API)
-- Vite 6 (Build tool)
-- Vanilla CSS with design system tokens
-- Recharts (Analytics)
-- Lucide React (Icons)
-- `@google/genai` SDK (AI Agent)
+### 2. WhatsApp Meta Cloud API Webhook
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| `GET` | `/api/whatsapp/webhook` | Meta verification challenge handshake (`hub.challenge`) |
+| `POST` | `/api/whatsapp/webhook` | Real-time inbound WhatsApp message & media event receiver |
+| `POST` | `/api/whatsapp/send` | Dispatches outbound WhatsApp text message via Meta API |
+| `POST` | `/api/whatsapp/send-media` | Dispatches image, document, or audio media via Meta API |
 
-**Backend:**
-- FastAPI (Python)
-- SQLAlchemy (ORM)
-- Supabase / PostgreSQL (Production)
-- SQLite (Local dev fallback)
-- Google Generative AI SDK
-- `httpx` + BeautifulSoup (Web browsing proxy)
-- APScheduler (Scheduled tasks)
+### 3. CRM, Catalog & Settings (Authenticated)
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| `POST` | `/api/auth/login` | Authenticates user; returns JWT Bearer Token |
+| `GET` | `/api/contacts/` | Lists contacts with search and category filters |
+| `GET` | `/api/catalog/` | Lists organization inventory with availability flags |
+| `POST` | `/api/catalog/` | Creates new vehicle, product, or property item |
+| `POST` | `/api/catalog/test-webhook` | Tests external store/inventory webhook connectivity |
+| `GET` | `/api/bookings/` | Retrieves upcoming appointments and consultation requests |
+| `PUT` | `/api/bookings/{id}/status` | Updates booking status (`confirmed`, `completed`, `cancelled`) |
+| `POST` | `/api/settings/save-all` | Saves AI persona, model selection, and Meta credentials |
 
-**Bridge:**
-- Electron (Desktop app framework)
-- WPPConnect (WhatsApp automation)
-- Express (REST API)
-- WebSocket (Real-time updates)
-- Axios (HTTP client)
+---
 
-### Local Development Setup
+## 💻 Local Development Setup
 
-#### Prerequisites
-- Node.js 18+
-- Python 3.9+
-- Git
+### Prerequisites
+- **Node.js**: v18.0 or higher
+- **Python**: v3.10 or higher
+- **PostgreSQL Database** or Supabase project URL
+- **Git**
 
-#### 1. Clone Repository
+### 1. Clone Repository
 ```bash
 git clone https://github.com/Teleiosite/shepherd-ai.git
 cd shepherd-ai
 ```
 
-#### 2. Frontend Setup
+### 2. Frontend Setup
 ```bash
 npm install
 npm run dev
-# Runs on http://localhost:3000
+# Dashboard launches at http://localhost:3000
 ```
 
-#### 3. Backend Setup
+### 3. Backend Setup
 ```bash
 cd "Agent File/backend"
 python -m venv venv
 
-# Windows
+# Windows:
 venv\Scripts\activate
 
-# Mac/Linux
+# macOS / Linux:
 source venv/bin/activate
 
 pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8000
-# Runs on http://localhost:8000
-```
-
-#### 4. Bridge App Setup (Optional for local testing)
-```bash
-cd shepherd-bridge-app
-npm install
-npm start
-# Electron app opens
-```
-
-### Environment Variables
-
-**Frontend** (`.env`):
-```env
-VITE_BACKEND_URL=http://localhost:8000
-```
-
-**Backend** (`.env`):
-```env
-# Production (Supabase)
-DATABASE_URL=postgresql://user:password@host/dbname
-
-# Local dev fallback
-# DATABASE_URL=sqlite:///./shepherd.db
-
-SECRET_KEY=your-secret-key-here
-CORS_ORIGINS=http://localhost:3000,https://shepherd-ai.vercel.app
-```
-
-### Database Setup (Supabase)
-
-Run the complete schema in your Supabase SQL Editor:
-
-```
-Agent File/backend/schema.sql
-```
-
-This creates all required tables:
-- `organizations`, `users`, `contacts`, `messages`
-- `knowledge_resources`, `knowledge_embeddings` (pgvector)
-- `workflow_steps`, `categories`
-- `groups`, `group_members`, `group_messages`
-- `bookings`
-
-> The backend also auto-creates all tables on startup via `init_db.py`.
-
----
-
-## 📖 Usage Guide
-
-### Live Chat with AI Agent
-1. Go to **Live Chats**
-2. Select a contact
-3. Incoming messages trigger the AI Agent automatically (if Auto mode is enabled)
-4. Review AI suggestions in the panel above the text input, or let them send automatically
-5. The contacted person moves to the **top of the chat list** instantly
-
-### Managing Bookings
-1. Go to **Bookings**
-2. When a customer says "I'd like to book an appointment", the AI Agent creates a pending booking
-3. Confirm, complete, or cancel each booking from the table view
-
-### Editing a Scheduled Group Message ✨ NEW!
-1. Go to **Groups**
-2. Click **Settings** on any group
-3. Click the **Queue / Scheduled** tab
-4. See all pending broadcast messages for that group
-5. Click the ✏️ icon to **edit** the message text or **reschedule** the date/time
-6. Click the ✕ icon to **cancel** the message before it is sent
-
-### Managing Knowledge Base
-1. Go to **Knowledge Base**
-2. Click **"Add Resource"**
-3. Upload PDF, DOCX, or paste text content
-4. AI will reference this when generating messages or answering questions
-
-### Scheduling System
-- **Individual**: In Live Chat, choose "Schedule for Later" before sending
-- **Bulk/Groups**: In Groups, compose a broadcast and set a future date/time
-- **Manage**: Edit or cancel any scheduled messages from the Queue tab
-
----
-
-## 🔐 Privacy & Security
-
-- **No Third-Party Data Collection**: All user data is stored in your own Supabase/PostgreSQL instance
-- **API Keys**: Never stored on servers, only in browser `localStorage`
-- **WhatsApp**: Bridge runs locally on your PC — the backend never sees your WhatsApp credentials
-- **Messages**: Encrypted in transit via HTTPS/WSS
-
----
-
-## 📦 Deployment
-
-### Frontend (Vercel)
-```bash
-vercel
-
-# Set environment variables in Vercel Dashboard:
-VITE_BACKEND_URL=https://your-backend.onrender.com
-```
-
-### Backend (Render)
-1. Connect GitHub repository
-2. Set root directory: `Agent File/backend`
-3. Set build command: `pip install -r requirements.txt`
-4. Set start command: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
-5. Add environment variables:
-   - `DATABASE_URL` (Supabase connection string)
-   - `SECRET_KEY`
-   - `CORS_ORIGINS`
-
-### Bridge Distribution
-```bash
-cd shepherd-bridge-app
-npm run build:win   # Windows
-npm run build:mac   # macOS
-
-# Upload dist/*.zip to GitHub Releases
+# Backend API launches at http://localhost:8000
 ```
 
 ---
 
-## 🎯 Roadmap
+## 🌐 Embedding the Web Chat Widget
 
-- [x] Multi-provider AI integration (Gemini, OpenAI, Groq, DeepSeek)
-- [x] Contact management with bulk import
-- [x] Knowledge base (RAG)
-- [x] Message scheduling and queuing
-- [x] WhatsApp sending (polling architecture)
-- [x] WhatsApp receiving (real-time)
-- [x] Custom workflow automation (multi-industry)
-- [x] WhatsApp Groups management and broadcasting
-- [x] **AI Agent auto-reply in your tone** ✨
-- [x] **Booking management system** ✨
-- [x] **Media Library with AI file matching** ✨
-- [x] **Group message queue editing & rescheduling** ✨
-- [x] **Supabase/PostgreSQL database integration** ✨
-- [ ] SMS integration (Twilio)
-- [ ] Email campaigns
-- [ ] Mobile app (React Native)
-- [ ] Multi-language AI responses
-- [ ] Advanced analytics and reporting
-- [ ] Team collaboration and role-based access control
+To integrate the Shepherd AI conversational assistant into any external website, WordPress store, or web app, embed this script before the closing `</body>` tag:
+
+```html
+<script 
+  src="https://shepherd-ai.vercel.app/widget.js" 
+  data-org-id="YOUR_ORGANIZATION_UUID"
+  data-api-url="https://shepherd-ai-backend.onrender.com"
+  defer>
+</script>
+```
+
+Replace `YOUR_ORGANIZATION_UUID` with your organization ID from **Settings → Organization**.
 
 ---
 
-## 🤝 Contributing
+## 🔒 Security & Best Practices
 
-Contributions are welcome! Please:
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit changes (`git commit -m 'Add AmazingFeature'`)
-4. Push to branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+- **Zero-Token Guard:** Common customer inquiries are resolved instantly by `rule_engine.py` without consuming LLM API token quotas.
+- **Quota Management:** Monthly message limit thresholds protect organizations from automated billing spikes.
+- **Human Handover Safety:** When a customer asks for a human or indicates frustration, the AI automatically enters an escalated pause state to ensure respectful communication.
+- **Production Audit Guidelines:** Refer to [SECURITY_AUDIT.md](./SECURITY_AUDIT.md) for enterprise security hardening, authentication guidelines, and SSRF prevention.
 
 ---
 
 ## 📄 License
 
-MIT License - see [LICENSE](LICENSE) file for details
+This project is proprietary software developed by Teleiosite. All rights reserved.
 
 ---
 
-## 👨‍💻 Author
+## 🛠️ Troubleshooting & Support
 
-**Shepherd AI Team**
-- GitHub: [@Teleiosite](https://github.com/Teleiosite)
-- Email: support@shepherdai.com
-
----
-
-## 🙏 Acknowledgments
-
-- **WPPConnect Team** — WhatsApp automation library
-- **Google** — Gemini AI API
-- **Supabase** — Open source Firebase alternative (PostgreSQL)
-- **FastAPI** — Lightning-fast Python framework
-- **React Team** — Amazing UI library
-- **Vercel** — Seamless frontend deployment
-- **Render** — Backend hosting
-
----
-
-## 📞 Support
-
-- **Issues**: [GitHub Issues](https://github.com/Teleiosite/shepherd-ai/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/Teleiosite/shepherd-ai/discussions)
-- **Documentation**: [Wiki](https://github.com/Teleiosite/shepherd-ai/wiki)
-
-### 📚 Additional Guides
-
-- **[WhatsApp Business Cloud API Setup](./WHATSAPP_BUSINESS_API_SETUP.md)** — Mobile-friendly WhatsApp integration
-- **[Custom Workflows Implementation](./CUSTOM_WORKFLOWS_IMPLEMENTATION.md)** — Technical implementation details
-
----
-
-<div align="center">
-
-**Built with ❤️ for businesses, organizations, and communities worldwide**
-
-⭐ Star this repo if it's helping your business grow!
-
-</div>
-
----
-
-## 🛠️ Troubleshooting & Configuration Log
-
-For issues related to deployment, backend sleeping, or webhook integration (such as configuring the WhatsApp Business Cloud API subscription), please reference the dedicated guide:
+For issues related to deployment, backend sleeping, or webhook integration (such as configuring the WhatsApp Business Cloud API subscription), please reference:
 
 * **[Troubleshooting & Configuration Log](./TROUBLESHOOTING_LOG.md)**
+* **[WhatsApp Business Cloud API Setup](./WHATSAPP_BUSINESS_API_SETUP.md)**
 
 ---
 
 <div align="center">
 
-**Built with ❤️ for churches, businesses, and organizations worldwide**
-
-⭐ Star this repo if it's helping your business grow!
+**Built with ❤️ for businesses, organizations, and service providers worldwide**
 
 </div>
