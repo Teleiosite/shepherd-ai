@@ -552,12 +552,30 @@
         if (data.message_id) seenMessageIds.add(data.message_id);
         if (data.outbound_message_id) seenMessageIds.add(data.outbound_message_id);
         if (data.inbound_message_id) seenMessageIds.add(data.inbound_message_id);
-        if (data.reply) seenMessageTexts.add(data.reply.trim());
+        function extractCleanReply(rawReply) {
+          if (!rawReply || typeof rawReply !== 'string') return 'Hello! How can I assist you today?';
+          let clean = rawReply.trim();
+          if (clean.startsWith('{') && clean.includes('"reply"')) {
+            try {
+              const parsed = JSON.parse(clean);
+              if (parsed.reply) return parsed.reply.trim();
+            } catch (e) {
+              const m = clean.match(/"reply"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+              if (m && m[1]) {
+                return m[1].replace(/\\"/g, '"').replace(/\\n/g, '\n').trim();
+              }
+            }
+          }
+          return clean || 'Hello! How can I assist you today?';
+        }
+
+        const cleanReply = extractCleanReply(data.reply);
+        if (cleanReply) seenMessageTexts.add(cleanReply.trim());
 
         // AI Text Reply
         const botBubble = document.createElement('div');
         botBubble.className = 'shepherd-msg shepherd-msg-in';
-        botBubble.textContent = data.reply || 'Thank you for your message!';
+        botBubble.textContent = cleanReply;
         msgs.appendChild(botBubble);
 
         // Render Recommended Item Cards if present
@@ -744,12 +762,13 @@
 
               if (data.message_id) seenMessageIds.add(data.message_id);
               if (data.outbound_message_id) seenMessageIds.add(data.outbound_message_id);
-              if (data.reply) seenMessageTexts.add(data.reply.trim());
+              const cleanVoiceReply = extractCleanReply(data.reply);
+              if (cleanVoiceReply) seenMessageTexts.add(cleanVoiceReply.trim());
 
               // Render AI response
               const botBubble = document.createElement('div');
               botBubble.className = 'shepherd-msg shepherd-msg-in';
-              botBubble.textContent = data.reply || 'Thank you for your voice note!';
+              botBubble.textContent = cleanVoiceReply;
               msgs.appendChild(botBubble);
 
               if (data.recommended_items && data.recommended_items.length > 0) {

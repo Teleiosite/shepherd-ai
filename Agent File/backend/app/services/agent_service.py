@@ -213,22 +213,55 @@ def strip_emojis(text: str) -> str:
 
 
 def parse_agent_response(raw_text: str) -> Dict[str, Any]:
-    """Parse JSON reply and action from AI response."""
-    try:
-        # Match json block or json object
-        json_match = re.search(r"\{[\s\S]*\}", raw_text)
-        if json_match:
-            data = json.loads(json_match.group(0))
-            reply = strip_emojis(data.get("reply", "").strip())
-            return {
-                "reply": reply,
-                "action": data.get("action") or {"type": "NONE"}
-            }
-    except Exception as e:
-        logger.warning(f"Failed to parse agent JSON response: {e}")
+    """Parse JSON reply and action from AI response with robust fallback extraction."""
+    if not raw_text:
+        return {"reply": "Hello! How can I help you today?", "action": {"type": "NONE"}}
 
-    # Fallback to plain text cleaning
+    # 1. Try standard and strict=False JSON parsing
+    json_match = re.search(r"\{[\s\S]*\}", raw_text)
+    if json_match:
+        cand = json_match.group(0)
+        try:
+            data = json.loads(cand, strict=False)
+            reply = strip_emojis((data.get("reply") or "").strip())
+            if reply:
+                return {
+                    "reply": reply,
+                    "action": data.get("action") or {"type": "NONE"}
+                }
+        except Exception as e:
+            logger.warning(f"json.loads failed, attempting regex fallback: {e}")
+
+        # 2. Regex fallback to extract 'reply' and 'action' if JSON syntax was malformed
+        reply_match = re.search(r'"reply"\s*:\s*"((?:[^"\\]|\\.)*)"', cand, re.DOTALL)
+        action_match = re.search(r'"type"\s*:\s*"([^"]+)"', cand)
+        query_match = re.search(r'"query"\s*:\s*"([^"]*)"', cand)
+        cat_match = re.search(r'"category"\s*:\s*"([^"]*)"', cand)
+
+        if reply_match:
+            extracted_reply = reply_match.group(1).replace(r'\"', '"').replace(r'\n', '\n').strip()
+            extracted_reply = strip_emojis(extracted_reply)
+            extracted_action = {
+                "type": action_match.group(1) if action_match else "NONE",
+                "query": query_match.group(1) if query_match else "",
+                "category": cat_match.group(1) if cat_match else ""
+            }
+            return {
+                "reply": extracted_reply,
+                "action": extracted_action
+            }
+
+    # 3. If raw_text had code blocks or plain text, clean it
     clean = re.sub(r"```(json)?|```", "", raw_text).strip()
+    if clean.startswith("{") and '"reply"' in clean:
+        clean_match = re.search(r'"reply"\s*:\s*"((?:[^"\\]|\\.)*)"', clean, re.DOTALL)
+        if clean_match:
+            clean = clean_match.group(1).replace(r'\"', '"').replace(r'\n', '\n').strip()
+        else:
+            clean_match2 = re.search(r'"reply"\s*:\s*"([^"]+)', clean)
+            if clean_match2:
+                clean = clean_match2.group(1).strip()
+
     clean = strip_emojis(clean)
     return {"reply": clean, "action": {"type": "NONE"}}
 
@@ -1051,6 +1084,11 @@ ACTION TYPE GUIDE:
         reply_text = parsed.get("reply", "")
         action = parsed.get("action", {})
         action_type = action.get("type", "NONE")
+
+        if reply_text and reply_text.strip().startswith("{") and '"reply"' in reply_text:
+            alt_m = re.search(r'"reply"\s*:\s*"((?:[^"\\]|\\.)*)"', reply_text, re.DOTALL)
+            if alt_m:
+                reply_text = alt_m.group(1).replace(r'\"', '"').replace(r'\n', '\n').strip()
 
         if not reply_text:
             logger.warning(f"AI Agent returned empty reply parsed from: {repr(raw_reply)}")
