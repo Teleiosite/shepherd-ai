@@ -680,15 +680,27 @@ async def execute_catalog_search(
                         token_filters.append(CatalogItem.description.ilike(f"%{t}%"))
                         token_filters.append(CatalogItem.category.ilike(f"%{t}%"))
 
-                    fallback_query = base_query.filter(or_(*token_filters))
-                    if max_budget:
-                        try:
-                            fallback_query = fallback_query.filter(CatalogItem.price_amount <= float(max_budget))
-                        except:
-                            pass
-                    results = fallback_query.limit(5).all()
-                    if results:
-                        logger.info(f"💡 Tier 2 fallback search found {len(results)} alternative items for '{query_str}' using tokens: {tokens}")
+                    all_candidates = fallback_query.limit(20).all()
+                    if all_candidates:
+                        # Rank candidates by relevance to query tokens
+                        def score_item(item):
+                            score = 0
+                            t_lower = (item.title or "").lower()
+                            c_lower = (item.category or "").lower()
+                            d_lower = (item.description or "").lower()
+                            for tok in tokens:
+                                tok_l = tok.lower()
+                                if tok_l in t_lower:
+                                    score += 10
+                                if tok_l in c_lower:
+                                    score += 5
+                                if tok_l in d_lower:
+                                    score += 1
+                            return score
+
+                        sorted_candidates = sorted(all_candidates, key=score_item, reverse=True)
+                        results = sorted_candidates[:5]
+                        logger.info(f"💡 Tier 2 fallback search found {len(results)} ranked items for '{query_str}' using tokens: {tokens}")
         else:
             if category:
                 base_query = base_query.filter(CatalogItem.category.ilike(f"%{category}%"))
@@ -727,6 +739,233 @@ async def execute_catalog_search(
         logger.warning(f"Internal catalog query failed: {e}")
 
     return items
+
+
+async def _execute_generative_ai_pipeline(
+    org, contact, incoming_text: str, now: datetime, ai_api_key: str, db: Session
+) -> tuple:
+    """
+    Executes the multi-stage LLM generation pipeline:
+    1. Conversation history retrieval
+    2. RAG semantic knowledge search
+    3. Multi-turn session slot check
+    4. Media library lookup
+    5. Real-time calendar & clock context
+    6. System prompt assembly
+    7. Model invocation with retry & resilient JSON parsing
+    """
+    org_id = org.id
+    contact_id = contact.id
+
+    # 1. Retrieve conversation history (last 8 messages)
+    history_msgs = db.query(Message).filter(
+        Message.contact_id == contact_id
+    ).order_by(Message.created_at.desc()).limit(8).all()
+    history_msgs.reverse()
+
+    history_lines = []
+    for m in history_msgs:
+        sender = org.ai_name if m.type == "Outbound" else contact.name
+        history_lines.append(f"{sender}: {m.content}")
+    history_text = "\n".join(history_lines) if history_lines else "No previous conversation."
+
+    # 2. RAG semantic knowledge retrieval
+    kb_chunks = []
+    try:
+        results = await search_knowledge_base(db, str(org_id), incoming_text, limit=3, api_key=ai_api_key)
+        for res, sim in results:
+            kb_chunks.append(f"--- {res.title} ---\n{res.content[:500]}")
+    except Exception as rag_err:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        logger.warning(f"RAG search error: {rag_err}")
+
+    kb_context = "\n\n".join(kb_chunks) if kb_chunks else "No specific knowledge base entry matched."
+
+    # 3. Check active multi-turn session
+    session = db.query(ConversationSession).filter(
+        ConversationSession.contact_id == contact_id,
+        ConversationSession.expires_at > now
+    ).first()
+
+    session_prompt = ""
+    collected_data = {}
+    if session:
+        try:
+            collected_data = json.loads(session.collected_slots or "{}")
+        except:
+            collected_data = {}
+        session_prompt = f"""
+CURRENT ACTIVE FLOW: {session.active_flow.upper()}
+Collected Information so far: {json.dumps(collected_data)}
+Your task: Continue this flow naturally. Ask for whatever is still missing.
+"""
+
+    # 4. Fetch available media files from media_library table
+    available_files_list = []
+    try:
+        rows = db.execute(
+            text("SELECT name, type, description FROM media_library WHERE organization_id = :org_id LIMIT 15"),
+            {"org_id": str(org_id)}
+        ).fetchall()
+        for r in rows:
+            available_files_list.append(f"'{r[0]}' ({r[1]} - {r[2] or 'No desc'})")
+    except Exception as media_err:
+        logger.warning(f"Media fetch error: {media_err}")
+
+    available_files_str = ", ".join(available_files_list) if available_files_list else "None uploaded yet."
+
+    # 5. Build real-time calendar & clock context
+    today_day_name = now.strftime("%A")
+    today_date_str = now.strftime("%Y-%m-%d")
+    tomorrow_dt = now + timedelta(days=1)
+    tomorrow_day_name = tomorrow_dt.strftime("%A")
+    tomorrow_date_str = tomorrow_dt.strftime("%Y-%m-%d")
+    current_time_str = now.strftime("%I:%M %p").lstrip("0")
+
+    ai_name = org.ai_name or "Shepherd AI"
+    org_name = org.name or "Our Organization"
+    biz_type = org.ai_business_type or "Organization"
+    tone = org.ai_tone or "Warm, professional, and helpful. WhatsApp-friendly."
+    payment_link = org.ai_payment_link or "Not configured"
+
+    system_prompt = f"""You are {ai_name}, the AI representative for {org_name} ({biz_type}).
+
+CURRENT CALENDAR & CLOCK CONTEXT:
+- Today is: {today_day_name}, {now.strftime('%B %d, %Y')} ({today_date_str})
+- Current Time: {current_time_str}
+- Tomorrow is: {tomorrow_day_name}, {tomorrow_dt.strftime('%B %d, %Y')} ({tomorrow_date_str})
+
+CONTACT DETAILS:
+- Name: {contact.name}
+- Category: {contact.category}
+- Phone: {contact.phone}
+{f'- Notes: {contact.notes}' if contact.notes else ''}
+
+TONE & STYLE:
+{tone}
+Write WhatsApp-appropriate messages (concise, warm, attentive, helpful, natural). Never sound like an emotionless robot. Always answer greetings, check-ins ("are you there", "hello"), and continue conversations seamlessly.
+
+KNOWLEDGE BASE:
+{kb_context}
+
+AVAILABLE FILES TO DELIVER:
+{available_files_str}
+
+PAYMENT LINK:
+{payment_link}
+
+{session_prompt}
+
+CONVERSATION HISTORY:
+{history_text}
+
+APPOINTMENT & BOOKING RULES:
+1. When a contact wants to book, find out: (1) Purpose/Topic, (2) Date, (3) Time.
+2. When the contact gives relative dates like "tomorrow", "this time tomorrow", "Friday at 2pm", ALWAYS convert:
+   - "preferredDate": Exact ISO date format "{tomorrow_date_str}" (YYYY-MM-DD). NEVER return relative words.
+   - "preferredTime": Standard 12-hour format "{current_time_str}" (e.g. "10:30 PM", "03:00 PM").
+3. When confirming an appointment or when the contact says "yes", "correct", or confirms details:
+   - Set "type": "CREATE_BOOKING" with finalized "purpose", "preferredDate" (YYYY-MM-DD), and "preferredTime" (HH:MM AM/PM).
+   - Your "reply" MUST explicitly confirm the booking to the contact (e.g. "Awesome, {contact.name}! Your appointment for [Topic] is booked for tomorrow, {tomorrow_dt.strftime('%B %d, %Y')} at {current_time_str}. Looking forward to speaking with you!").
+4. MANDATORY CONTACT DETAILS FOR CONSULTATIONS & WEBSITE LEADS:
+   - When a user on the website widget or chat asks to book a consultation, demo, repair check, or appointment:
+   - You MUST politely ask for their WhatsApp phone number or email address (e.g. "I would be happy to book a consultation for you! What date and time works best, and could you please provide your WhatsApp number or email address so our team can contact you and confirm?").
+   - Do NOT confirm the booking without first obtaining their WhatsApp phone number or email address!
+
+NO EMOJIS RULE:
+- NEVER use emojis, smileys, or emoticons in your replies (do NOT use emojis like 😊, 🙌, 🎉, etc.).
+- Keep all responses completely free of emojis in both text and voice notes.
+
+VOICE NOTE RULES:
+- When a customer sends a voice message that was successfully transcribed, it appears as "[Voice Note]: <transcription>". Answer their message directly, warmly, and helpfully as if they spoke to you.
+- If the message says "[Voice message — could not transcribe clearly]", it means the audio was muffled, silent, or could not be decoded. In this case:
+  - Respond warmly and naturally (e.g. "Hey! I got your voice note, but it came through a bit muffled on my end. Could you please send it once more or drop a quick text message?").
+  - NEVER say "I am unable to listen to voice notes directly in our chat" or "I cannot listen to audio" — because you normally can listen to voice notes!
+  - NEVER say robotic phrases like "Thanks for your voice message, I'm here and ready to listen."
+  - Check the previous conversation history: if you were already discussing an item (e.g. chargers, cars, appointments), ask if they were referring to that!
+
+CATALOG & INVENTORY SEARCH RULES:
+- CRITICAL VISUAL DISPLAY RULE: Whenever a customer asks about available cars, properties, products, services, prices, or requests a list of items (e.g. "show me the list of watch that you have in store", "do you have chargers?", "what batteries are available?", "show me BMWs", "I want an Oraimo charger"):
+  - You MUST set "type": "SEARCH_CATALOG" in action with:
+    - "query": specific item, category, or model (e.g. "watch", "charger", "battery", "BMW", "G-Wagon", "2-bedroom", "teeth whitening")
+    - "category": category if applicable (e.g. "Watches", "SUV", "Shortlet", "Dental", "Chargers")
+    - "location": city or area mentioned (e.g. "Lagos", "Ikeja", "Lekki")
+    - "max_budget": numeric budget if mentioned (e.g. 50000)
+    - "attributes": any specific key-value pairs mentioned (e.g. {{"brand": "Oraimo", "year": "2020", "color": "black"}})
+  - Your "reply" MUST warmly introduce the items (e.g. "Here are our available items from the store:"). The platform will automatically attach visual interactive product cards with images, pricing, and buy links!
+
+MANDATORY OUTPUT FORMAT:
+You MUST respond with valid JSON containing "reply" and "action".
+{{
+  "reply": "Your message to the contact here",
+  "action": {{
+    "type": "NONE",
+    "documentName": "",
+    "imageName": "",
+    "purpose": "",
+    "preferredDate": "",
+    "preferredTime": "",
+    "query": "",
+    "category": "",
+    "location": "",
+    "max_budget": null,
+    "attributes": {{}},
+    "reason": ""
+  }}
+}}
+
+ACTION TYPE GUIDE:
+- NONE: standard conversational reply / answering greetings and questions
+- SEARCH_CATALOG: customer inquires about cars, inventory, products, properties, or services (include query, category, location, max_budget, attributes)
+- CREATE_BOOKING: customer wants to book/schedule an appointment (include purpose, preferredDate YYYY-MM-DD, preferredTime HH:MM AM/PM)
+- SEND_DOCUMENT: customer asks for a document, price list, menu, PDF, or form
+- SEND_IMAGE: customer asks for a photo, map, or picture
+- SEND_PAYMENT_LINK: customer asks how to pay, fees, pricing, or purchase
+- WEB_SEARCH: customer asks factual/timely question not in knowledge base
+- FLAG_FOR_HUMAN: customer is in crisis, angry, or asks for a human manager
+"""
+
+    user_turn = f"New message from {contact.name}:\n\"{incoming_text}\"\n\nGenerate your JSON response."
+
+    # 6. Call AI Provider
+    model_to_use = org.ai_model
+    if not model_to_use or model_to_use in (
+        "gemini-3.5-flash", "models/gemini-3.5-flash",
+        "gemini-1.5-flash", "models/gemini-1.5-flash",
+        "gemini-2.0-flash", "models/gemini-2.0-flash",
+        "gemini-2.5-flash", "models/gemini-2.5-flash"
+    ):
+        model_to_use = "gemini-3.7-flash"
+
+    raw_reply = await call_ai_provider(
+        provider=org.ai_provider or "gemini",
+        api_key=ai_api_key,
+        model=model_to_use,
+        system_prompt=system_prompt,
+        user_turn=user_turn,
+        base_url=org.ai_base_url
+    )
+
+    parsed = parse_agent_response(raw_reply)
+    reply_text = parsed.get("reply", "")
+    action = parsed.get("action", {})
+    action_type = action.get("type", "NONE")
+
+    if reply_text and reply_text.strip().startswith("{") and '"reply"' in reply_text:
+        alt_m = re.search(r'"reply"\s*:\s*"((?:[^"\\]|\\.)*)"', reply_text, re.DOTALL)
+        if alt_m:
+            reply_text = alt_m.group(1).replace(r'\"', '"').replace(r'\n', '\n').strip()
+
+    if not reply_text:
+        logger.warning(f"AI Agent returned empty reply parsed from: {repr(raw_reply)}")
+        reply_text = strip_emojis(raw_reply).strip() if raw_reply else ""
+        if not reply_text:
+            reply_text = "Hello! How can I help you today?"
+
+    return reply_text, action, action_type, session, collected_data
 
 
 async def trigger_ai_agent_reply(
@@ -879,222 +1118,34 @@ async def trigger_ai_agent_reply(
                 logger.info(f"AI is paused for contact {contact.name} until {contact.ai_paused_until} (human in control).")
                 return {"error": f"AI is paused for contact {contact.name} until {contact.ai_paused_until}"}
 
-        # 3. Retrieve conversation history (last 8 messages)
-        history_msgs = db.query(Message).filter(
-            Message.contact_id == contact_id
-        ).order_by(Message.created_at.desc()).limit(8).all()
-        history_msgs.reverse()
+        # 3. Rule-Based Intent Engine (Zero-Token Cost Optimizer)
+        from app.services.rule_engine import evaluate_rule_intent
+        rule_res = await evaluate_rule_intent(incoming_text, org, db)
 
-        history_lines = []
-        for m in history_msgs:
-            sender = org.ai_name if m.type == "Outbound" else contact.name
-            history_lines.append(f"{sender}: {m.content}")
-        history_text = "\n".join(history_lines) if history_lines else "No previous conversation."
-
-        # 4. RAG semantic knowledge retrieval
-        kb_chunks = []
-        try:
-            results = await search_knowledge_base(db, str(org_id), incoming_text, limit=3, api_key=ai_api_key)
-            for res, sim in results:
-                kb_chunks.append(f"--- {res.title} ---\n{res.content[:500]}")
-        except Exception as rag_err:
-            try:
-                db.rollback()
-            except Exception:
-                pass
-            logger.warning(f"RAG search error: {rag_err}")
-
-        kb_context = "\n\n".join(kb_chunks) if kb_chunks else "No specific knowledge base entry matched."
-
-        # 5. Check active multi-turn session
-        session = db.query(ConversationSession).filter(
-            ConversationSession.contact_id == contact_id,
-            ConversationSession.expires_at > now
-        ).first()
-
-        session_prompt = ""
+        reply_text = ""
+        action = {}
+        action_type = "NONE"
+        recommended_items = []
+        is_rule_handled = False
+        session = None
         collected_data = {}
-        if session:
-            try:
-                collected_data = json.loads(session.collected_slots or "{}")
-            except:
-                collected_data = {}
-            session_prompt = f"""
-CURRENT ACTIVE FLOW: {session.active_flow.upper()}
-Collected Information so far: {json.dumps(collected_data)}
-Your task: Continue this flow naturally. Ask for whatever is still missing.
-"""
 
-        # 6. Fetch available media files from media_library table
-        available_files_list = []
-        try:
-            rows = db.execute(
-                text("SELECT name, type, description FROM media_library WHERE organization_id = :org_id LIMIT 15"),
-                {"org_id": str(org_id)}
-            ).fetchall()
-            for r in rows:
-                available_files_list.append(f"'{r[0]}' ({r[1]} - {r[2] or 'No desc'})")
-        except Exception as media_err:
-            logger.warning(f"Media fetch error: {media_err}")
-
-        available_files_str = ", ".join(available_files_list) if available_files_list else "None uploaded yet."
-
-        # 7. Build real-time calendar & clock context
-        today_day_name = now.strftime("%A")
-        today_date_str = now.strftime("%Y-%m-%d")
-        tomorrow_dt = now + timedelta(days=1)
-        tomorrow_day_name = tomorrow_dt.strftime("%A")
-        tomorrow_date_str = tomorrow_dt.strftime("%Y-%m-%d")
-        current_time_str = now.strftime("%I:%M %p").lstrip("0")
-
-        ai_name = org.ai_name or "Shepherd AI"
-        org_name = org.name or "Our Organization"
-        biz_type = org.ai_business_type or "Organization"
-        tone = org.ai_tone or "Warm, professional, and helpful. WhatsApp-friendly."
-        payment_link = org.ai_payment_link or "Not configured"
-
-        system_prompt = f"""You are {ai_name}, the AI representative for {org_name} ({biz_type}).
-
-CURRENT CALENDAR & CLOCK CONTEXT:
-- Today is: {today_day_name}, {now.strftime('%B %d, %Y')} ({today_date_str})
-- Current Time: {current_time_str}
-- Tomorrow is: {tomorrow_day_name}, {tomorrow_dt.strftime('%B %d, %Y')} ({tomorrow_date_str})
-
-CONTACT DETAILS:
-- Name: {contact.name}
-- Category: {contact.category}
-- Phone: {contact.phone}
-{f'- Notes: {contact.notes}' if contact.notes else ''}
-
-TONE & STYLE:
-{tone}
-Write WhatsApp-appropriate messages (concise, warm, attentive, helpful, natural). Never sound like an emotionless robot. Always answer greetings, check-ins ("are you there", "hello"), and continue conversations seamlessly.
-
-KNOWLEDGE BASE:
-{kb_context}
-
-AVAILABLE FILES TO DELIVER:
-{available_files_str}
-
-PAYMENT LINK:
-{payment_link}
-
-{session_prompt}
-
-CONVERSATION HISTORY:
-{history_text}
-
-APPOINTMENT & BOOKING RULES:
-1. When a contact wants to book, find out: (1) Purpose/Topic, (2) Date, (3) Time.
-2. When the contact gives relative dates like "tomorrow", "this time tomorrow", "Friday at 2pm", ALWAYS convert:
-   - "preferredDate": Exact ISO date format "{tomorrow_date_str}" (YYYY-MM-DD). NEVER return relative words.
-   - "preferredTime": Standard 12-hour format "{current_time_str}" (e.g. "10:30 PM", "03:00 PM").
-3. When confirming an appointment or when the contact says "yes", "correct", or confirms details:
-   - Set "type": "CREATE_BOOKING" with finalized "purpose", "preferredDate" (YYYY-MM-DD), and "preferredTime" (HH:MM AM/PM).
-   - Your "reply" MUST explicitly confirm the booking to the contact (e.g. "Awesome, {contact.name}! Your appointment for [Topic] is booked for tomorrow, {tomorrow_dt.strftime('%B %d, %Y')} at {current_time_str}. Looking forward to speaking with you!").
-4. MANDATORY CONTACT DETAILS FOR CONSULTATIONS & WEBSITE LEADS:
-   - When a user on the website widget or chat asks to book a consultation, demo, repair check, or appointment:
-   - You MUST politely ask for their WhatsApp phone number or email address (e.g. "I would be happy to book a consultation for you! What date and time works best, and could you please provide your WhatsApp number or email address so our team can contact you and confirm?").
-   - Do NOT confirm the booking without first obtaining their WhatsApp phone number or email address!
-
-NO EMOJIS RULE:
-- NEVER use emojis, smileys, or emoticons in your replies (do NOT use emojis like 😊, 🙌, 🎉, etc.).
-- Keep all responses completely free of emojis in both text and voice notes.
-
-VOICE NOTE RULES:
-- When a customer sends a voice message that was successfully transcribed, it appears as "[Voice Note]: <transcription>". Answer their message directly, warmly, and helpfully as if they spoke to you.
-- If the message says "[Voice message — could not transcribe clearly]", it means the audio was muffled, silent, or could not be decoded. In this case:
-  - Respond warmly and naturally (e.g. "Hey! I got your voice note, but it came through a bit muffled on my end. Could you please send it once more or drop a quick text message?").
-  - NEVER say "I am unable to listen to voice notes directly in our chat" or "I cannot listen to audio" — because you normally can listen to voice notes!
-  - NEVER say robotic phrases like "Thanks for your voice message, I'm here and ready to listen."
-  - Check the previous conversation history: if you were already discussing an item (e.g. chargers, cars, appointments), ask if they were referring to that!
-
-
-
-CATALOG & INVENTORY SEARCH RULES:
-- CRITICAL VISUAL DISPLAY RULE: Whenever a customer asks about available cars, properties, products, services, prices, or requests a list of items (e.g. "show me the list of watch that you have in store", "do you have chargers?", "what batteries are available?", "show me BMWs", "I want an Oraimo charger"):
-  - You MUST set "type": "SEARCH_CATALOG" in action with:
-    - "query": specific item, category, or model (e.g. "watch", "charger", "battery", "BMW", "G-Wagon", "2-bedroom", "teeth whitening")
-    - "category": category if applicable (e.g. "Watches", "SUV", "Shortlet", "Dental", "Chargers")
-    - "location": city or area mentioned (e.g. "Lagos", "Ikeja", "Lekki")
-    - "max_budget": numeric maximum budget if mentioned (e.g. 150000)
-    - "attributes": object of extra filters (e.g. {{"color": "black", "drive_mode": "self-drive", "duration": "weekend"}})
-  - Even if you write out the names and prices of items in your "reply", you MUST STILL set action type to "SEARCH_CATALOG". Setting SEARCH_CATALOG is what triggers the system to render interactive visual product cards with photos, prices, and direct Buy Now checkout buttons!
-
-SALES PERSUASION & ALTERNATIVE RECOMMENDATIONS:
-- You are a proactive, knowledgeable, and persuasive sales consultant for {org_name} ({biz_type}).
-- If a customer asks for a specific brand or item that is not in stock or not directly available (e.g. they ask for an "Oraimo charger", but our catalog has "VOTWO 35W Fast Charger" or "SHPLUS 6 USB Charger"):
-  - NEVER say "we don't have it" or "out of stock" and stop there!
-  - Warmly acknowledge what they are looking for, enthusiastically recommend the available options from the catalog search results as top-rated alternatives.
-  - Highlight the standout benefits of the alternative (e.g. ultra-fast charging speed, durable build, safety protection against surges, universal compatibility with all Type-C & iPhone devices).
-  - Actively convince and encourage the customer to purchase the available alternative with confidence!
-
-RESPONSE FORMAT — You must return ONLY a JSON object:
-{{
-  "reply": "Your response text to the contact",
-  "action": {{
-    "type": "NONE",
-    "documentName": "",
-    "imageName": "",
-    "purpose": "",
-    "preferredDate": "",
-    "preferredTime": "",
-    "query": "",
-    "category": "",
-    "location": "",
-    "max_budget": null,
-    "attributes": {{}},
-    "reason": ""
-  }}
-}}
-
-ACTION TYPE GUIDE:
-- NONE: standard conversational reply / answering greetings and questions
-- SEARCH_CATALOG: customer inquires about cars, inventory, products, properties, or services (include query, category, location, max_budget, attributes)
-- CREATE_BOOKING: customer wants to book/schedule an appointment (include purpose, preferredDate YYYY-MM-DD, preferredTime HH:MM AM/PM)
-- SEND_DOCUMENT: customer asks for a document, price list, menu, PDF, or form
-- SEND_IMAGE: customer asks for a photo, map, or picture
-- SEND_PAYMENT_LINK: customer asks how to pay, fees, pricing, or purchase
-- WEB_SEARCH: customer asks factual/timely question not in knowledge base
-- FLAG_FOR_HUMAN: customer is in crisis, angry, or asks for a human manager
-"""
-
-        user_turn = f"New message from {contact.name}:\n\"{incoming_text}\"\n\nGenerate your JSON response."
-
-        # 8. Call AI Provider
-        model_to_use = org.ai_model
-        if not model_to_use or model_to_use in (
-            "gemini-3.5-flash", "models/gemini-3.5-flash",
-            "gemini-1.5-flash", "models/gemini-1.5-flash",
-            "gemini-2.0-flash", "models/gemini-2.0-flash",
-            "gemini-2.5-flash", "models/gemini-2.5-flash"
-        ):
-            model_to_use = "gemini-3.7-flash"
-
-        raw_reply = await call_ai_provider(
-            provider=org.ai_provider or "gemini",
-            api_key=ai_api_key,
-            model=model_to_use,
-            system_prompt=system_prompt,
-            user_turn=user_turn,
-            base_url=org.ai_base_url
-        )
-
-        parsed = parse_agent_response(raw_reply)
-        reply_text = parsed.get("reply", "")
-        action = parsed.get("action", {})
-        action_type = action.get("type", "NONE")
-
-        if reply_text and reply_text.strip().startswith("{") and '"reply"' in reply_text:
-            alt_m = re.search(r'"reply"\s*:\s*"((?:[^"\\]|\\.)*)"', reply_text, re.DOTALL)
-            if alt_m:
-                reply_text = alt_m.group(1).replace(r'\"', '"').replace(r'\n', '\n').strip()
-
-        if not reply_text:
-            logger.warning(f"AI Agent returned empty reply parsed from: {repr(raw_reply)}")
-            reply_text = strip_emojis(raw_reply).strip() if raw_reply else ""
-            if not reply_text:
-                reply_text = "Hello! How can I help you today?"
+        if rule_res.get("matched"):
+            logger.info(f"⚡ [RULE ENGINE] Intercepted message with Rule '{rule_res.get('intent')}' — 0 Gemini tokens consumed.")
+            reply_text = rule_res.get("reply", "")
+            action = rule_res.get("action") or {"type": "NONE"}
+            action_type = action.get("type", "NONE")
+            recommended_items = rule_res.get("recommended_items", [])
+            is_rule_handled = True
+        else:
+            reply_text, action, action_type, session, collected_data = await _execute_generative_ai_pipeline(
+                org=org,
+                contact=contact,
+                incoming_text=incoming_text,
+                now=now,
+                ai_api_key=ai_api_key,
+                db=db
+            )
 
         # 9. Process Intent Actions
         if action_type == "FLAG_FOR_HUMAN":
@@ -1164,8 +1215,7 @@ ACTION TYPE GUIDE:
                 db.delete(session)
                 db.commit()
 
-        recommended_items = []
-        if action_type == "SEARCH_CATALOG":
+        if not recommended_items and action_type == "SEARCH_CATALOG":
             search_params = {
                 "query": action.get("query") or incoming_text,
                 "category": action.get("category") or "",
@@ -1174,17 +1224,18 @@ ACTION TYPE GUIDE:
                 "attributes": action.get("attributes") or {}
             }
             recommended_items = await execute_catalog_search(org, search_params, db)
-            if recommended_items:
-                card_summaries = []
-                for itm in recommended_items[:3]:
-                    price_str = itm.get('price') or "Contact for price"
-                    act_url = itm.get('action_url') or ""
-                    line = f"📦 *{itm['title']}*\n💰 Price: *{price_str}*"
-                    if act_url and act_url.startswith("http"):
-                        line += f"\n🔗 View / Order: {act_url}"
-                    card_summaries.append(line)
-                if card_summaries and not any(itm['title'].lower() in reply_text.lower() for itm in recommended_items):
-                    reply_text += f"\n\nHere are available options:\n\n" + "\n\n".join(card_summaries)
+
+        if recommended_items:
+            card_summaries = []
+            for itm in recommended_items[:3]:
+                price_str = itm.get('price') or "Contact for price"
+                act_url = itm.get('action_url') or ""
+                line = f"*{itm['title']}*\nPrice: {price_str}"
+                if act_url and act_url.startswith("http"):
+                    line += f"\nView / Order: {act_url}"
+                card_summaries.append(line)
+            if card_summaries and not any(itm['title'].lower() in reply_text.lower() for itm in recommended_items):
+                reply_text += f"\n\nHere are available options:\n\n" + "\n\n".join(card_summaries)
 
         # Automatic Visual Catalog Card Attachment Fallback:
         # If the AI provided a text reply without setting action_type=="SEARCH_CATALOG",
@@ -1328,44 +1379,128 @@ ACTION TYPE GUIDE:
                 config["access_token"]
             )
 
-            # If catalog items have a valid image, send the top item image first with caption or after text
-            top_image_item = next((itm for itm in recommended_items if itm.get("image_url") and str(itm["image_url"]).startswith("http")), None)
-            if top_image_item:
-                try:
-                    img_caption = f"*{top_image_item.get('title')}* - {top_image_item.get('price')}"
-                    await meta_service.send_media(
-                        to_phone=contact.phone,
-                        media_type="image",
-                        media_data=top_image_item["image_url"],
-                        caption=img_caption
-                    )
-                    logger.info(f"📸 Product image sent to WhatsApp for {top_image_item.get('title')}")
-                except Exception as img_err:
-                    logger.warning(f"Could not send product image preview to WhatsApp: {img_err}")
+            last_send_result = {"success": False}
 
-            # Send standard text message via Meta Cloud API
-            send_result = await meta_service.send_message(
-                to_phone=contact.phone,
-                message=reply_text
-            )
-            out_msg = Message(
-                organization_id=org_id,
-                contact_id=contact.id,
-                content=reply_text,
-                type="Outbound",
-                status="Sent" if send_result.get("success") else "Failed",
-                sent_at=now,
-                whatsapp_message_id=send_result.get("messageId")
-            )
-            db.add(out_msg)
-            db.commit()
-            logger.info(f"🚀 AI Auto-reply sent to {contact.phone} via Meta Cloud API (success={send_result.get('success')})")
-            return {
-                "reply": reply_text,
-                "action": action,
-                "message_id": str(out_msg.id),
-                "delivery_result": send_result
-            }
+            if recommended_items:
+                # 1. Clean the intro text by removing redundant appended text list of options
+                intro_text = re.sub(r'\n\nHere are available options:[\s\S]*$', '', reply_text).strip()
+                if not intro_text:
+                    clean_query = incoming_text.lower().replace("[voice note]:", "").strip()
+                    intro_text = f"Here are available options for {clean_query}:"
+
+                # Send conversational intro text first
+                intro_res = await meta_service.send_message(
+                    to_phone=contact.phone,
+                    message=intro_text
+                )
+                last_send_result = intro_res
+                out_msg_intro = Message(
+                    organization_id=org_id,
+                    contact_id=contact.id,
+                    content=intro_text,
+                    type="Outbound",
+                    status="Sent" if intro_res.get("success") else "Failed",
+                    sent_at=now,
+                    whatsapp_message_id=intro_res.get("messageId")
+                )
+                db.add(out_msg_intro)
+                db.commit()
+
+                # 2. Loop through up to 3 recommended products and send each as a styled card
+                for item in recommended_items[:3]:
+                    title = item.get("title", "Product")
+                    price = item.get("price") or "Contact for price"
+                    action_url = item.get("action_url") or ""
+                    image_url = item.get("image_url") or ""
+
+                    card_lines = [
+                        f"*{title}*",
+                        f"Price: {price}",
+                        "Availability: In Stock"
+                    ]
+                    if action_url and action_url.startswith("http"):
+                        card_lines.append(f"View & Order: {action_url}")
+                    card_caption = "\n".join(card_lines)
+
+                    card_sent = False
+                    if image_url and str(image_url).startswith("http"):
+                        try:
+                            img_res = await meta_service.send_media(
+                                to_phone=contact.phone,
+                                media_type="image",
+                                media_data=image_url,
+                                caption=card_caption
+                            )
+                            if img_res.get("success"):
+                                card_sent = True
+                                last_send_result = img_res
+                                card_msg = Message(
+                                    organization_id=org_id,
+                                    contact_id=contact.id,
+                                    content=card_caption,
+                                    attachment_url=image_url,
+                                    attachment_type="image",
+                                    type="Outbound",
+                                    status="Sent",
+                                    sent_at=now,
+                                    whatsapp_message_id=img_res.get("messageId")
+                                )
+                                db.add(card_msg)
+                                db.commit()
+                        except Exception as media_err:
+                            logger.warning(f"Failed to send product image card on WhatsApp for {title}: {media_err}")
+
+                    # If no valid image or media sending failed, send as formatted text card
+                    if not card_sent:
+                        card_txt_res = await meta_service.send_message(
+                            to_phone=contact.phone,
+                            message=card_caption
+                        )
+                        last_send_result = card_txt_res
+                        card_msg = Message(
+                            organization_id=org_id,
+                            contact_id=contact.id,
+                            content=card_caption,
+                            type="Outbound",
+                            status="Sent" if card_txt_res.get("success") else "Failed",
+                            sent_at=now,
+                            whatsapp_message_id=card_txt_res.get("messageId")
+                        )
+                        db.add(card_msg)
+                        db.commit()
+
+                logger.info(f"🚀 Multi-product visual cards sent to WhatsApp ({len(recommended_items[:3])} cards)")
+                return {
+                    "reply": reply_text,
+                    "action": action,
+                    "recommended_items": recommended_items,
+                    "delivery_result": last_send_result
+                }
+
+            else:
+                # Send standard text message via Meta Cloud API
+                send_result = await meta_service.send_message(
+                    to_phone=contact.phone,
+                    message=reply_text
+                )
+                out_msg = Message(
+                    organization_id=org_id,
+                    contact_id=contact.id,
+                    content=reply_text,
+                    type="Outbound",
+                    status="Sent" if send_result.get("success") else "Failed",
+                    sent_at=now,
+                    whatsapp_message_id=send_result.get("messageId")
+                )
+                db.add(out_msg)
+                db.commit()
+                logger.info(f"🚀 AI Auto-reply sent to {contact.phone} via Meta Cloud API (success={send_result.get('success')})")
+                return {
+                    "reply": reply_text,
+                    "action": action,
+                    "message_id": str(out_msg.id),
+                    "delivery_result": send_result
+                }
 
         else:
             # WPPConnect: Queue pending outbound message for bridge polling

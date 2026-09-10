@@ -736,59 +736,77 @@
 
           showTyping();
 
-          try {
-            const res = await fetch(`${apiUrl}/api/widget/voice-message`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                org_id: orgId,
-                visitor_name: visitorName,
-                visitor_phone_or_email: visitorId,
-                audio_base64: base64Audio,
-                audio_mime_type: mimeType,
-                speech_transcript: capturedSpeech || null
-              })
-            });
-
-            hideTyping();
-
-            if (res.ok) {
-              const data = await res.json();
-
-              // Update user bubble with transcribed text if available
-              if (data.transcription) {
-                userBubble.textContent = `🎙️ "${data.transcription}"`;
+          let res;
+          let vAttempts = 0;
+          while (vAttempts < 2) {
+            vAttempts++;
+            try {
+              res = await fetch(`${apiUrl}/api/widget/voice-message`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  org_id: orgId,
+                  visitor_name: visitorName,
+                  visitor_phone_or_email: visitorId,
+                  audio_base64: capturedSpeech ? "" : base64Audio,
+                  audio_mime_type: mimeType,
+                  speech_transcript: capturedSpeech || null
+                })
+              });
+              if (res && res.ok) break;
+            } catch (netErr) {
+              if (vAttempts < 2) {
+                await new Promise(r => setTimeout(r, 1500));
+              } else if (capturedSpeech) {
+                // Fallback to text message endpoint if audio payload dropped
+                try {
+                  res = await fetch(`${apiUrl}/api/widget/message`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      org_id: orgId,
+                      visitor_name: visitorName,
+                      visitor_phone_or_email: visitorId,
+                      message: `[Voice Note]: ${capturedSpeech}`
+                    })
+                  });
+                  if (res && res.ok) break;
+                } catch (fallbackErr) {}
               }
-
-              if (data.message_id) seenMessageIds.add(data.message_id);
-              if (data.outbound_message_id) seenMessageIds.add(data.outbound_message_id);
-              const cleanVoiceReply = extractCleanReply(data.reply);
-              if (cleanVoiceReply) seenMessageTexts.add(cleanVoiceReply.trim());
-
-              // Render AI response
-              const botBubble = document.createElement('div');
-              botBubble.className = 'shepherd-msg shepherd-msg-in';
-              botBubble.textContent = cleanVoiceReply;
-              msgs.appendChild(botBubble);
-
-              if (data.recommended_items && data.recommended_items.length > 0) {
-                const cardsEl = renderCatalogCards(data.recommended_items);
-                if (cardsEl) msgs.appendChild(cardsEl);
-              }
-
-              msgs.scrollTop = msgs.scrollHeight;
-            } else {
-              const errBubble = document.createElement('div');
-              errBubble.className = 'shepherd-msg shepherd-msg-in';
-              errBubble.textContent = "Could not process your voice note right now. Please type your message.";
-              msgs.appendChild(errBubble);
             }
-          } catch (vErr) {
-            hideTyping();
-            console.error('[Voice Note Send Error]:', vErr);
+          }
+
+          hideTyping();
+
+          if (res && res.ok) {
+            const data = await res.json();
+
+            // Update user bubble with transcribed text if available
+            if (data.transcription) {
+              userBubble.textContent = `🎙️ "${data.transcription}"`;
+            }
+
+            if (data.message_id) seenMessageIds.add(data.message_id);
+            if (data.outbound_message_id) seenMessageIds.add(data.outbound_message_id);
+            const cleanVoiceReply = extractCleanReply(data.reply);
+            if (cleanVoiceReply) seenMessageTexts.add(cleanVoiceReply.trim());
+
+            // Render AI response
+            const botBubble = document.createElement('div');
+            botBubble.className = 'shepherd-msg shepherd-msg-in';
+            botBubble.textContent = cleanVoiceReply;
+            msgs.appendChild(botBubble);
+
+            if (data.recommended_items && data.recommended_items.length > 0) {
+              const cardsEl = renderCatalogCards(data.recommended_items);
+              if (cardsEl) msgs.appendChild(cardsEl);
+            }
+
+            msgs.scrollTop = msgs.scrollHeight;
+          } else {
             const errBubble = document.createElement('div');
             errBubble.className = 'shepherd-msg shepherd-msg-in';
-            errBubble.textContent = "Could not deliver voice note. Please try again.";
+            errBubble.textContent = "I received your voice note, but could not decode it clearly. Please type what you need and I will assist right away.";
             msgs.appendChild(errBubble);
           }
         };
