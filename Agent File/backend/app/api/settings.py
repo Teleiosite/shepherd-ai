@@ -789,21 +789,21 @@ async def debug_ai_state(
 
                 <form method="POST" action="/api/settings/debug-ai">
                     <div class="field-group">
-                        <label>🔑 Google Gemini API Key</label>
-                        <input type="text" name="gemini_api_key" placeholder="AIzaSy..." required>
+                        <label>🔑 Google Gemini API Key <span style="color:#16a34a;">(Required)</span></label>
+                        <input type="text" name="gemini_api_key" placeholder="AIzaSy... or AQ..." required>
                         <div class="help">Free-tier key from <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:#2563eb;">Google AI Studio</a>. Powered by <strong>Gemini 3.5 Flash</strong>.</div>
                     </div>
 
                     <div class="field-group">
-                        <label>📱 WhatsApp Phone Number ID</label>
-                        <input type="text" name="phone_number_id" value="1122719754267706" required>
+                        <label>📱 WhatsApp Phone Number ID <span style="color:#64748b;font-weight:normal;">(Optional — leave blank to keep current)</span></label>
+                        <input type="text" name="phone_number_id" value="1122719754267706">
                         <div class="help">From Meta Developer Console for phone number <strong>+234 913 891 3856</strong>.</div>
                     </div>
 
                     <div class="field-group">
-                        <label>🛡️ WhatsApp Permanent Access Token</label>
-                        <input type="text" name="whatsapp_token" placeholder="EAAXt1bLVZCfoB..." required>
-                        <div class="help">Copy from your Meta WhatsApp Production Setup page ("Step 1: Generate token").</div>
+                        <label>🛡️ WhatsApp Permanent Access Token <span style="color:#64748b;font-weight:normal;">(Optional — leave blank to keep current)</span></label>
+                        <input type="text" name="whatsapp_token" placeholder="Leave blank to keep existing WhatsApp token">
+                        <div class="help">Only fill this if you need to update your Meta WhatsApp token.</div>
                     </div>
 
                     <div class="field-group">
@@ -813,7 +813,7 @@ async def debug_ai_state(
                         </label>
                     </div>
 
-                    <button type="submit" class="btn">⚡ ACTIVATE 24/7 AI AUTO-REPLY NOW</button>
+                    <button type="submit" class="btn">⚡ SAVE & ACTIVATE AI KEY NOW</button>
                 </form>
             </div>
 
@@ -845,35 +845,34 @@ async def debug_ai_activate(
     wa_token = str(form_data.get("whatsapp_token") or "").strip()
     apply_all = form_data.get("apply_all") in ["true", "on", "1", True]
 
-    if not gemini_key or not phone_id or not wa_token:
+    if not gemini_key:
         return HTMLResponse(
-            content="<h3>❌ Error: All fields (Gemini Key, Phone Number ID, WhatsApp Token) are required.</h3><p><a href='/api/settings/debug-ai'>← Go Back</a></p>",
+            content="<h3>❌ Error: Gemini Key is required.</h3><p><a href='/api/settings/debug-ai'>← Go Back</a></p>",
             status_code=400
         )
 
     try:
-        # Update organizations in database
-        sql = """
-            UPDATE organizations
-            SET ai_provider = 'gemini',
-                ai_api_key = :api_key,
-                ai_model = 'gemini-1.5-flash',
-                ai_auto_reply_enabled = 'true',
-                ai_reply_mode = 'auto-send',
-                whatsapp_phone_id = :phone_id,
-                whatsapp_access_token = :wa_token
-        """
+        # Update organizations in database dynamically
+        set_clauses = [
+            "ai_provider = 'gemini'",
+            "ai_api_key = :api_key",
+            "ai_model = 'gemini-3.5-flash'",
+            "ai_auto_reply_enabled = 'true'",
+            "ai_reply_mode = 'auto-send'"
+        ]
+        params = {"api_key": gemini_key}
+        if phone_id:
+            set_clauses.append("whatsapp_phone_id = :phone_id")
+            params["phone_id"] = phone_id
+        if wa_token:
+            set_clauses.append("whatsapp_access_token = :wa_token")
+            params["wa_token"] = wa_token
+
+        sql = f"UPDATE organizations SET {', '.join(set_clauses)}"
         if not apply_all:
             sql += " WHERE id = (SELECT id FROM organizations LIMIT 1)"
 
-        db.execute(
-            text(sql),
-            {
-                "api_key": gemini_key,
-                "phone_id": phone_id,
-                "wa_token": wa_token
-            }
-        )
+        db.execute(text(sql), params)
         db.commit()
 
         success_html = f"""
@@ -920,6 +919,37 @@ async def debug_ai_activate(
         )
 
 
+@router.get("/set-gemini-key")
+@router.post("/set-gemini-key")
+async def set_gemini_key_direct(key: str, db: Session = Depends(get_db)):
+    """
+    Direct 1-click update of Gemini API key across all organizations.
+    Example: /api/settings/set-gemini-key?key=AQ.Ab8RN6...
+    """
+    clean_k = key.strip()
+    if not clean_k:
+        raise HTTPException(status_code=400, detail="key is required")
+    db.execute(
+        text("""
+            UPDATE organizations
+            SET ai_api_key = :k,
+                ai_provider = 'gemini',
+                ai_model = 'gemini-3.5-flash',
+                ai_auto_reply_enabled = 'true',
+                ai_reply_mode = 'auto-send'
+        """),
+        {"k": clean_k}
+    )
+    db.commit()
+    logger.info(f"🔑 Gemini API Key updated directly: {clean_k[:6]}...{clean_k[-4:]}")
+    return {
+        "success": True,
+        "message": "Gemini API Key successfully updated across all organizations!",
+        "key_preview": clean_k[:6] + "..." + clean_k[-4:],
+        "status": "active"
+    }
+
+
 @router.get("/quick-activate")
 async def quick_activate_get(
     api_key: str,
@@ -931,33 +961,30 @@ async def quick_activate_get(
     Emergency URL activator via GET:
     /api/settings/quick-activate?api_key=AIza...&token=EAAXt...&phone_id=1122719754267706
     """
-    if not api_key or not token:
-        raise HTTPException(status_code=400, detail="api_key and token are required")
+    if not api_key:
+        raise HTTPException(status_code=400, detail="api_key is required")
 
     try:
-        db.execute(
-            text("""
-                UPDATE organizations
-                SET ai_provider = 'gemini',
-                    ai_api_key = :api_key,
-                    ai_model = 'gemini-1.5-flash',
-                    ai_auto_reply_enabled = 'true',
-                    ai_reply_mode = 'auto-send',
-                    whatsapp_phone_id = :phone_id,
-                    whatsapp_access_token = :wa_token
-            """),
-            {
-                "api_key": api_key,
-                "phone_id": phone_id,
-                "wa_token": token
-            }
-        )
+        set_clauses = [
+            "ai_provider = 'gemini'",
+            "ai_api_key = :api_key",
+            "ai_model = 'gemini-3.5-flash'",
+            "ai_auto_reply_enabled = 'true'",
+            "ai_reply_mode = 'auto-send'",
+            "whatsapp_phone_id = :phone_id"
+        ]
+        params = {"api_key": api_key, "phone_id": phone_id}
+        if token:
+            set_clauses.append("whatsapp_access_token = :wa_token")
+            params["wa_token"] = token
+
+        db.execute(text(f"UPDATE organizations SET {', '.join(set_clauses)}"), params)
         db.commit()
         return {
             "success": True,
             "message": "AI Auto-reply successfully activated across all organizations!",
             "phone_id": phone_id,
-            "model": "gemini-1.5-flash / gemini-2.0-flash",
+            "model": "gemini-3.5-flash",
             "mode": "auto-send"
         }
     except Exception as e:

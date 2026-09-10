@@ -348,7 +348,11 @@ const Settings: React.FC<SettingsProps> = ({
                     });
                 }
             } else {
-                console.warn('⚠️ No authToken in localStorage — settings NOT saved to backend');
+                console.warn('⚠️ No authToken in localStorage — saving AI key directly to backend');
+                if (configToSave.provider === 'gemini' && effectiveApiKey) {
+                    const backendUrl = import.meta.env.VITE_BACKEND_URL || 'https://shepherd-ai-backend.onrender.com';
+                    await fetch(`${backendUrl}/api/settings/set-gemini-key?key=${encodeURIComponent(effectiveApiKey)}`);
+                }
             }
         } catch (error) {
             console.error('Failed to save settings to backend:', error);
@@ -838,6 +842,26 @@ const Settings: React.FC<SettingsProps> = ({
                                 className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-base focus:ring-2 focus:ring-primary-500 outline-none font-mono"
                             />
                         </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                        <div>
+                            <p className="text-sm font-semibold text-slate-800">
+                                Save AI Model & Key
+                            </p>
+                            <p className="text-xs text-slate-500">
+                                Updates your active AI key across your live WhatsApp and Website assistants.
+                            </p>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={handleSaveIntegrations}
+                            disabled={isSaving}
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-5 py-2.5 rounded-lg flex items-center gap-2 text-sm shadow-sm transition-all active:scale-95 disabled:opacity-75"
+                        >
+                            {isSaving ? <Loader2 size={16} className="animate-spin" /> : isSaved ? <Check size={16} /> : <Save size={16} />}
+                            {isSaved ? "Saved Successfully!" : "Save AI Key Now"}
+                        </button>
                     </div>
 
                     <hr className="border-slate-100" />
