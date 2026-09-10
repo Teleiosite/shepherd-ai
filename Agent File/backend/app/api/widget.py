@@ -159,7 +159,11 @@ async def handle_widget_message(
             channel="web_widget"
         )
 
-        reply_text = agent_result.get("reply", "") if agent_result else "Thank you for reaching out! How can I assist you with DeceHub products and services today?"
+        reply_text = (agent_result.get("reply") or "").strip() if agent_result else ""
+        if not reply_text:
+            err_msg = agent_result.get("error") if agent_result else "None"
+            logger.warning(f"AI Agent returned empty or error reply for widget: {err_msg}")
+            reply_text = "Hello! Welcome to our store. How can I assist you with our products and services today?"
         recommended_items = agent_result.get("recommended_items", []) if agent_result else []
 
         outbound_msg_id = agent_result.get("message_id") if agent_result else None

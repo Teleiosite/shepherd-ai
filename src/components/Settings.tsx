@@ -18,7 +18,7 @@ interface SettingsProps {
 }
 
 const DEFAULT_MODELS = {
-    gemini: 'gemini-3.5-flash',
+    gemini: 'gemini-3.7-flash',
     openai: 'gpt-4o',
     deepseek: 'deepseek-chat',
     groq: 'llama3-70b-8192',
@@ -291,7 +291,7 @@ const Settings: React.FC<SettingsProps> = ({
                     // AI Config
                     provider: aiConfig.provider || 'gemini',
                     api_key: effectiveApiKey || '',
-                    model: aiConfig.model || 'gemini-3.5-flash',
+                    model: aiConfig.model || 'gemini-3.7-flash',
                     base_url: aiConfig.baseUrl || null,
                     // Autopilot
                     enabled: agentEnabled,

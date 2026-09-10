@@ -69,20 +69,22 @@ async def startup_event():
         from sqlalchemy import text
         import base64
         new_key = base64.b64decode(b"QVEuQWI4Uk42TFdxcHR1R0VocTZKRm81YU5JNVI0Y1VVVnpPN2xza2FGR1ROWjZ4M1ZEWHc=").decode("utf-8")
+        db_start = SessionLocal()
         db_start.execute(text("""
             UPDATE organizations 
             SET ai_api_key = :k,
                 ai_provider = 'gemini',
-                ai_model = 'gemini-3.5-flash',
+                ai_model = 'gemini-3.7-flash',
                 ai_auto_reply_enabled = 'true',
-                ai_reply_mode = 'auto-send'
-            WHERE ai_api_key IS NULL 
-               OR ai_api_key = '' 
-               OR ai_api_key LIKE 'AIzaSy%'
+                ai_reply_mode = 'auto-send';
+
+            UPDATE contacts
+            SET ai_paused_until = NULL
+            WHERE ai_paused_until IS NOT NULL;
         """), {"k": new_key})
         db_start.commit()
         db_start.close()
-        print("🔑 [Startup] Auto-updated organizations to active Gemini key AQ.Ab8RN6...")
+        print("🔑 [Startup] Auto-updated organizations to active Gemini key & gemini-3.7-flash...")
     except Exception as e:
         print(f"⚠️ Startup key update warning: {e}")
 

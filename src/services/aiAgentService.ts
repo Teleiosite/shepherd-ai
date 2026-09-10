@@ -26,10 +26,10 @@ const getAIConfig = (): AIConfig => {
   }
   const legacyKey = localStorage.getItem('shepherd_google_api_key');
   if (legacyKey && !legacyKey.startsWith('***')) {
-    return { provider: 'gemini', apiKey: legacyKey, model: 'gemini-3.5-flash' };
+    return { provider: 'gemini', apiKey: legacyKey, model: 'gemini-3.7-flash' };
   }
   const envKey = (import.meta as any).env?.VITE_GEMINI_API_KEY || '';
-  return { provider: 'gemini', apiKey: envKey, model: 'gemini-3.5-flash' };
+  return { provider: 'gemini', apiKey: envKey, model: 'gemini-3.7-flash' };
 };
 
 export const getAgentSettings = () => {
@@ -245,7 +245,7 @@ const callAI = async (systemPrompt: string, userTurn: string): Promise<string> =
         const { GoogleGenAI } = await import('@google/genai');
         const genai = new GoogleGenAI({ apiKey: config.apiKey });
         const response = await genai.models.generateContent({
-          model: config.model || 'gemini-3.5-flash',
+          model: config.model || 'gemini-3.7-flash',
           contents: [{ role: 'user', parts: [{ text: `${systemPrompt}\n\n${userTurn}` }] }],
           config: { temperature: 0.75 }
         });

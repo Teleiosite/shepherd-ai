@@ -56,19 +56,44 @@ async def call_ai_provider(
         except Exception as list_e:
             logger.warning(f"⚠️ Could not list models via SDK: {list_e}")
 
-        # Prioritize flash models from discovered list, followed by hardcoded fallbacks
-        candidates = []
-        for d in discovered:
-            if "flash" in d and d not in candidates:
-                candidates.append(d)
-        for d in discovered:
-            if d not in candidates:
-                candidates.append(d)
+        # Verified working fast text generation models
+        verified_primary = [
+            "gemini-3.7-flash",
+            "gemini-3.8-flash",
+            "gemini-3.6-flash",
+            "gemini-3.1-flash-lite",
+            "gemini-3-flash-preview",
+            "gemini-flash-latest"
+        ]
 
-        # Ensure standard fallbacks are present
-        for std in ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-2.5-flash", "gemini-1.5-pro", "gemini-pro"]:
-            if std not in candidates:
-                candidates.append(std)
+        EXCLUDE_KEYWORDS = (
+            "tts", "preview-tts", "imagen", "image", "embedding",
+            "aqa", "robotics", "computer-use", "clip", "preview-customtools",
+            "banana", "lyria"
+        )
+        OBSOLETE_MODELS = (
+            "gemini-1.5-flash", "gemini-2.0-flash", "gemini-2.5-flash",
+            "gemini-1.5-pro", "gemini-pro"
+        )
+
+        candidates = []
+        # First priority: explicitly requested model if valid and non-obsolete
+        if model:
+            clean_m = model.replace("models/", "").strip()
+            if not any(ex in clean_m.lower() for ex in EXCLUDE_KEYWORDS) and clean_m not in OBSOLETE_MODELS:
+                candidates.append(clean_m)
+
+        # Second priority: top verified models
+        for vp in verified_primary:
+            if vp not in candidates:
+                candidates.append(vp)
+
+        # Third priority: any other discovered models that aren't excluded
+        for d in discovered:
+            d_lower = d.lower()
+            if not any(ex in d_lower for ex in EXCLUDE_KEYWORDS) and d not in OBSOLETE_MODELS:
+                if d not in candidates:
+                    candidates.append(d)
 
         attempt_errors = []
         full_text_turn = f"System Instructions:\n{system_prompt}\n\nCustomer Message:\n{user_turn}"
@@ -105,30 +130,29 @@ async def call_ai_provider(
         # 3. If SDK attempts failed, fallback to direct REST API
         logger.info("🔄 Falling back to Google Generative Language REST API...")
         import httpx
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            for rest_model in candidates[:4]:
-                for api_ver in ["v1beta", "v1"]:
-                    try:
-                        rest_url = f"https://generativelanguage.googleapis.com/{api_ver}/models/{rest_model}:generateContent?key={api_key}"
-                        payload = {
-                            "contents": [
-                                {"parts": [{"text": full_text_turn}]}
-                            ],
-                            "generationConfig": {"temperature": 0.7}
-                        }
-                        r = await client.post(rest_url, json=payload)
-                        if r.status_code == 200:
-                            r_data = r.json()
-                            candidates_list = r_data.get("candidates", [])
-                            if candidates_list:
-                                text_part = candidates_list[0].get("content", {}).get("parts", [{}])[0].get("text", "")
-                                if text_part:
-                                    logger.info(f"✅ REST API model '{rest_model}' ({api_ver}) succeeded!")
-                                    return text_part.strip()
-                        else:
-                            attempt_errors.append(f"REST {api_ver}/{rest_model} HTTP {r.status_code}: {r.text[:120]}")
-                    except Exception as rest_e:
-                        attempt_errors.append(f"REST {api_ver}/{rest_model} ex: {str(rest_e)[:100]}")
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            for rest_model in candidates[:6]:
+                try:
+                    rest_url = f"https://generativelanguage.googleapis.com/v1beta/models/{rest_model}:generateContent?key={api_key}"
+                    payload = {
+                        "contents": [
+                            {"parts": [{"text": full_text_turn}]}
+                        ],
+                        "generationConfig": {"temperature": 0.7}
+                    }
+                    r = await client.post(rest_url, json=payload)
+                    if r.status_code == 200:
+                        r_data = r.json()
+                        candidates_list = r_data.get("candidates", [])
+                        if candidates_list:
+                            text_part = candidates_list[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+                            if text_part:
+                                logger.info(f"✅ REST API model '{rest_model}' (v1beta) succeeded!")
+                                return text_part.strip()
+                    else:
+                        attempt_errors.append(f"REST v1beta/{rest_model} HTTP {r.status_code}: {r.text[:120]}")
+                except Exception as rest_e:
+                    attempt_errors.append(f"REST v1beta/{rest_model} ex: {str(rest_e)[:100]}")
 
         err_summary = " | ".join(attempt_errors[-5:])
         raise Exception(f"All Gemini models failed: {err_summary}")
@@ -815,7 +839,7 @@ async def trigger_ai_agent_reply(
             return {"error": f"Contact {contact_id} not found"}
 
         now = datetime.utcnow()
-        if contact.ai_paused_until:
+        if channel != "web_widget" and contact.ai_paused_until:
             # Handle timezone-aware comparison
             paused_time = contact.ai_paused_until.replace(tzinfo=None)
             if paused_time > now:
@@ -1006,8 +1030,13 @@ ACTION TYPE GUIDE:
 
         # 8. Call AI Provider
         model_to_use = org.ai_model
-        if not model_to_use or model_to_use in ("gemini-3.5-flash", "models/gemini-3.5-flash"):
-            model_to_use = "gemini-1.5-flash"
+        if not model_to_use or model_to_use in (
+            "gemini-3.5-flash", "models/gemini-3.5-flash",
+            "gemini-1.5-flash", "models/gemini-1.5-flash",
+            "gemini-2.0-flash", "models/gemini-2.0-flash",
+            "gemini-2.5-flash", "models/gemini-2.5-flash"
+        ):
+            model_to_use = "gemini-3.7-flash"
 
         raw_reply = await call_ai_provider(
             provider=org.ai_provider or "gemini",

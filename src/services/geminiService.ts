@@ -11,7 +11,7 @@ const getAIConfig = (): AIConfig => {
   return {
     provider: 'gemini',
     apiKey: legacyKey || process.env.API_KEY || '',
-    model: 'gemini-3.5-flash'
+    model: 'gemini-3.7-flash'
   };
 };
 
@@ -115,7 +115,7 @@ export const generateMessage = async (
         if (config.provider === 'gemini') {
           const ai = new GoogleGenAI({ apiKey: config.apiKey });
           const response = await ai.models.generateContent({
-            model: config.model || 'gemini-3.5-flash',
+            model: config.model || 'gemini-3.7-flash',
             contents: [
               { role: 'user', parts: [{ text: systemPrompt + "\n\n" + userPrompt }] }
             ]

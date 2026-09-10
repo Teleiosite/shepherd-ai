@@ -1080,7 +1080,7 @@ async def test_reply_endpoint(
         raw_ai = await call_ai_provider(
             provider="gemini",
             api_key=effective_api_key,
-            model="gemini-1.5-flash",
+            model="gemini-3.7-flash",
             system_prompt="You are Shepherd AI, a helpful church/business assistant. Respond concisely in JSON format: {\"reply\": \"Your response here\", \"action\": {\"type\": \"NONE\"}}",
             user_turn=f"Customer says: {text_message}"
         )
