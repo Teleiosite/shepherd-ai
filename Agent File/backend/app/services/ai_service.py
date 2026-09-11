@@ -127,15 +127,20 @@ async def generate_embedding(text: str, api_key: Optional[str] = None) -> List[f
         return []
         
     try:
+        import asyncio
         genai.configure(api_key=api_key)
-        # Use the embedding model
-        result = genai.embed_content(
-            model="models/embedding-001",
-            content=text,
-            task_type="retrieval_document",
-            title="Shepherd AI Knowledge"
+        # Use supported Google Gemini embedding model
+        result = await asyncio.wait_for(
+            asyncio.to_thread(
+                genai.embed_content,
+                model="models/gemini-embedding-001",
+                content=text,
+                task_type="retrieval_document",
+                title="Shepherd AI Knowledge"
+            ),
+            timeout=4.0
         )
-        return result['embedding']
+        return result.get('embedding', [])
     except Exception as e:
         print(f"Error generating embedding: {e}")
         return []

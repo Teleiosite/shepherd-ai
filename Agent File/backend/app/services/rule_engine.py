@@ -209,22 +209,49 @@ async def evaluate_rule_intent(
         }
 
     # 8. DIRECT HIGH-CONFIDENCE CATALOG MATCH (0 Tokens)
-    CATALOG_KEYWORDS = ["watch", "charger", "earphone", "headphone", "power bank", "cable", "battery", "airpods", "smartwatch"]
-    if any(k in cleaned for k in CATALOG_KEYWORDS) and len(words) <= 7:
+    CATALOG_KEYWORDS = [
+        "watch", "watches", "smartwatch", "smartwatches",
+        "charger", "chargers", "fast charger",
+        "cable", "cables", "usb", "type c", "lightning",
+        "battery", "batteries", "power bank", "powerbank",
+        "earphone", "earphones", "headphone", "headphones",
+        "earbud", "earbuds", "airpod", "airpods", "pods",
+        "speaker", "speakers", "bluetooth", "sound",
+        "phone", "phones", "screen", "case", "cases", "adapter"
+    ]
+    GENERAL_CATALOG_TRIGGERS = [
+        "what do you sell", "what do you have", "what products", "what gadgets",
+        "show me products", "show me your store", "list of products", "list your products",
+        "what are you selling", "available products", "see your products",
+        "available items", "catalogue", "catalog", "items in store", "store items", "gadgets in store"
+    ]
+
+    has_cat_kw = any(k in cleaned for k in CATALOG_KEYWORDS)
+    has_gen_trig = any(trig in cleaned for trig in GENERAL_CATALOG_TRIGGERS)
+
+    if has_cat_kw or has_gen_trig:
         try:
             matched_items = []
-            for kw in CATALOG_KEYWORDS:
-                if kw in cleaned:
-                    items = db.query(CatalogItem).filter(
-                        CatalogItem.organization_id == org.id,
-                        CatalogItem.is_available == True,
-                        or_(
-                            CatalogItem.title.ilike(f"%{kw}%"),
-                            CatalogItem.description.ilike(f"%{kw}%"),
-                            CatalogItem.category.ilike(f"%{kw}%")
-                        )
-                    ).limit(4).all()
-                    matched_items.extend(items)
+            if has_cat_kw:
+                for kw in CATALOG_KEYWORDS:
+                    if kw in cleaned:
+                        items = db.query(CatalogItem).filter(
+                            CatalogItem.organization_id == org.id,
+                            CatalogItem.is_available == True,
+                            or_(
+                                CatalogItem.title.ilike(f"%{kw}%"),
+                                CatalogItem.description.ilike(f"%{kw}%"),
+                                CatalogItem.category.ilike(f"%{kw}%")
+                            )
+                        ).limit(4).all()
+                        matched_items.extend(items)
+            
+            # If broad inquiry or keyword search returned nothing, get top store items
+            if not matched_items and has_gen_trig:
+                matched_items = db.query(CatalogItem).filter(
+                    CatalogItem.organization_id == org.id,
+                    CatalogItem.is_available == True
+                ).order_by(CatalogItem.created_at.desc()).limit(4).all()
 
             if matched_items:
                 unique_dict = {}
@@ -264,5 +291,5 @@ async def evaluate_rule_intent(
         except Exception as cat_err:
             logger.warning(f"Rule catalog search error: {cat_err}")
 
-    # No deterministic rule matched -> seamlessly hand over to Gemini 3.7 Flash LLM
+    # No deterministic rule matched -> seamlessly hand over to fast Gemini LLM
     return {"matched": False}

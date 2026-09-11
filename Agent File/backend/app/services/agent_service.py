@@ -41,104 +41,52 @@ async def call_ai_provider(
         raise ValueError("AI API key is missing.")
 
     if provider == "gemini":
-        import google.generativeai as genai
-        genai.configure(api_key=api_key)
-
-        # 1. Dynamically ask Google what models this API key has access to
-        discovered = []
-        try:
-            for m in genai.list_models():
-                methods = getattr(m, "supported_generation_methods", []) or []
-                if "generateContent" in methods:
-                    m_clean = m.name.replace("models/", "")
-                    discovered.append(m_clean)
-            logger.info(f"📋 Discovered {len(discovered)} Gemini models for this key: {discovered[:5]}")
-        except Exception as list_e:
-            logger.warning(f"⚠️ Could not list models via SDK: {list_e}")
-
-        # Verified working fast text generation models
-        verified_primary = [
-            "gemini-3.7-flash",
-            "gemini-3.8-flash",
-            "gemini-3.6-flash",
-            "gemini-3.1-flash-lite",
+        # Verified ultra-fast production models (sub-2-second latency)
+        FAST_GEMINI_MODELS = [
+            "gemini-3.5-flash-lite",
             "gemini-3-flash-preview",
+            "gemini-3.1-flash-lite",
+            "gemini-3.7-flash",
             "gemini-flash-latest"
         ]
 
         EXCLUDE_KEYWORDS = (
             "tts", "preview-tts", "imagen", "image", "embedding",
-            "aqa", "robotics", "computer-use", "clip", "preview-customtools",
-            "banana", "lyria"
+            "aqa", "robotics", "computer-use", "clip", "banana", "lyria"
         )
         OBSOLETE_MODELS = (
             "gemini-1.5-flash", "gemini-2.0-flash", "gemini-2.5-flash",
-            "gemini-1.5-pro", "gemini-pro"
+            "gemini-1.5-pro", "gemini-pro", "gemini-3.8-flash", "gemini-3.6-flash"
         )
 
         candidates = []
-        # First priority: explicitly requested model if valid and non-obsolete
         if model:
             clean_m = model.replace("models/", "").strip()
             if not any(ex in clean_m.lower() for ex in EXCLUDE_KEYWORDS) and clean_m not in OBSOLETE_MODELS:
                 candidates.append(clean_m)
 
-        # Second priority: top verified models
-        for vp in verified_primary:
-            if vp not in candidates:
-                candidates.append(vp)
+        for fm in FAST_GEMINI_MODELS:
+            if fm not in candidates:
+                candidates.append(fm)
 
-        # Third priority: any other discovered models that aren't excluded
-        for d in discovered:
-            d_lower = d.lower()
-            if not any(ex in d_lower for ex in EXCLUDE_KEYWORDS) and d not in OBSOLETE_MODELS:
-                if d not in candidates:
-                    candidates.append(d)
-
+        full_text_turn = f"System Instructions:\n{system_prompt}\n\nCustomer Message:\n{user_turn}\n\nGenerate your JSON response."
         attempt_errors = []
-        full_text_turn = f"System Instructions:\n{system_prompt}\n\nCustomer Message:\n{user_turn}"
 
-        # 2. Try candidates via SDK
-        for cand in candidates:
-            # Try first with system_instruction, then fallback to prepended prompt
-            for with_sys in [True, False]:
-                try:
-                    logger.info(f"🤖 Calling Gemini '{cand}' (system_instruction={with_sys})...")
-                    if with_sys:
-                        generative_model = genai.GenerativeModel(
-                            model_name=cand,
-                            system_instruction=system_prompt
-                        )
-                        response = generative_model.generate_content(
-                            user_turn,
-                            generation_config={"temperature": 0.7}
-                        )
-                    else:
-                        generative_model = genai.GenerativeModel(model_name=cand)
-                        response = generative_model.generate_content(
-                            full_text_turn,
-                            generation_config={"temperature": 0.7}
-                        )
-
-                    if response and response.text:
-                        logger.info(f"✅ Gemini model '{cand}' succeeded! ({len(response.text)} chars)")
-                        return response.text.strip()
-                except Exception as m_err:
-                    attempt_errors.append(f"{cand}(sys={with_sys}): {str(m_err)[:100]}")
-                    continue
-
-        # 3. If SDK attempts failed, fallback to direct REST API
-        logger.info("🔄 Falling back to Google Generative Language REST API...")
+        # 1. Primary: Direct Async REST API (Ultra-low latency, non-blocking)
         import httpx
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            for rest_model in candidates[:6]:
+        async with httpx.AsyncClient(timeout=7.0) as client:
+            for cand in candidates:
                 try:
-                    rest_url = f"https://generativelanguage.googleapis.com/v1beta/models/{rest_model}:generateContent?key={api_key}"
+                    logger.info(f"🤖 Fast REST call to Gemini '{cand}'...")
+                    rest_url = f"https://generativelanguage.googleapis.com/v1beta/models/{cand}:generateContent?key={api_key}"
                     payload = {
                         "contents": [
                             {"parts": [{"text": full_text_turn}]}
                         ],
-                        "generationConfig": {"temperature": 0.7}
+                        "generationConfig": {
+                            "temperature": 0.7,
+                            "responseMimeType": "application/json"
+                        }
                     }
                     r = await client.post(rest_url, json=payload)
                     if r.status_code == 200:
@@ -147,14 +95,34 @@ async def call_ai_provider(
                         if candidates_list:
                             text_part = candidates_list[0].get("content", {}).get("parts", [{}])[0].get("text", "")
                             if text_part:
-                                logger.info(f"✅ REST API model '{rest_model}' (v1beta) succeeded!")
+                                logger.info(f"✅ Gemini model '{cand}' REST call succeeded! ({len(text_part)} chars)")
                                 return text_part.strip()
                     else:
-                        attempt_errors.append(f"REST v1beta/{rest_model} HTTP {r.status_code}: {r.text[:120]}")
+                        logger.warning(f"⚠️ Gemini model '{cand}' returned HTTP {r.status_code}: {r.text[:100]}")
+                        attempt_errors.append(f"{cand} HTTP {r.status_code}")
                 except Exception as rest_e:
-                    attempt_errors.append(f"REST v1beta/{rest_model} ex: {str(rest_e)[:100]}")
+                    logger.warning(f"⚠️ Gemini model '{cand}' call exception: {rest_e}")
+                    attempt_errors.append(f"{cand} ex: {str(rest_e)[:60]}")
+                    continue
 
-        err_summary = " | ".join(attempt_errors[-5:])
+        # 2. Fallback to SDK with strict async timeout if REST attempts had issues
+        try:
+            import google.generativeai as genai
+            import asyncio
+            genai.configure(api_key=api_key)
+            fallback_model_name = candidates[0] if candidates else "gemini-3.5-flash-lite"
+            logger.info(f"🔄 Trying SDK fallback with '{fallback_model_name}'...")
+            sdk_model = genai.GenerativeModel(fallback_model_name)
+            response = await asyncio.wait_for(
+                asyncio.to_thread(sdk_model.generate_content, full_text_turn, generation_config={"temperature": 0.7}),
+                timeout=7.0
+            )
+            if response and response.text:
+                return response.text.strip()
+        except Exception as sdk_err:
+            attempt_errors.append(f"SDK fallback ex: {str(sdk_err)[:60]}")
+
+        err_summary = " | ".join(attempt_errors[-4:])
         raise Exception(f"All Gemini models failed: {err_summary}")
 
     # OpenAI-compatible providers (OpenAI, DeepSeek, Groq, Custom)
@@ -938,7 +906,7 @@ ACTION TYPE GUIDE:
         "gemini-2.0-flash", "models/gemini-2.0-flash",
         "gemini-2.5-flash", "models/gemini-2.5-flash"
     ):
-        model_to_use = "gemini-3.7-flash"
+        model_to_use = "gemini-3.5-flash-lite"
 
     raw_reply = await call_ai_provider(
         provider=org.ai_provider or "gemini",

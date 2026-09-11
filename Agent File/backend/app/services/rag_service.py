@@ -35,6 +35,15 @@ async def search_knowledge_base(
         "ok", "okay", "wow", "great", "wow that's great", "thanks", "thank you", "bye", "are you there"
     ]
 
+    # Quick check: does this organization have any knowledge resources?
+    # If not, return immediately to eliminate latency and avoid any external API calls
+    try:
+        has_kb = db.query(KnowledgeResource.id).filter(KnowledgeResource.organization_id == organization_id).first()
+        if not has_kb:
+            return []
+    except Exception:
+        pass
+
     # 1. Generate embedding for query (skip for short greetings to ensure sub-second response)
     if not is_greeting_or_short:
         query_embedding = await generate_embedding(query, api_key=api_key)
