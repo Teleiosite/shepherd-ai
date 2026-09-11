@@ -20,6 +20,12 @@ def _clean_text(text: str) -> str:
     t = text.strip().lower()
     t = re.sub(r"^\[voice (?:note|message)[^\]]*\]:?\s*", "", t)
     t = re.sub(r"[^\w\s]", " ", t)
+    # Typo normalizations
+    t = re.sub(r"\bwrest\s*watch\b", "wrist watch", t)
+    t = re.sub(r"\bwirst\s*watch\b", "wrist watch", t)
+    t = re.sub(r"\bchager\b", "charger", t)
+    t = re.sub(r"\bpowebank\b", "powerbank", t)
+    t = re.sub(r"\bbattry\b", "battery", t)
     return re.sub(r"\s+", " ", t).strip()
 
 
@@ -49,13 +55,83 @@ async def evaluate_rule_intent(
     if not base_store_url.startswith("http"):
         base_store_url = "https://" + base_store_url if base_store_url else "https://decehub.com"
 
-    # 1. GREETINGS & CHECK-INS (Exact and short greetings)
+    # 1. AFRICAN & NIGERIAN LANGUAGES (Yoruba, Hausa, Igbo, Pidgin)
+    YORUBA_TRIGGERS = [
+        "i am yoruba", "im yoruba", "am yoruba", "omo yoruba", "bawo ni",
+        "e kaaro", "e kaasan", "e kale", "ekaro", "ekasan", "ekale",
+        "se dada ni", "se daadaa ni", "kilo n sele", "kilonshele", "ki lo n sele", "baoni"
+    ]
+    if any(trig in cleaned for trig in YORUBA_TRIGGERS):
+        reply = (
+            f"E kaabo! Inu mi dun lati ba yin soro. Mo le ba yin soro ni ede Yoruba. "
+            f"Emi ni {ai_name}, oluranlowo {org_name}. "
+            f"Bawo ni mo se le ran yin lowo loni pelu awon ohun elo wa bii agogo smart watch, charger, power bank, ati bee bee lo?"
+        )
+        return {
+            "matched": True,
+            "intent": "YORUBA_GREETING",
+            "reply": reply,
+            "action": {"type": "NONE"},
+            "recommended_items": []
+        }
+
+    HAUSA_TRIGGERS = [
+        "i am hausa", "im hausa", "am hausa", "sannu da zuwa", "ina kwana",
+        "ina wuni", "barka da rana", "barka da yamma", "barka da asuba"
+    ]
+    if any(trig in cleaned for trig in HAUSA_TRIGGERS):
+        reply = (
+            f"Sannu da zuwa! Ina farin cikin magana da ku. Ni ne {ai_name}, mataimakin {org_name}. "
+            f"Me kuke so in taimaka muku da shi a yau? Muna da ingantattun wayoyi, caji, da agogon hannu."
+        )
+        return {
+            "matched": True,
+            "intent": "HAUSA_GREETING",
+            "reply": reply,
+            "action": {"type": "NONE"},
+            "recommended_items": []
+        }
+
+    IGBO_TRIGGERS = [
+        "i am igbo", "im igbo", "am igbo", "kedu kwanu", "kedu ka ima",
+        "ututu oma", "ehihie oma", "mgbede oma"
+    ]
+    if any(trig in cleaned for trig in IGBO_TRIGGERS):
+        reply = (
+            f"Ndewo! Obi di m uto isoro gi kwuo okwu. Abum {ai_name}, onye enyemaka gi na {org_name}. "
+            f"Kedu ihe m nwere ike inyere gi aka taa? Anyi nwere ezigbo chaja, elekere smart watch, na ngwaahia ndi ozo."
+        )
+        return {
+            "matched": True,
+            "intent": "IGBO_GREETING",
+            "reply": reply,
+            "action": {"type": "NONE"},
+            "recommended_items": []
+        }
+
+    PIDGIN_TRIGGERS = [
+        "how far", "wetin dey happen", "how body", "how things", "i dey greet", "wetin dey"
+    ]
+    if any(trig in cleaned for trig in PIDGIN_TRIGGERS):
+        reply = (
+            f"I hail you! How body? Na {ai_name} be this from {org_name}. "
+            f"Wetin you go like check out today? We get original phones, chargers, smartwatches, and power banks with sharp nationwide delivery."
+        )
+        return {
+            "matched": True,
+            "intent": "PIDGIN_GREETING",
+            "reply": reply,
+            "action": {"type": "NONE"},
+            "recommended_items": []
+        }
+
+    # 2. GREETINGS & CHECK-INS (Exact and short greetings)
     GREETING_EXACT = {
         "hello", "hi", "hey", "hy", "helo", "helloo", "hiya",
         "good morning", "good afternoon", "good evening", "good day",
         "are you there", "you there", "anyone there", "is anyone there",
         "anyone online", "is anyone online", "anyone here", "hello decehub",
-        "hi decehub", "hey decehub", "sannu", "bawo ni", "kedu",
+        "hi decehub", "hey decehub",
         "greetings", "wassup", "what s up", "whats up", "howdy"
     }
 
@@ -217,7 +293,8 @@ async def evaluate_rule_intent(
         "earphone", "earphones", "headphone", "headphones",
         "earbud", "earbuds", "airpod", "airpods", "pods",
         "speaker", "speakers", "bluetooth", "sound",
-        "phone", "phones", "screen", "case", "cases", "adapter"
+        "phone", "phones", "screen", "case", "cases", "adapter",
+        "oraimo", "foomee", "apple", "samsung", "infinix", "tecno", "shplus", "votwo", "anker"
     ]
     GENERAL_CATALOG_TRIGGERS = [
         "what do you sell", "what do you have", "what products", "what gadgets",
@@ -231,51 +308,13 @@ async def evaluate_rule_intent(
 
     if has_cat_kw or has_gen_trig:
         try:
-            matched_items = []
-            if has_cat_kw:
-                for kw in CATALOG_KEYWORDS:
-                    if kw in cleaned:
-                        items = db.query(CatalogItem).filter(
-                            CatalogItem.organization_id == org.id,
-                            CatalogItem.is_available == True,
-                            or_(
-                                CatalogItem.title.ilike(f"%{kw}%"),
-                                CatalogItem.description.ilike(f"%{kw}%"),
-                                CatalogItem.category.ilike(f"%{kw}%")
-                            )
-                        ).limit(4).all()
-                        matched_items.extend(items)
-            
-            # If broad inquiry or keyword search returned nothing, get top store items
-            if not matched_items and has_gen_trig:
-                matched_items = db.query(CatalogItem).filter(
-                    CatalogItem.organization_id == org.id,
-                    CatalogItem.is_available == True
-                ).order_by(CatalogItem.created_at.desc()).limit(4).all()
+            from app.services.agent_service import execute_catalog_search
+            search_query = cleaned if has_cat_kw else ""
+            card_items = await execute_catalog_search(org, {"query": search_query}, db)
+            if not card_items and has_gen_trig:
+                card_items = await execute_catalog_search(org, {"query": ""}, db)
 
-            if matched_items:
-                unique_dict = {}
-                for itm in matched_items:
-                    unique_dict[str(itm.id)] = itm
-                unique_list = list(unique_dict.values())[:4]
-
-                card_items = []
-                import urllib.parse
-                for ci in unique_list:
-                    price_display = f"{ci.price_currency or 'NGN'} {ci.price_amount:,.0f}".strip() if ci.price_amount else "Contact for pricing"
-                    safe_url = ci.action_url or (f"{base_store_url}/?s={urllib.parse.quote_plus(ci.title)}" if base_store_url else "")
-                    card_items.append({
-                        "id": str(ci.id),
-                        "title": ci.title,
-                        "category": ci.category or "",
-                        "description": ci.description or "",
-                        "price": price_display,
-                        "price_amount": float(ci.price_amount) if ci.price_amount else 0,
-                        "image_url": ci.image_url or "",
-                        "action_url": safe_url,
-                        "attributes": ci.attributes or {}
-                    })
-
+            if card_items:
                 reply = (
                     f"Yes! We have authentic, high-quality options in stock with a 1-year warranty and fast nationwide delivery. "
                     f"Here are top available options:"
@@ -286,7 +325,7 @@ async def evaluate_rule_intent(
                     "intent": "DIRECT_CATALOG_MATCH",
                     "reply": reply,
                     "action": {"type": "SEARCH_CATALOG", "query": cleaned},
-                    "recommended_items": card_items
+                    "recommended_items": card_items[:4]
                 }
         except Exception as cat_err:
             logger.warning(f"Rule catalog search error: {cat_err}")

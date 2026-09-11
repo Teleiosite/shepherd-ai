@@ -331,9 +331,13 @@ async def transcribe_voice_note(
             start_groq = time.time()
             clean_ext = "ogg" if clean_mime == "audio/ogg" else ("webm" if clean_mime == "audio/webm" else "wav")
             files = {"file": (f"voice.{clean_ext}", audio_bytes, clean_mime)}
-            data_w = {"model": "whisper-large-v3-turbo", "temperature": "0"}
+            data_w = {
+                "model": "whisper-large-v3-turbo",
+                "temperature": "0",
+                "prompt": "English, Nigerian Pidgin, Yoruba, Hausa, Igbo: E kaaro, Bawo ni, Kedu, Sannu, phone, charger, smart watch, battery, cable, price."
+            }
             headers_w = {"Authorization": f"Bearer {effective_groq_key}"}
-            async with httpx.AsyncClient(timeout=25.0) as client:
+            async with httpx.AsyncClient(timeout=15.0) as client:
                 g_res = await client.post(
                     "https://api.groq.com/openai/v1/audio/transcriptions",
                     headers=headers_w,
@@ -343,7 +347,11 @@ async def transcribe_voice_note(
                 elapsed_g = time.time() - start_groq
                 if g_res.status_code == 200:
                     text_out = g_res.json().get("text", "").strip()
-                    if text_out:
+                    # Detect Whisper Hebrew/Welsh false-positive hallucination
+                    has_hebrew_chars = any('\u0590' <= c <= '\u05ff' for c in text_out)
+                    if has_hebrew_chars or text_out.lower() in ("hebrew", "[hebrew]"):
+                        logger.warning(f"⚠️ Discarding Whisper false-positive Hebrew hallucination: '{text_out}'")
+                    elif text_out:
                         logger.info(f"🎙️ ✅ Groq Whisper SUCCESS in {elapsed_g:.2f}s: '{text_out[:120]}'")
                         return text_out
                 else:
@@ -352,89 +360,57 @@ async def transcribe_voice_note(
             logger.warning(f"Groq Whisper attempt error: {g_err}")
 
     # =========================================================================
-    # Tier 2: Google Generative AI Multimodal Audio (Official SDK + 16kHz PCM WAV)
-    # Uses official google.generativeai SDK dynamically discovering supported models
+    # Tier 2: Google Gemini Multimodal Audio (Direct Async REST + African Multilingual)
+    # Natively understands Yoruba, Hausa, Igbo, Nigerian Pidgin, and English
     # =========================================================================
     if effective_gemini_key and not effective_gemini_key.startswith("gsk_") and not effective_gemini_key.startswith("sk-"):
         try:
-            import google.generativeai as genai
-            genai.configure(api_key=effective_gemini_key)
+            b64_audio = base64.b64encode(audio_bytes).decode('ascii')
+            audio_mime = "audio/ogg" if is_ogg else clean_mime
 
-            # 1. Convert to 16kHz mono WAV in thread pool for universal compatibility
-            wav_data = await asyncio.to_thread(_convert_audio_to_wav, audio_bytes, is_ogg, clean_mime)
-            audio_part = {
-                "mime_type": "audio/wav" if wav_data else clean_mime,
-                "data": wav_data if wav_data else audio_bytes
-            }
             transcribe_prompt = (
-                "Transcribe this voice message verbatim in English or whatever language was spoken. "
-                "Output ONLY the exact transcribed words with no other text, no explanations, no formatting, and no commentary. "
+                "Transcribe this voice message verbatim in English, Nigerian Pidgin, Yoruba (e.g. Bawo ni, E kaaro, Mo fe ra...), Hausa (Sannu, Ina kwana, Ina son...), Igbo (Kedu, Ndewo, Achorum...), or Isoko. "
+                "Accurately recognize African languages and Nigerian accents. "
+                "Do NOT mistake African languages for Hebrew, Arabic, Welsh, or European languages. "
+                "Output ONLY the exact transcribed words with no other text, no explanations, and no commentary. "
                 "If the audio has no speech or is only background silence, reply with [silence]."
             )
 
-            # 2. Discover models that support generateContent for this API key
-            discovered = []
-            try:
-                for m in genai.list_models():
-                    methods = getattr(m, "supported_generation_methods", []) or []
-                    if "generateContent" in methods:
-                        clean_name = m.name.replace("models/", "")
-                        discovered.append(clean_name)
-            except Exception as list_e:
-                logger.warning(f"Could not list models via SDK: {list_e}")
-
-            # Prioritize verified working audio models first
-            recommended_preferred = [
-                "gemini-3.5-flash",
-                "gemini-3.7-flash",
-                "gemini-3.1-flash-lite",
-                "gemini-3.5-transcribe",
-                "gemini-flash-latest",
-                "gemini-3.8-flash",
-                "gemini-3.6-flash",
-                "gemini-omni-1.1-flash"
-            ]
-            model_targets = [m for m in recommended_preferred]
-            for d in discovered:
-                if "transcribe" in d and d not in model_targets:
-                    model_targets.insert(0, d)
-                elif "flash" in d and d not in model_targets and "preview-tts" not in d and not d.startswith("gemma"):
-                    model_targets.append(d)
-            for d in discovered:
-                if d not in model_targets and "preview-tts" not in d and not d.startswith("gemma") and not d.startswith("lyria"):
-                    model_targets.append(d)
-
-            logger.info(f"🎙️ [Tier 2: Gemini Multimodal SDK] Trying models {model_targets[:6]} for audio transcription...")
-
-            for target_model in model_targets[:6]:
+            # 1. Direct Async REST to fast Gemini models
+            for cand_model in ["gemini-3.5-flash-lite", "gemini-3-flash-preview", "gemini-3.1-flash-lite"]:
                 try:
-                    g_model = genai.GenerativeModel(model_name=target_model)
-                    response = g_model.generate_content(
-                        [audio_part, transcribe_prompt],
-                        generation_config={"temperature": 0.0}
-                    )
-                    if response:
-                        res_text = ""
-                        try:
-                            res_text = (response.text or "").strip()
-                        except Exception:
-                            try:
-                                parts = response.candidates[0].content.parts
-                                res_text = "".join(getattr(p, "text", "") for p in parts).strip()
-                            except Exception:
-                                res_text = ""
-
-                        if res_text and res_text.lower() not in ("[silence]", "[blank]", "[unintelligible]"):
-                            logger.info(f"🎙️ ✅ Gemini SDK ({target_model}) transcription SUCCESS: '{res_text[:120]}'")
-                            return res_text
-                        elif res_text.lower() in ("[silence]", "[blank]", "[unintelligible]"):
-                            logger.info(f"🎙️ Gemini SDK ({target_model}) reported blank/silence audio.")
-                            return ""
-                except Exception as g_err:
-                    logger.warning(f"Gemini SDK audio attempt with '{target_model}' failed: {g_err}")
+                    rest_url = f"https://generativelanguage.googleapis.com/v1beta/models/{cand_model}:generateContent?key={effective_gemini_key}"
+                    payload = {
+                        "contents": [{
+                            "parts": [
+                                {"inlineData": {"mimeType": audio_mime, "data": b64_audio}},
+                                {"text": transcribe_prompt}
+                            ]
+                        }],
+                        "generationConfig": {"temperature": 0.0}
+                    }
+                    async with httpx.AsyncClient(timeout=10.0) as client:
+                        r = await client.post(rest_url, json=payload)
+                        if r.status_code == 200:
+                            data = r.json()
+                            candidates_list = data.get("candidates", [])
+                            if candidates_list:
+                                parts = candidates_list[0].get("content", {}).get("parts", [])
+                                if parts:
+                                    res_text = parts[0].get("text", "").strip()
+                                    if res_text and res_text.lower() not in ("[silence]", "[blank]", "[unintelligible]"):
+                                        logger.info(f"🎙️ ✅ Gemini REST audio transcription ({cand_model}) SUCCESS: '{res_text[:120]}'")
+                                        return res_text
+                                    elif res_text.lower() in ("[silence]", "[blank]", "[unintelligible]"):
+                                        return ""
+                        else:
+                            logger.warning(f"Gemini REST audio HTTP {r.status_code} on {cand_model}: {r.text[:120]}")
+                except Exception as rest_e:
+                    logger.warning(f"Gemini REST audio on {cand_model} exception: {rest_e}")
+                    continue
 
         except Exception as tier2_err:
-            logger.error(f"🎙️ Tier 2 Gemini SDK audio transcription error: {tier2_err}")
+            logger.error(f"🎙️ Tier 2 Gemini REST audio transcription error: {tier2_err}")
 
     # =========================================================================
     # Tier 3: Dedicated self-hosted faster-whisper microservice (port 8001 or TRANSCRIBE_SERVICE_URL)
@@ -617,40 +593,82 @@ async def execute_catalog_search(
             CatalogItem.organization_id == org.id,
             CatalogItem.is_available == True
         )
+        fallback_query = db.query(CatalogItem).filter(
+            CatalogItem.organization_id == org.id,
+            CatalogItem.is_available == True
+        )
 
         results = []
         if query_str:
-            # Tier 1: Exact phrase search across title, description, category
-            tier1 = base_query.filter(
-                (CatalogItem.title.ilike(f"%{query_str}%")) |
-                (CatalogItem.description.ilike(f"%{query_str}%")) |
-                (CatalogItem.category.ilike(f"%{query_str}%"))
-            )
-            if max_budget:
-                try:
-                    tier1 = tier1.filter(CatalogItem.price_amount <= float(max_budget))
-                except:
-                    pass
-            results = tier1.limit(5).all()
+            # 1. Normalize common phonetic typos and compound terms
+            norm_q = query_str
+            norm_q = re.sub(r"\bwrest\s*watch\b", "watch", norm_q, flags=re.I)
+            norm_q = re.sub(r"\bwrist\s*watch\b", "watch", norm_q, flags=re.I)
+            norm_q = re.sub(r"\bsmart\s*watch\b", "smartwatch", norm_q, flags=re.I)
+            norm_q = re.sub(r"\bpower\s*bank\b", "power bank", norm_q, flags=re.I)
+            norm_q = re.sub(r"\bfast\s*charger\b", "charger", norm_q, flags=re.I)
 
-            # Tier 2: Token-based alternative search if exact brand/model is not matched
-            # e.g. User asks for "Oraimo charger" -> if no Oraimo charger, returns other chargers (VOTWO, SHPLUS, etc.)
+            # 2. Check for Specific Brand or Model mentions
+            KNOWN_BRANDS = ["oraimo", "foomee", "apple", "samsung", "infinix", "tecno", "xiaomi", "itel", "anker", "shplus", "votwo"]
+            detected_brand = next((b for b in KNOWN_BRANDS if b in query_str.lower()), None)
+
+            # Model numbers (e.g. 2R, KM20, KM19, etc.)
+            model_match = re.search(r"\b(2r|km20|km19|km22|series\s*\d+|pro|max)\b", query_str, re.I)
+            detected_model = model_match.group(0).lower() if model_match else None
+
+            is_specific = bool(detected_brand or detected_model)
+
+            # Tier 1: Brand & Model Specific Search (Highest Priority)
+            if is_specific:
+                spec_query = base_query
+                if detected_brand:
+                    spec_query = spec_query.filter(
+                        (CatalogItem.title.ilike(f"%{detected_brand}%")) |
+                        (CatalogItem.description.ilike(f"%{detected_brand}%"))
+                    )
+                if detected_model:
+                    spec_query = spec_query.filter(
+                        (CatalogItem.title.ilike(f"%{detected_model}%")) |
+                        (CatalogItem.description.ilike(f"%{detected_model}%"))
+                    )
+                # Also include category/keyword if present (e.g. "watch", "charger")
+                for cat_word in ["watch", "smartwatch", "charger", "cable", "battery", "earbud", "headphone"]:
+                    if cat_word in norm_q.lower():
+                        spec_query = spec_query.filter(
+                            (CatalogItem.title.ilike(f"%{cat_word}%")) |
+                            (CatalogItem.category.ilike(f"%{cat_word}%")) |
+                            (CatalogItem.description.ilike(f"%{cat_word}%"))
+                        )
+                        break
+
+                results = spec_query.limit(5).all()
+                if results:
+                    logger.info(f"🎯 Exact brand/model match found {len(results)} items for '{query_str}' (brand={detected_brand}, model={detected_model})")
+
+            # Tier 2: Phrase & Token Match across Title, Category, Description
             if not results:
-                stop_words = {"want", "need", "looking", "for", "please", "some", "like", "have", "with", "from", "the", "and", "buy", "good"}
-                raw_words = query_str.split()
+                tier2 = base_query.filter(
+                    (CatalogItem.title.ilike(f"%{norm_q}%")) |
+                    (CatalogItem.description.ilike(f"%{norm_q}%")) |
+                    (CatalogItem.category.ilike(f"%{norm_q}%"))
+                )
+                if max_budget:
+                    try:
+                        tier2 = tier2.filter(CatalogItem.price_amount <= float(max_budget))
+                    except:
+                        pass
+                results = tier2.limit(5).all()
+
+            # Tier 3: Token-based fallback search with relevance scoring
+            if not results:
+                stop_words = {"want", "need", "looking", "for", "please", "some", "like", "have", "with", "from", "the", "and", "buy", "good", "show", "give"}
+                raw_words = norm_q.split()
                 clean_tokens = [re.sub(r"[^\w]", "", w).strip() for w in raw_words]
                 tokens = [t for t in clean_tokens if len(t) >= 3 and t.lower() not in stop_words]
 
                 if tokens:
-                    token_filters = []
-                    for t in tokens:
-                        token_filters.append(CatalogItem.title.ilike(f"%{t}%"))
-                        token_filters.append(CatalogItem.description.ilike(f"%{t}%"))
-                        token_filters.append(CatalogItem.category.ilike(f"%{t}%"))
-
-                    all_candidates = fallback_query.limit(20).all()
+                    all_candidates = fallback_query.limit(30).all()
                     if all_candidates:
-                        # Rank candidates by relevance to query tokens
                         def score_item(item):
                             score = 0
                             t_lower = (item.title or "").lower()
@@ -659,16 +677,21 @@ async def execute_catalog_search(
                             for tok in tokens:
                                 tok_l = tok.lower()
                                 if tok_l in t_lower:
-                                    score += 10
+                                    score += 15
                                 if tok_l in c_lower:
-                                    score += 5
+                                    score += 8
                                 if tok_l in d_lower:
-                                    score += 1
+                                    score += 2
+                            # Brand bonus if brand matched
+                            if detected_brand and detected_brand in t_lower:
+                                score += 20
                             return score
 
-                        sorted_candidates = sorted(all_candidates, key=score_item, reverse=True)
-                        results = sorted_candidates[:5]
-                        logger.info(f"💡 Tier 2 fallback search found {len(results)} ranked items for '{query_str}' using tokens: {tokens}")
+                        scored = [(itm, score_item(itm)) for itm in all_candidates]
+                        scored = [pair for pair in scored if pair[1] > 0]
+                        scored.sort(key=lambda x: x[1], reverse=True)
+                        results = [pair[0] for pair in scored[:5]]
+                        logger.info(f"💡 Tier 3 token search found {len(results)} ranked items for '{query_str}' using tokens: {tokens}")
         else:
             if category:
                 base_query = base_query.filter(CatalogItem.category.ilike(f"%{category}%"))
@@ -846,6 +869,16 @@ APPOINTMENT & BOOKING RULES:
 NO EMOJIS RULE:
 - NEVER use emojis, smileys, or emoticons in your replies (do NOT use emojis like 😊, 🙌, 🎉, etc.).
 - Keep all responses completely free of emojis in both text and voice notes.
+
+MULTILINGUAL & NIGERIAN LANGUAGE RULES:
+- You are operating in Nigeria and fully support English, Nigerian Pidgin, Yoruba, Hausa, Igbo, and Isoko.
+- If a contact states their ethnicity or language (e.g. "I am Yoruba", "I am Igbo", "I speak Hausa") or speaks/types in Yoruba, Hausa, Igbo, or Pidgin:
+  - You MUST warmly acknowledge and reply fluently in their language or natural Nigerian Pidgin!
+  - Yoruba example: "E kaabo! Inu mi dun lati ba yin soro. Bawo ni mo se le ran yin lowo loni pelu awon ohun elo wa?" or "Inu mi dun lati mo pe omo Yoruba ni yin. Bawo ni mo se le ran yin lowo loni?"
+  - Hausa example: "Sannu da zuwa! Ina farin cikin magana da ku. Me zan iya taimaka muku da shi a yau?"
+  - Igbo example: "Ndewo! Obi di m uto isoro gi kwuo okwu. Kedu ihe m nwere ike inyere gi aka taa?"
+  - Nigerian Pidgin example: "I hail you! How body? Wetin you go like check out today?"
+- If the customer asks for products in Yoruba, Hausa, Igbo, or Pidgin, respond to them in that language, and set "action": {"type": "SEARCH_CATALOG", "query": "<item in english>"} so the system automatically attaches the interactive visual product cards!
 
 VOICE NOTE RULES:
 - When a customer sends a voice message that was successfully transcribed, it appears as "[Voice Note]: <transcription>". Answer their message directly, warmly, and helpfully as if they spoke to you.
@@ -1241,6 +1274,18 @@ async def trigger_ai_agent_reply(
                         matched_dicts = await execute_catalog_search(org, {"query": token_q}, db)
                         recommended_items = matched_dicts[:4]
 
+                # 3. If STILL nothing matched, check recent conversation history for product context
+                if not matched and not recommended_items:
+                    recent_msgs = db.query(Message).filter(Message.contact_id == contact.id).order_by(Message.created_at.desc()).limit(6).all()
+                    combined_history = " ".join((m.content or "").lower() for m in recent_msgs)
+                    for kw in ["watch", "smartwatch", "charger", "cable", "battery", "power bank", "earbud", "headphone", "oraimo", "foomee", "shplus", "votwo", "anker", "laptop", "phone"]:
+                        if kw in combined_history:
+                            matched_dicts = await execute_catalog_search(org, {"query": kw}, db)
+                            if matched_dicts:
+                                recommended_items = matched_dicts[:4]
+                                logger.info(f"✨ Auto-attached {len(recommended_items)} catalog cards from conversation history keyword '{kw}'")
+                                break
+
                 if matched and not recommended_items:
                     for mi in matched[:4]:
                         price_display = f"{mi.price_currency or 'NGN'} {mi.price_amount:,.0f}".strip() if mi.price_amount else "Contact for pricing"
@@ -1303,6 +1348,7 @@ async def trigger_ai_agent_reply(
         is_inbound_voice = incoming_text.startswith("[Voice Note") or incoming_text.startswith("[Voice message")
         should_send_voice = (voice_reply_mode == "voice") or (voice_reply_mode == "match_input" and is_inbound_voice)
 
+        voice_sent = False
         if should_send_voice and config.get("delivery_method") == "meta":
             logger.info(f"🎙️ Synthesizing voice note response using voice: {voice_name}")
             try:
@@ -1331,13 +1377,19 @@ async def trigger_ai_agent_reply(
                     db.add(out_msg)
                     db.commit()
                     logger.info(f"🎙️ AI Voice Note auto-reply sent to {contact.phone} via Meta Cloud API")
-                    return {
-                        "reply": reply_text,
-                        "action": action,
-                        "message_id": str(out_msg.id),
-                        "is_voice": True,
-                        "delivery_result": send_result
-                    }
+                    voice_sent = True
+
+                    # If no catalog items need to be sent, return immediately
+                    if not recommended_items:
+                        return {
+                            "reply": reply_text,
+                            "action": action,
+                            "message_id": str(out_msg.id),
+                            "is_voice": True,
+                            "delivery_result": send_result
+                        }
+                    else:
+                        logger.info(f"🎙️ Voice note delivered. Proceeding to deliver {len(recommended_items)} visual catalog cards to WhatsApp.")
             except Exception as voice_err:
                 logger.warning(f"Voice synthesis/sending failed, falling back to text: {voice_err}")
 
@@ -1356,23 +1408,24 @@ async def trigger_ai_agent_reply(
                     clean_query = incoming_text.lower().replace("[voice note]:", "").strip()
                     intro_text = f"Here are available options for {clean_query}:"
 
-                # Send conversational intro text first
-                intro_res = await meta_service.send_message(
-                    to_phone=contact.phone,
-                    message=intro_text
-                )
-                last_send_result = intro_res
-                out_msg_intro = Message(
-                    organization_id=org_id,
-                    contact_id=contact.id,
-                    content=intro_text,
-                    type="Outbound",
-                    status="Sent" if intro_res.get("success") else "Failed",
-                    sent_at=now,
-                    whatsapp_message_id=intro_res.get("messageId")
-                )
-                db.add(out_msg_intro)
-                db.commit()
+                # Send conversational intro text only if voice note was not already delivered
+                if not voice_sent:
+                    intro_res = await meta_service.send_message(
+                        to_phone=contact.phone,
+                        message=intro_text
+                    )
+                    last_send_result = intro_res
+                    out_msg_intro = Message(
+                        organization_id=org_id,
+                        contact_id=contact.id,
+                        content=intro_text,
+                        type="Outbound",
+                        status="Sent" if intro_res.get("success") else "Failed",
+                        sent_at=now,
+                        whatsapp_message_id=intro_res.get("messageId")
+                    )
+                    db.add(out_msg_intro)
+                    db.commit()
 
                 # 2. Loop through up to 3 recommended products and send each as a styled card
                 for item in recommended_items[:3]:
@@ -1442,6 +1495,7 @@ async def trigger_ai_agent_reply(
                     "reply": reply_text,
                     "action": action,
                     "recommended_items": recommended_items,
+                    "is_voice": voice_sent,
                     "delivery_result": last_send_result
                 }
 
