@@ -331,7 +331,12 @@ async def transcribe_voice_note(
             start_groq = time.time()
             clean_ext = "ogg" if clean_mime == "audio/ogg" else ("webm" if clean_mime == "audio/webm" else "wav")
             files = {"file": (f"voice.{clean_ext}", audio_bytes, clean_mime)}
-            data_w = {"model": "whisper-large-v3-turbo", "temperature": "0"}
+            # language=None → auto-detect; prompt hints help Groq identify tonal languages accurately
+            data_w = {
+                "model": "whisper-large-v3-turbo",
+                "temperature": "0",
+                "prompt": "Yoruba Hausa Igbo Pidgin Nigerian English"
+            }
             headers_w = {"Authorization": f"Bearer {effective_groq_key}"}
             async with httpx.AsyncClient(timeout=25.0) as client:
                 g_res = await client.post(
@@ -367,7 +372,8 @@ async def transcribe_voice_note(
                 "data": wav_data if wav_data else audio_bytes
             }
             transcribe_prompt = (
-                "Transcribe this voice message verbatim in English or whatever language was spoken. "
+                "Transcribe this voice message verbatim. The speaker may be speaking Yoruba, Hausa, Igbo, "
+                "Nigerian Pidgin English, or standard English — preserve the exact language and words used. "
                 "Output ONLY the exact transcribed words with no other text, no explanations, no formatting, and no commentary. "
                 "If the audio has no speech or is only background silence, reply with [silence]."
             )
@@ -1375,7 +1381,11 @@ async def trigger_ai_agent_reply(
                 db.commit()
 
                 # 2. Loop through up to 3 recommended products and send each as a styled card
-                for item in recommended_items[:3]:
+                for card_idx, item in enumerate(recommended_items[:3]):
+                    # Small delay between cards to avoid Meta rate-limiting dropping 2nd/3rd messages
+                    if card_idx > 0:
+                        await asyncio.sleep(0.4)
+
                     title = item.get("title", "Product")
                     price = item.get("price") or "Contact for price"
                     action_url = item.get("action_url") or ""
@@ -1415,6 +1425,9 @@ async def trigger_ai_agent_reply(
                                 )
                                 db.add(card_msg)
                                 db.commit()
+                                logger.info(f"🖼️ Card {card_idx+1}/{min(len(recommended_items),3)} sent: {title}")
+                            else:
+                                logger.warning(f"🖼️ Card {card_idx+1} send_media failed for '{title}': {img_res.get('error')}")
                         except Exception as media_err:
                             logger.warning(f"Failed to send product image card on WhatsApp for {title}: {media_err}")
 
@@ -1436,6 +1449,7 @@ async def trigger_ai_agent_reply(
                         )
                         db.add(card_msg)
                         db.commit()
+
 
                 logger.info(f"🚀 Multi-product visual cards sent to WhatsApp ({len(recommended_items[:3])} cards)")
                 return {
