@@ -277,7 +277,53 @@ class MetaWhatsAppService:
                     }
                 else:
                     error_data = response.json()
-                    logger.error(f"Meta API returned {response.status_code}: {error_data}")
+                    logger.warning(f"Meta API returned {response.status_code} for media link: {error_data}")
+                    
+                    # Direct binary upload fallback: If URL link was rejected or inaccessible by Meta,
+                    # fetch the image on backend and upload directly to Meta's /media endpoint
+                    if (media_data.startswith("http://") or media_data.startswith("https://")) and meta_media_type == "image":
+                        try:
+                            logger.info(f"🔄 Attempting direct download and binary upload to Meta /media for: {media_data[:60]}")
+                            async with httpx.AsyncClient(timeout=15.0, headers={"User-Agent": "Mozilla/5.0"}) as dl_cli:
+                                dl_res = await dl_cli.get(media_data)
+                                if dl_res.status_code == 200 and len(dl_res.content) > 100:
+                                    c_type = dl_res.headers.get("Content-Type", "image/jpeg").split(";")[0]
+                                    up_res = await client.post(
+                                        f"{self.base_url}/{self.phone_number_id}/media",
+                                        headers={"Authorization": f"Bearer {self.access_token}"},
+                                        data={"messaging_product": "whatsapp", "type": c_type},
+                                        files={"file": ("product.jpg", dl_res.content, c_type)}
+                                    )
+                                    if up_res.status_code == 200:
+                                        m_id = up_res.json().get("id")
+                                        fb_payload = {
+                                            "messaging_product": "whatsapp",
+                                            "recipient_type": "individual",
+                                            "to": to_phone,
+                                            "type": "image",
+                                            "image": {"id": m_id}
+                                        }
+                                        if caption:
+                                            fb_payload["image"]["caption"] = caption
+                                        fb_msg_res = await client.post(
+                                            f"{self.base_url}/{self.phone_number_id}/messages",
+                                            headers={
+                                                "Authorization": f"Bearer {self.access_token}",
+                                                "Content-Type": "application/json"
+                                            },
+                                            json=fb_payload
+                                        )
+                                        if fb_msg_res.status_code == 200:
+                                            logger.info("✅ Binary upload fallback succeeded for WhatsApp product card image!")
+                                            fb_data = fb_msg_res.json()
+                                            return {
+                                                "success": True,
+                                                "messageId": fb_data.get("messages", [{}])[0].get("id"),
+                                                "provider": "meta"
+                                            }
+                        except Exception as dl_err:
+                            logger.warning(f"Direct download/upload fallback failed: {dl_err}")
+
                     return {
                         "success": False,
                         "error": error_data.get("error", {}).get("message", f"HTTP {response.status_code}"),

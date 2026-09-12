@@ -367,18 +367,19 @@ async def transcribe_voice_note(
             b64_audio = base64.b64encode(final_audio_bytes).decode("utf-8")
 
             transcribe_prompt = (
-                "Transcribe this voice message verbatim in the language spoken. "
-                "The speaker may be using English, Nigerian Pidgin, Yoruba, Hausa, or Igbo. "
-                "Output ONLY the exact transcribed words with no other text, no explanations, no formatting, and no commentary. "
-                "If the audio has no speech or is only background silence, reply with [silence]."
+                "You are an expert multilingual speech-to-text transcriber. "
+                "Listen carefully to this voice note and transcribe verbatim in the exact language spoken. "
+                "The speaker may be speaking English, Nigerian Pidgin, Yoruba, Hausa, or Igbo. "
+                "Output ONLY the exact words spoken with no translations, no extra text, no markdown, and no commentary. "
+                "If the audio contains only background noise, breathing, or silence, output: [silence]"
             )
 
             AUDIO_MODELS = [
+                "gemini-2.5-flash",
+                "gemini-1.5-flash",
+                "gemini-2.0-flash",
                 "gemini-3.5-flash-lite",
-                "gemini-3-flash-preview",
-                "gemini-3.1-flash-lite",
-                "gemini-3.7-flash",
-                "gemini-3.5-transcribe"
+                "gemini-flash-latest"
             ]
 
             async with httpx.AsyncClient(timeout=15.0) as client:
@@ -606,26 +607,63 @@ async def execute_catalog_search(
             CatalogItem.is_available == True
         )
 
+        import html
         results = []
         if query_str:
-            # Tier 1: Exact phrase search across title, description, category
+            clean_q = html.unescape(query_str).strip()
+            # Tier 1: Search across title, category, description
             tier1 = base_query.filter(
-                (CatalogItem.title.ilike(f"%{query_str}%")) |
-                (CatalogItem.description.ilike(f"%{query_str}%")) |
-                (CatalogItem.category.ilike(f"%{query_str}%"))
+                (CatalogItem.title.ilike(f"%{clean_q}%")) |
+                (CatalogItem.category.ilike(f"%{clean_q}%")) |
+                (CatalogItem.description.ilike(f"%{clean_q}%"))
             )
             if max_budget:
                 try:
                     tier1 = tier1.filter(CatalogItem.price_amount <= float(max_budget))
                 except:
                     pass
-            results = tier1.limit(5).all()
+            all_t1 = tier1.limit(25).all()
+            if all_t1:
+                # Rank candidates: Title matches rank highest, followed by category, then description!
+                def score_t1(item):
+                    score = 0
+                    t_lower = html.unescape(item.title or "").lower()
+                    c_lower = html.unescape(item.category or "").lower()
+                    d_lower = html.unescape(item.description or "").lower()
+                    q_lower = clean_q.lower()
+                    
+                    if t_lower == q_lower:
+                        score += 1000
+                    elif q_lower in t_lower:
+                        score += 500
+                    elif q_lower in c_lower:
+                        score += 200
+                    elif q_lower in d_lower:
+                        score += 5
+
+                    for word in q_lower.split():
+                        if len(word) >= 3:
+                            if word in t_lower:
+                                score += 60
+                            if word in c_lower:
+                                score += 20
+                            if word in d_lower:
+                                score += 1
+                    return score
+
+                sorted_t1 = sorted(all_t1, key=score_t1, reverse=True)
+                top_score = score_t1(sorted_t1[0])
+                # If specific product matched with dominant score (>= 500), return only exact match(es)
+                if top_score >= 500 and len(clean_q.split()) >= 2:
+                    results = [itm for itm in sorted_t1 if score_t1(itm) >= 500][:2]
+                else:
+                    results = sorted_t1[:5]
 
             # Tier 2: Token-based alternative search if exact brand/model is not matched
             # e.g. User asks for "Oraimo charger" -> if no Oraimo charger, returns other chargers (VOTWO, SHPLUS, etc.)
             if not results:
                 stop_words = {"want", "need", "looking", "for", "please", "some", "like", "have", "with", "from", "the", "and", "buy", "good"}
-                raw_words = query_str.split()
+                raw_words = clean_q.split()
                 clean_tokens = [re.sub(r"[^\w]", "", w).strip() for w in raw_words]
                 tokens = [t for t in clean_tokens if len(t) >= 3 and t.lower() not in stop_words]
 
@@ -637,27 +675,26 @@ async def execute_catalog_search(
                         token_filters.append(CatalogItem.category.ilike(f"%{t}%"))
 
                     fallback_query = base_query.filter(or_(*token_filters))
-                    all_candidates = fallback_query.limit(20).all()
+                    all_candidates = fallback_query.limit(25).all()
                     if all_candidates:
-                        # Rank candidates by relevance to query tokens
                         def score_item(item):
                             score = 0
-                            t_lower = (item.title or "").lower()
-                            c_lower = (item.category or "").lower()
-                            d_lower = (item.description or "").lower()
+                            t_lower = html.unescape(item.title or "").lower()
+                            c_lower = html.unescape(item.category or "").lower()
+                            d_lower = html.unescape(item.description or "").lower()
                             for tok in tokens:
                                 tok_l = tok.lower()
                                 if tok_l in t_lower:
-                                    score += 10
+                                    score += 60
                                 if tok_l in c_lower:
-                                    score += 5
+                                    score += 20
                                 if tok_l in d_lower:
                                     score += 1
                             return score
 
                         sorted_candidates = sorted(all_candidates, key=score_item, reverse=True)
                         results = sorted_candidates[:5]
-                        logger.info(f"💡 Tier 2 fallback search found {len(results)} ranked items for '{query_str}' using tokens: {tokens}")
+                        logger.info(f"💡 Tier 2 fallback search found {len(results)} ranked items for '{clean_q}' using tokens: {tokens}")
         else:
             if category:
                 base_query = base_query.filter(CatalogItem.category.ilike(f"%{category}%"))
@@ -678,13 +715,16 @@ async def execute_catalog_search(
             base_store_url = "https://" + base_store_url if base_store_url else ""
 
         for itm in results:
+            clean_title = html.unescape(itm.title or "").strip()
+            clean_desc = html.unescape(itm.description or "").strip()
+            clean_cat = html.unescape(itm.category or "").strip()
             price_display = f"{itm.price_currency or 'NGN'} {itm.price_amount:,.0f} {itm.price_unit or ''}".strip() if itm.price_amount else "Contact for pricing"
-            safe_action_url = itm.action_url or (f"{base_store_url}/?s={urllib.parse.quote_plus(itm.title)}" if base_store_url else "")
+            safe_action_url = itm.action_url or (f"{base_store_url}/?s={urllib.parse.quote_plus(clean_title)}" if base_store_url else "")
             items.append({
                 "id": str(itm.id),
-                "title": itm.title,
-                "category": itm.category or "",
-                "description": itm.description or "",
+                "title": clean_title,
+                "category": clean_cat,
+                "description": clean_desc,
                 "price": price_display,
                 "price_amount": float(itm.price_amount) if itm.price_amount else 0,
                 "image_url": itm.image_url or "",
@@ -774,6 +814,26 @@ Your task: Continue this flow naturally. Ask for whatever is still missing.
 
     available_files_str = ", ".join(available_files_list) if available_files_list else "None uploaded yet."
 
+    # 4b. Fetch active catalog inventory so the AI knows real stock, brands, and prices
+    catalog_inventory_lines = []
+    try:
+        from app.models.catalog_item import CatalogItem
+        import html
+        cat_items = db.query(CatalogItem).filter(
+            CatalogItem.organization_id == org_id,
+            CatalogItem.is_available == True
+        ).limit(60).all()
+        for ci in cat_items:
+            c_title = html.unescape(ci.title or "").strip()
+            c_cat = html.unescape(ci.category or "").strip()
+            c_price = f"{ci.price_currency or 'NGN'} {ci.price_amount:,.0f} {ci.price_unit or ''}".strip() if ci.price_amount else "Contact for price"
+            line = f"- {c_title} (Category: {c_cat}, Price: {c_price})"
+            catalog_inventory_lines.append(line)
+    except Exception as cat_inv_err:
+        logger.warning(f"Error fetching catalog inventory: {cat_inv_err}")
+
+    catalog_inventory_str = "\n".join(catalog_inventory_lines) if catalog_inventory_lines else "No specific items pre-loaded."
+
     # 5. Build real-time calendar & clock context
     today_day_name = now.strftime("%A")
     today_date_str = now.strftime("%Y-%m-%d")
@@ -805,6 +865,9 @@ TONE & STYLE:
 {tone}
 Write WhatsApp-appropriate messages (concise, warm, attentive, helpful, natural). Never sound like an emotionless robot. Always answer greetings, check-ins ("are you there", "hello"), and continue conversations seamlessly.
 
+CURRENT IN-STOCK INVENTORY & CATALOG:
+{catalog_inventory_str}
+
 KNOWLEDGE BASE:
 {kb_context}
 
@@ -833,26 +896,32 @@ APPOINTMENT & BOOKING RULES:
    - Do NOT confirm the booking without first obtaining their WhatsApp phone number or email address!
 
 NO EMOJIS RULE:
-- NEVER use emojis, smileys, or emoticons in your replies (do NOT use emojis like 😊, 🙌, 🎉, etc.).
+- NEVER use emojis, smileys, or emoticons in your replies (do NOT use emojis like smileys, fire, thumbs up, etc.).
 - Keep all responses completely free of emojis in both text and voice notes.
 
 VOICE NOTE RULES:
-- When a customer sends a voice message that was successfully transcribed, it appears as "[Voice Note]: <transcription>". Answer their message directly, warmly, and helpfully as if they spoke to you.
+- When a customer sends a voice message that was successfully transcribed, it appears as "[Voice Note]: <transcription>". Answer their message directly, warmly, and helpfully as if they spoke to you. If they spoke in a Nigerian language (Yoruba, Hausa, Igbo, or Pidgin), respond fluently in that same language!
 - If the message says "[Voice message — could not transcribe clearly]", it means the audio was muffled, silent, or could not be decoded. In this case:
   - Respond warmly and naturally (e.g. "Hey! I got your voice note, but it came through a bit muffled on my end. Could you please send it once more or drop a quick text message?").
   - NEVER say "I am unable to listen to voice notes directly in our chat" or "I cannot listen to audio" — because you normally can listen to voice notes!
   - NEVER say robotic phrases like "Thanks for your voice message, I'm here and ready to listen."
   - Check the previous conversation history: if you were already discussing an item (e.g. chargers, cars, appointments), ask if they were referring to that!
 
-CATALOG & INVENTORY SEARCH RULES:
-- CRITICAL VISUAL DISPLAY RULE: Whenever a customer asks about available cars, properties, products, services, prices, or requests a list of items (e.g. "show me the list of watch that you have in store", "do you have chargers?", "what batteries are available?", "show me BMWs", "I want an Oraimo charger"):
-  - You MUST set "type": "SEARCH_CATALOG" in action with:
-    - "query": specific item, category, or model (e.g. "watch", "charger", "battery", "BMW", "G-Wagon", "2-bedroom", "teeth whitening")
-    - "category": category if applicable (e.g. "Watches", "SUV", "Shortlet", "Dental", "Chargers")
-    - "location": city or area mentioned (e.g. "Lagos", "Ikeja", "Lekki")
-    - "max_budget": numeric budget if mentioned (e.g. 50000)
-    - "attributes": any specific key-value pairs mentioned (e.g. {{"brand": "Oraimo", "year": "2020", "color": "black"}})
-  - In your "reply": If the customer requested a specific brand or model (like Oraimo) that is not in our known list of brands or might be out of stock, state that we may not currently have that exact brand in stock, but warmly introduce our top available alternatives in that category. The platform will automatically attach visual interactive product cards with images, pricing, and buy links!
+CATALOG & INVENTORY SPECIFICATION RULES:
+1. ALWAYS inspect the CURRENT IN-STOCK INVENTORY listed above before responding to product inquiries.
+2. SPECIFIC IN-STOCK PRODUCT:
+   - If the customer asks for a product or brand we DO have in stock (e.g. "Oraimo Watch 2R", "VOTWO 35W Fast Charger", "Foomee Smart Watch", "PS5 Controller"):
+     * Enthusiastically confirm that we have that exact item in stock with its price and key specs.
+     * Set action "type": "SEARCH_CATALOG" with "query" set to the exact product title. The platform will automatically attach its visual interactive card.
+3. SPECIFIC OUT-OF-STOCK BRAND / PRODUCT:
+   - If the customer asks for a specific brand or item we DO NOT have in stock (e.g. "Oraimo charger", "Samsung charger", "iPhone 15"):
+     * State clearly and politely: "We do not currently have [Requested Brand] [Item] in stock, but here are our top available alternatives in store:"
+     * Mention the available alternative models and prices from CURRENT IN-STOCK INVENTORY.
+     * Set action "type": "SEARCH_CATALOG" with "query" set to the category (e.g. "Chargers", "Phones") so the platform automatically attaches the available alternative product cards!
+4. GENERIC PRODUCT REQUEST:
+   - If the customer asks generally (e.g. "show me your smartwatches", "do you have chargers?", "what products do you have?"):
+     * Warmly introduce the options from our inventory and set action "type": "SEARCH_CATALOG" with "query" set to the category.
+5. NEVER invent products that are not in our catalog or claim an out-of-stock brand is available.
 
 MANDATORY OUTPUT FORMAT:
 You MUST respond with valid JSON containing "reply" and "action".
@@ -1363,23 +1432,31 @@ async def trigger_ai_agent_reply(
                 db.add(out_msg_intro)
                 db.commit()
 
-                # 2. Loop through up to 3 recommended products and send each as a styled card
+                # Pause between intro text and first card to adhere to Meta Cloud API recipient rate limit
+                await asyncio.sleep(1.2)
+
+                # 2. Loop through recommended products and send each as an interactive styled card
                 for card_idx, item in enumerate(recommended_items[:3]):
                     if card_idx > 0:
-                        await asyncio.sleep(0.5)
+                        await asyncio.sleep(1.2)
 
-                    title = item.get("title", "Product")
+                    clean_title = html.unescape(item.get("title", "Product")).strip()
                     price = item.get("price") or "Contact for price"
                     action_url = item.get("action_url") or ""
                     image_url = item.get("image_url") or ""
+                    cat = html.unescape(item.get("category") or "").strip()
 
                     card_lines = [
-                        f"*{title}*",
-                        f"Price: {price}",
-                        "Availability: In Stock"
+                        f"*{clean_title}*",
+                        f"Price: {price}"
                     ]
+                    if cat:
+                        card_lines.append(f"Category: {cat}")
+                    card_lines.append("Status: In Stock")
+
                     if action_url and action_url.startswith("http"):
-                        card_lines.append(f"View & Order: {action_url}")
+                        card_lines.append(f"\nOrder Here: {action_url}")
+
                     card_caption = "\n".join(card_lines)
 
                     card_sent = False
@@ -1408,7 +1485,7 @@ async def trigger_ai_agent_reply(
                                 db.add(card_msg)
                                 db.commit()
                         except Exception as media_err:
-                            logger.warning(f"Failed to send product image card on WhatsApp for {title}: {media_err}")
+                            logger.warning(f"Failed to send product image card on WhatsApp for {clean_title}: {media_err}")
 
                     # If no valid image or media sending failed, send as formatted text card
                     if not card_sent:
