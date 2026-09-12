@@ -217,7 +217,10 @@ async def evaluate_rule_intent(
         "earphone", "earphones", "headphone", "headphones",
         "earbud", "earbuds", "airpod", "airpods", "pods",
         "speaker", "speakers", "bluetooth", "sound",
-        "phone", "phones", "screen", "case", "cases", "adapter"
+        "phone", "phones", "screen", "case", "cases", "adapter",
+        # Brand names - trigger catalog search when user mentions a brand
+        "oraimo", "foomee", "apple", "samsung", "xiaomi", "tecno", "infinix",
+        "anker", "baseus", "jbl", "sony", "huawei", "oppo", "vivo", "itel"
     ]
     GENERAL_CATALOG_TRIGGERS = [
         "what do you sell", "what do you have", "what products", "what gadgets",
@@ -232,32 +235,47 @@ async def evaluate_rule_intent(
     if has_cat_kw or has_gen_trig:
         try:
             matched_items = []
+
             if has_cat_kw:
-                for kw in CATALOG_KEYWORDS:
-                    if kw in cleaned:
-                        items = db.query(CatalogItem).filter(
-                            CatalogItem.organization_id == org.id,
-                            CatalogItem.is_available == True,
-                            or_(
-                                CatalogItem.title.ilike(f"%{kw}%"),
-                                CatalogItem.description.ilike(f"%{kw}%"),
-                                CatalogItem.category.ilike(f"%{kw}%")
-                            )
-                        ).limit(4).all()
-                        matched_items.extend(items)
-            
+                # Step 1: Try full-phrase title search first for specific queries
+                # e.g. "Oraimo Watch 2R", "Foomee KM20", "Samsung 65W charger"
+                exact_items = db.query(CatalogItem).filter(
+                    CatalogItem.organization_id == org.id,
+                    CatalogItem.is_available == True,
+                    CatalogItem.title.ilike(f"%{cleaned}%")
+                ).limit(3).all()
+
+                if exact_items:
+                    # High-confidence specific match
+                    matched_items = exact_items
+                    logger.info(f"[RULE ENGINE] Specific product match for '{cleaned}': {len(exact_items)} results")
+                else:
+                    # Step 2: Keyword-by-keyword fallback for generic queries
+                    for kw in CATALOG_KEYWORDS:
+                        if kw in cleaned:
+                            items = db.query(CatalogItem).filter(
+                                CatalogItem.organization_id == org.id,
+                                CatalogItem.is_available == True,
+                                or_(
+                                    CatalogItem.title.ilike(f"%{kw}%"),
+                                    CatalogItem.description.ilike(f"%{kw}%"),
+                                    CatalogItem.category.ilike(f"%{kw}%")
+                                )
+                            ).limit(3).all()
+                            matched_items.extend(items)
+
             # If broad inquiry or keyword search returned nothing, get top store items
             if not matched_items and has_gen_trig:
                 matched_items = db.query(CatalogItem).filter(
                     CatalogItem.organization_id == org.id,
                     CatalogItem.is_available == True
-                ).order_by(CatalogItem.created_at.desc()).limit(4).all()
+                ).order_by(CatalogItem.created_at.desc()).limit(3).all()
 
             if matched_items:
                 unique_dict = {}
                 for itm in matched_items:
                     unique_dict[str(itm.id)] = itm
-                unique_list = list(unique_dict.values())[:4]
+                unique_list = list(unique_dict.values())[:3]
 
                 card_items = []
                 import urllib.parse
@@ -291,5 +309,5 @@ async def evaluate_rule_intent(
         except Exception as cat_err:
             logger.warning(f"Rule catalog search error: {cat_err}")
 
-    # No deterministic rule matched -> seamlessly hand over to fast Gemini LLM
+    # No deterministic rule matched -> hand over to fast Gemini LLM
     return {"matched": False}
