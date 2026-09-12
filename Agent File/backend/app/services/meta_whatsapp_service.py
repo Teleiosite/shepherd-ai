@@ -175,7 +175,35 @@ class MetaWhatsAppService:
                 meta_media_type = "document"
             
             # Check if media_data is URL or base64
-            if media_data.startswith("http://") or media_data.startswith("https://"):
+            if (media_data.startswith("http://") or media_data.startswith("https://")) and meta_media_type == "image":
+                # Direct binary upload to Meta: Meta's external crawler frequently fails or drops messages
+                # when downloading from external WordPress servers. Pre-uploading directly to Meta /media
+                # guarantees 100% reliable image delivery to the customer's WhatsApp.
+                uploaded_id = None
+                try:
+                    async with httpx.AsyncClient(timeout=12.0, headers={"User-Agent": "Mozilla/5.0"}) as dl_cli:
+                        dl_res = await dl_cli.get(media_data)
+                        if dl_res.status_code == 200 and len(dl_res.content) > 100:
+                            c_type = dl_res.headers.get("Content-Type", "image/jpeg").split(";")[0]
+                            async with httpx.AsyncClient(timeout=25.0) as up_cli:
+                                up_res = await up_cli.post(
+                                    f"{self.base_url}/{self.phone_number_id}/media",
+                                    headers={"Authorization": f"Bearer {self.access_token}"},
+                                    data={"messaging_product": "whatsapp", "type": c_type},
+                                    files={"file": ("product.jpg", dl_res.content, c_type)}
+                                )
+                                if up_res.status_code == 200:
+                                    uploaded_id = up_res.json().get("id")
+                                    logger.info(f"✅ Product image pre-uploaded to Meta /media: {uploaded_id}")
+                except Exception as up_err:
+                    logger.warning(f"Meta image pre-upload exception: {up_err}")
+
+                if uploaded_id:
+                    media_payload = {"id": uploaded_id}
+                else:
+                    media_payload = {"link": media_data}
+
+            elif media_data.startswith("http://") or media_data.startswith("https://"):
                 # Media is already a URL
                 media_payload = {"link": media_data}
             else:

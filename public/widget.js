@@ -456,6 +456,24 @@
     if (el) el.remove();
   };
 
+  // Extract clean text reply from JSON or plain text
+  const extractCleanReply = (rawReply) => {
+    if (!rawReply || typeof rawReply !== 'string') return 'Hello! How can I assist you today?';
+    let clean = rawReply.trim();
+    if (clean.startsWith('{') && clean.includes('"reply"')) {
+      try {
+        const parsed = JSON.parse(clean);
+        if (parsed.reply) return parsed.reply.trim();
+      } catch (e) {
+        const m = clean.match(/"reply"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+        if (m && m[1]) {
+          return m[1].replace(/\\"/g, '"').replace(/\\n/g, '\n').trim();
+        }
+      }
+    }
+    return clean || 'Hello! How can I assist you today?';
+  };
+
   // Render Cards
   const renderCatalogCards = (items) => {
     if (!items || !items.length) return null;
@@ -552,22 +570,6 @@
         if (data.message_id) seenMessageIds.add(data.message_id);
         if (data.outbound_message_id) seenMessageIds.add(data.outbound_message_id);
         if (data.inbound_message_id) seenMessageIds.add(data.inbound_message_id);
-        function extractCleanReply(rawReply) {
-          if (!rawReply || typeof rawReply !== 'string') return 'Hello! How can I assist you today?';
-          let clean = rawReply.trim();
-          if (clean.startsWith('{') && clean.includes('"reply"')) {
-            try {
-              const parsed = JSON.parse(clean);
-              if (parsed.reply) return parsed.reply.trim();
-            } catch (e) {
-              const m = clean.match(/"reply"\s*:\s*"((?:[^"\\]|\\.)*)"/);
-              if (m && m[1]) {
-                return m[1].replace(/\\"/g, '"').replace(/\\n/g, '\n').trim();
-              }
-            }
-          }
-          return clean || 'Hello! How can I assist you today?';
-        }
 
         const cleanReply = extractCleanReply(data.reply);
         if (cleanReply) seenMessageTexts.add(cleanReply.trim());
@@ -748,7 +750,7 @@
                   org_id: orgId,
                   visitor_name: visitorName,
                   visitor_phone_or_email: visitorId,
-                  audio_base64: capturedSpeech ? "" : base64Audio,
+                  audio_base64: base64Audio,
                   audio_mime_type: mimeType,
                   speech_transcript: capturedSpeech || null
                 })
@@ -812,7 +814,7 @@
         };
       };
 
-      mediaRecorder.start();
+      mediaRecorder.start(250);
       recordingStartTime = Date.now();
       recOverlay.style.display = 'flex';
       updateRecTimer();

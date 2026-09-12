@@ -883,16 +883,16 @@ CONVERSATION HISTORY:
 {history_text}
 
 APPOINTMENT & BOOKING RULES:
-1. When a contact wants to book, find out: (1) Purpose/Topic, (2) Date, (3) Time.
-2. When the contact gives relative dates like "tomorrow", "this time tomorrow", "Friday at 2pm", ALWAYS convert:
+1. ONLY initiate or confirm an appointment if the contact EXPLICITLY asks to schedule an in-person meeting, physical visit, consultation, or repair session (e.g. "I want to come to the store on Friday", "can I book a visit?").
+2. NEVER suggest an appointment or store visit when the customer simply wants to see products, photos, prices, or specifications in the chat!
+3. If the customer asks "show me the products", "where are they", "let me see them", "send details here", or says "yes" to seeing options, DO NOT book an appointment. Provide product details and set "type": "SEARCH_CATALOG" immediately!
+4. When a contact explicitly wants to book, find out: (1) Purpose/Topic, (2) Date, (3) Time.
+5. When the contact gives relative dates like "tomorrow", "this time tomorrow", "Friday at 2pm", ALWAYS convert:
    - "preferredDate": Exact ISO date format "{tomorrow_date_str}" (YYYY-MM-DD). NEVER return relative words.
    - "preferredTime": Standard 12-hour format "{current_time_str}" (e.g. "10:30 PM", "03:00 PM").
-3. When confirming an appointment or when the contact says "yes", "correct", or confirms details:
-   - Set "type": "CREATE_BOOKING" with finalized "purpose", "preferredDate" (YYYY-MM-DD), and "preferredTime" (HH:MM AM/PM).
-   - Your "reply" MUST explicitly confirm the booking to the contact (e.g. "Awesome, {contact.name}! Your appointment for [Topic] is booked for tomorrow, {tomorrow_dt.strftime('%B %d, %Y')} at {current_time_str}. Looking forward to speaking with you!").
-4. MANDATORY CONTACT DETAILS FOR CONSULTATIONS & WEBSITE LEADS:
-   - When a user on the website widget or chat asks to book a consultation, demo, repair check, or appointment:
-   - You MUST politely ask for their WhatsApp phone number or email address (e.g. "I would be happy to book a consultation for you! What date and time works best, and could you please provide your WhatsApp number or email address so our team can contact you and confirm?").
+6. MANDATORY CONTACT DETAILS FOR CONSULTATIONS & WEBSITE LEADS:
+   - When a user asks to book a consultation, demo, repair check, or appointment:
+   - You MUST politely ask for their WhatsApp phone number or email address.
    - Do NOT confirm the booking without first obtaining their WhatsApp phone number or email address!
 
 NO EMOJIS RULE:
@@ -908,20 +908,23 @@ VOICE NOTE RULES:
   - Check the previous conversation history: if you were already discussing an item (e.g. chargers, cars, appointments), ask if they were referring to that!
 
 CATALOG & INVENTORY SPECIFICATION RULES:
-1. ALWAYS inspect the CURRENT IN-STOCK INVENTORY listed above before responding to product inquiries.
-2. SPECIFIC IN-STOCK PRODUCT:
-   - If the customer asks for a product or brand we DO have in stock (e.g. "Oraimo Watch 2R", "VOTWO 35W Fast Charger", "Foomee Smart Watch", "PS5 Controller"):
-     * Enthusiastically confirm that we have that exact item in stock with its price and key specs.
+1. ALWAYS check the CURRENT IN-STOCK INVENTORY listed above before responding to product inquiries.
+2. SPECIFIC IN-STOCK PRODUCT OR BRAND:
+   - If the customer asks for an item or brand that IS in our inventory (e.g. "Oraimo charger" -> we have "Oraimo Compact 10W Fast Charger" for NGN 7,550; "Oraimo watch" -> we have "Oraimo Watch 2R" for NGN 51,400; "VOTWO charger" -> we have "VOTWO 35W Fast Charger" for NGN 6,000; "Foomee watch" -> we have "Foomee KM20 Smart Watch" for NGN 29,030; "PS5 controller" -> we have "SONY PlayStation DualSense Wireless Controller" for NGN 100,000):
+     * Enthusiastically confirm that we have that exact item in stock with its price and details!
      * Set action "type": "SEARCH_CATALOG" with "query" set to the exact product title. The platform will automatically attach its visual interactive card.
-3. SPECIFIC OUT-OF-STOCK BRAND / PRODUCT:
-   - If the customer asks for a specific brand or item we DO NOT have in stock (e.g. "Oraimo charger", "Samsung charger", "iPhone 15"):
-     * State clearly and politely: "We do not currently have [Requested Brand] [Item] in stock, but here are our top available alternatives in store:"
+3. SPECIFIC OUT-OF-STOCK BRAND:
+   - If the customer asks for a specific brand that is GENUINELY NOT in our inventory for that category (e.g. "Samsung charger", "iPhone 15", "Google Pixel phone"):
+     * State clearly and politely: "We do not currently have [Requested Brand] in stock, but here are our top available alternatives in store:"
      * Mention the available alternative models and prices from CURRENT IN-STOCK INVENTORY.
-     * Set action "type": "SEARCH_CATALOG" with "query" set to the category (e.g. "Chargers", "Phones") so the platform automatically attaches the available alternative product cards!
-4. GENERIC PRODUCT REQUEST:
+     * Set action "type": "SEARCH_CATALOG" with "query" set to the category so the platform automatically attaches the available alternative product cards!
+4. FOLLOW-UP PRODUCT INQUIRIES:
+   - If a customer says "ok let have", "where are they?", "yes give me more detail", "show me the products here", "let me see", or asks to see products discussed previously:
+     * NEVER just chat or promise to show them later. You MUST set action "type": "SEARCH_CATALOG" with the item or category discussed so the visual cards are delivered right now!
+5. GENERIC PRODUCT REQUEST:
    - If the customer asks generally (e.g. "show me your smartwatches", "do you have chargers?", "what products do you have?"):
      * Warmly introduce the options from our inventory and set action "type": "SEARCH_CATALOG" with "query" set to the category.
-5. NEVER invent products that are not in our catalog or claim an out-of-stock brand is available.
+6. NEVER invent products that are not in our catalog or claim an out-of-stock brand is available.
 
 MANDATORY OUTPUT FORMAT:
 You MUST respond with valid JSON containing "reply" and "action".
@@ -1298,6 +1301,23 @@ async def trigger_ai_agent_reply(
                         token_q = " ".join(search_tokens)
                         matched_dicts = await execute_catalog_search(org, {"query": token_q}, db)
                         recommended_items = matched_dicts[:4]
+
+                # 3. Follow-up safety net: if user is following up on a previous product inquiry ("where are they", "ok let have", "yes", etc.)
+                if not matched and not recommended_items:
+                    follow_up_triggers = ["where", "let have", "show", "more detail", "see", "send", "give me", "i thought", "what are", "display", "bring", "yes", "ok", "okay", "sure", "alright"]
+                    if any(trig in clean_in for trig in follow_up_triggers) or len(clean_in.split()) <= 3:
+                        recent_msgs = db.query(Message).filter(
+                            Message.contact_id == contact.id
+                        ).order_by(Message.created_at.desc()).limit(6).all()
+                        recent_text = " ".join([m.content or "" for m in recent_msgs]).lower()
+                        cat_keywords = ["charger", "watch", "battery", "cable", "earbud", "headphone", "power bank", "speaker", "oraimo", "foomee", "controller", "adapter", "case"]
+                        history_matches = [kw for kw in cat_keywords if kw in recent_text or kw in clean_in]
+                        if history_matches:
+                            token_q = " ".join(history_matches[:2])
+                            matched_dicts = await execute_catalog_search(org, {"query": token_q}, db)
+                            if matched_dicts:
+                                recommended_items = matched_dicts[:4]
+                                logger.info(f"✨ Follow-up auto-attached {len(recommended_items)} items using history keyword '{token_q}'")
 
                 if matched and not recommended_items:
                     for mi in matched[:4]:
