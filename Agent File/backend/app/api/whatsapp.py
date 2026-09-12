@@ -409,18 +409,29 @@ async def process_received_message(
     # Clean phone number
     clean_phone = phone.replace('+', '').replace(' ', '').replace('-', '')
     
-    # Find contact - search globally or within allowed orgs first to avoid duplicate contact creation
-    # 1. Search for existing contact globally across all organizations
-    contact = db.query(Contact).filter(
-        (Contact.whatsapp_id == whatsapp_id) | 
-        (Contact.phone == clean_phone) | 
-        (Contact.phone == "+" + clean_phone)
-    ).order_by(Contact.created_at.desc()).first()
+    # Find contact - search within resolved org first if known, then fall back globally
+    contact = None
+    if org_id:
+        contact = db.query(Contact).filter(
+            Contact.organization_id == org_id,
+            (Contact.whatsapp_id == whatsapp_id) | 
+            (Contact.phone == clean_phone) | 
+            (Contact.phone == "+" + clean_phone)
+        ).order_by(Contact.created_at.desc()).first()
+
+    if not contact:
+        contact = db.query(Contact).filter(
+            (Contact.whatsapp_id == whatsapp_id) | 
+            (Contact.phone == clean_phone) | 
+            (Contact.phone == "+" + clean_phone)
+        ).order_by(Contact.created_at.desc()).first()
 
     if contact:
-        # Preserve the contact in the organization where it was created!
-        org_id = contact.organization_id
-        logger.info(f"👤 Found existing contact {contact.name} in organization {org_id}")
+        # If org_id was already resolved from incoming webhook (e.g. from phone_number_id), keep it;
+        # otherwise preserve the organization where the contact belongs
+        if not org_id:
+            org_id = contact.organization_id
+        logger.info(f"👤 Found existing contact {contact.name} in organization {contact.organization_id} (active org: {org_id})")
     else:
         # 2. For a brand new contact, route to the primary active organization
         # (the one with active users and existing contacts, e.g. Seye's workspace)
