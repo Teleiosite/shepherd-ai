@@ -331,12 +331,7 @@ async def transcribe_voice_note(
             start_groq = time.time()
             clean_ext = "ogg" if clean_mime == "audio/ogg" else ("webm" if clean_mime == "audio/webm" else "wav")
             files = {"file": (f"voice.{clean_ext}", audio_bytes, clean_mime)}
-            # Pass a prompt hint so Whisper auto-detects Nigerian languages (Yoruba, Hausa, Igbo, Pidgin)
-            data_w = {
-                "model": "whisper-large-v3-turbo",
-                "temperature": "0",
-                "prompt": "Yoruba Hausa Igbo Pidgin Nigerian English"
-            }
+            data_w = {"model": "whisper-large-v3-turbo", "temperature": "0"}
             headers_w = {"Authorization": f"Bearer {effective_groq_key}"}
             async with httpx.AsyncClient(timeout=25.0) as client:
                 g_res = await client.post(
@@ -357,68 +352,89 @@ async def transcribe_voice_note(
             logger.warning(f"Groq Whisper attempt error: {g_err}")
 
     # =========================================================================
-    # Tier 2: Gemini Multimodal Audio - direct async REST (no blocking list_models)
-    # Uses same verified fast models as call_ai_provider
+    # Tier 2: Google Generative AI Multimodal Audio (Official SDK + 16kHz PCM WAV)
+    # Uses official google.generativeai SDK dynamically discovering supported models
     # =========================================================================
     if effective_gemini_key and not effective_gemini_key.startswith("gsk_") and not effective_gemini_key.startswith("sk-"):
         try:
-            # Convert audio to 16kHz mono WAV for best compatibility
-            wav_data = await asyncio.to_thread(_convert_audio_to_wav, audio_bytes, is_ogg, clean_mime)
-            audio_b64 = base64.b64encode(wav_data if wav_data else audio_bytes).decode("utf-8")
-            audio_mime_for_api = "audio/wav" if wav_data else clean_mime
+            import google.generativeai as genai
+            genai.configure(api_key=effective_gemini_key)
 
+            # 1. Convert to 16kHz mono WAV in thread pool for universal compatibility
+            wav_data = await asyncio.to_thread(_convert_audio_to_wav, audio_bytes, is_ogg, clean_mime)
+            audio_part = {
+                "mime_type": "audio/wav" if wav_data else clean_mime,
+                "data": wav_data if wav_data else audio_bytes
+            }
             transcribe_prompt = (
-                "Transcribe this voice message verbatim. The speaker may be using Yoruba, Hausa, Igbo, "
-                "Nigerian Pidgin English, or standard English. Preserve the exact words and language spoken. "
-                "Output ONLY the transcribed words with no extra text, explanations, or formatting. "
+                "Transcribe this voice message verbatim in English or whatever language was spoken. "
+                "Output ONLY the exact transcribed words with no other text, no explanations, no formatting, and no commentary. "
                 "If the audio has no speech or is only background silence, reply with [silence]."
             )
 
-            # Verified working Gemini models for audio - fastest first, no blocking list_models()
-            AUDIO_MODELS = [
-                "gemini-3.5-flash-lite",
-                "gemini-3-flash-preview",
-                "gemini-3.1-flash-lite",
+            # 2. Discover models that support generateContent for this API key
+            discovered = []
+            try:
+                for m in genai.list_models():
+                    methods = getattr(m, "supported_generation_methods", []) or []
+                    if "generateContent" in methods:
+                        clean_name = m.name.replace("models/", "")
+                        discovered.append(clean_name)
+            except Exception as list_e:
+                logger.warning(f"Could not list models via SDK: {list_e}")
+
+            # Prioritize verified working audio models first
+            recommended_preferred = [
+                "gemini-3.5-flash",
                 "gemini-3.7-flash",
+                "gemini-3.1-flash-lite",
                 "gemini-3.5-transcribe",
+                "gemini-flash-latest",
+                "gemini-3.8-flash",
+                "gemini-3.6-flash",
+                "gemini-omni-1.1-flash"
             ]
+            model_targets = [m for m in recommended_preferred]
+            for d in discovered:
+                if "transcribe" in d and d not in model_targets:
+                    model_targets.insert(0, d)
+                elif "flash" in d and d not in model_targets and "preview-tts" not in d and not d.startswith("gemma"):
+                    model_targets.append(d)
+            for d in discovered:
+                if d not in model_targets and "preview-tts" not in d and not d.startswith("gemma") and not d.startswith("lyria"):
+                    model_targets.append(d)
 
-            logger.info(f"🎙️ [Tier 2: Gemini REST] Transcribing {len(audio_b64)} b64 chars via async REST...")
+            logger.info(f"🎙️ [Tier 2: Gemini Multimodal SDK] Trying models {model_targets[:6]} for audio transcription...")
 
-            async with httpx.AsyncClient(timeout=20.0) as client:
-                for audio_model in AUDIO_MODELS:
-                    try:
-                        rest_url = (
-                            f"https://generativelanguage.googleapis.com/v1beta/models/"
-                            f"{audio_model}:generateContent?key={effective_gemini_key}"
-                        )
-                        payload = {
-                            "contents": [{
-                                "parts": [
-                                    {"inline_data": {"mime_type": audio_mime_for_api, "data": audio_b64}},
-                                    {"text": transcribe_prompt}
-                                ]
-                            }],
-                            "generationConfig": {"temperature": 0.0}
-                        }
-                        r = await client.post(rest_url, json=payload)
-                        if r.status_code == 200:
-                            cands = r.json().get("candidates", [])
-                            if cands:
-                                res_text = cands[0].get("content", {}).get("parts", [{}])[0].get("text", "").strip()
-                                if res_text and res_text.lower() not in ("[silence]", "[blank]", "[unintelligible]"):
-                                    logger.info(f"🎙️ ✅ Gemini REST ({audio_model}) transcription OK: '{res_text[:120]}'")
-                                    return res_text
-                                elif res_text.lower() in ("[silence]", "[blank]", "[unintelligible]"):
-                                    logger.info(f"🎙️ Gemini REST ({audio_model}) reported silence.")
-                                    return ""
-                        else:
-                            logger.warning(f"🎙️ Gemini REST ({audio_model}) HTTP {r.status_code}: {r.text[:120]}")
-                    except Exception as model_err:
-                        logger.warning(f"🎙️ Gemini REST ({audio_model}) error: {model_err}")
+            for target_model in model_targets[:6]:
+                try:
+                    g_model = genai.GenerativeModel(model_name=target_model)
+                    response = g_model.generate_content(
+                        [audio_part, transcribe_prompt],
+                        generation_config={"temperature": 0.0}
+                    )
+                    if response:
+                        res_text = ""
+                        try:
+                            res_text = (response.text or "").strip()
+                        except Exception:
+                            try:
+                                parts = response.candidates[0].content.parts
+                                res_text = "".join(getattr(p, "text", "") for p in parts).strip()
+                            except Exception:
+                                res_text = ""
+
+                        if res_text and res_text.lower() not in ("[silence]", "[blank]", "[unintelligible]"):
+                            logger.info(f"🎙️ ✅ Gemini SDK ({target_model}) transcription SUCCESS: '{res_text[:120]}'")
+                            return res_text
+                        elif res_text.lower() in ("[silence]", "[blank]", "[unintelligible]"):
+                            logger.info(f"🎙️ Gemini SDK ({target_model}) reported blank/silence audio.")
+                            return ""
+                except Exception as g_err:
+                    logger.warning(f"Gemini SDK audio attempt with '{target_model}' failed: {g_err}")
 
         except Exception as tier2_err:
-            logger.error(f"🎙️ Tier 2 Gemini REST audio transcription error: {tier2_err}")
+            logger.error(f"🎙️ Tier 2 Gemini SDK audio transcription error: {tier2_err}")
 
     # =========================================================================
     # Tier 3: Dedicated self-hosted faster-whisper microservice (port 8001 or TRANSCRIBE_SERVICE_URL)
@@ -1359,11 +1375,7 @@ async def trigger_ai_agent_reply(
                 db.commit()
 
                 # 2. Loop through up to 3 recommended products and send each as a styled card
-                for card_idx, item in enumerate(recommended_items[:3]):
-                    # Brief pause between cards to avoid Meta rate-limiting dropping card 2 and 3
-                    if card_idx > 0:
-                        await asyncio.sleep(0.4)
-
+                for item in recommended_items[:3]:
                     title = item.get("title", "Product")
                     price = item.get("price") or "Contact for price"
                     action_url = item.get("action_url") or ""
@@ -1403,9 +1415,6 @@ async def trigger_ai_agent_reply(
                                 )
                                 db.add(card_msg)
                                 db.commit()
-                                logger.info(f"Card {card_idx+1} sent: {title}")
-                            else:
-                                logger.warning(f"Card {card_idx+1} send_media failed for '{title}': {img_res.get('error')}")
                         except Exception as media_err:
                             logger.warning(f"Failed to send product image card on WhatsApp for {title}: {media_err}")
 
@@ -1427,7 +1436,6 @@ async def trigger_ai_agent_reply(
                         )
                         db.add(card_msg)
                         db.commit()
-
 
                 logger.info(f"🚀 Multi-product visual cards sent to WhatsApp ({len(recommended_items[:3])} cards)")
                 return {

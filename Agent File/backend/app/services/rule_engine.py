@@ -6,11 +6,9 @@ and direct catalog queries to provide instant (<10ms) responses with 0 LLM token
 
 import re
 import logging
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any
 from sqlalchemy.orm import Session
-from sqlalchemy import or_
 
-from app.models.catalog_item import CatalogItem
 
 logger = logging.getLogger(__name__)
 
@@ -208,106 +206,11 @@ async def evaluate_rule_intent(
             "recommended_items": []
         }
 
-    # 8. DIRECT HIGH-CONFIDENCE CATALOG MATCH (0 Tokens)
-    CATALOG_KEYWORDS = [
-        "watch", "watches", "smartwatch", "smartwatches",
-        "charger", "chargers", "fast charger",
-        "cable", "cables", "usb", "type c", "lightning",
-        "battery", "batteries", "power bank", "powerbank",
-        "earphone", "earphones", "headphone", "headphones",
-        "earbud", "earbuds", "airpod", "airpods", "pods",
-        "speaker", "speakers", "bluetooth", "sound",
-        "phone", "phones", "screen", "case", "cases", "adapter",
-        # Brand names - trigger catalog search when user mentions a brand
-        "oraimo", "foomee", "apple", "samsung", "xiaomi", "tecno", "infinix",
-        "anker", "baseus", "jbl", "sony", "huawei", "oppo", "vivo", "itel"
-    ]
-    GENERAL_CATALOG_TRIGGERS = [
-        "what do you sell", "what do you have", "what products", "what gadgets",
-        "show me products", "show me your store", "list of products", "list your products",
-        "what are you selling", "available products", "see your products",
-        "available items", "catalogue", "catalog", "items in store", "store items", "gadgets in store"
-    ]
+    # Product/catalog queries are intentionally NOT handled here.
+    # They are passed to the Gemini LLM which can:
+    #  - Match by brand + model (e.g. "Oraimo Watch 2R" specifically)
+    #  - Say "we don't have X, but here are alternatives" when product is unavailable
+    #  - Understand context and specifications, not just keywords
 
-    has_cat_kw = any(k in cleaned for k in CATALOG_KEYWORDS)
-    has_gen_trig = any(trig in cleaned for trig in GENERAL_CATALOG_TRIGGERS)
-
-    if has_cat_kw or has_gen_trig:
-        try:
-            matched_items = []
-
-            if has_cat_kw:
-                # Step 1: Try full-phrase title search first for specific queries
-                # e.g. "Oraimo Watch 2R", "Foomee KM20", "Samsung 65W charger"
-                exact_items = db.query(CatalogItem).filter(
-                    CatalogItem.organization_id == org.id,
-                    CatalogItem.is_available == True,
-                    CatalogItem.title.ilike(f"%{cleaned}%")
-                ).limit(3).all()
-
-                if exact_items:
-                    # High-confidence specific match
-                    matched_items = exact_items
-                    logger.info(f"[RULE ENGINE] Specific product match for '{cleaned}': {len(exact_items)} results")
-                else:
-                    # Step 2: Keyword-by-keyword fallback for generic queries
-                    for kw in CATALOG_KEYWORDS:
-                        if kw in cleaned:
-                            items = db.query(CatalogItem).filter(
-                                CatalogItem.organization_id == org.id,
-                                CatalogItem.is_available == True,
-                                or_(
-                                    CatalogItem.title.ilike(f"%{kw}%"),
-                                    CatalogItem.description.ilike(f"%{kw}%"),
-                                    CatalogItem.category.ilike(f"%{kw}%")
-                                )
-                            ).limit(3).all()
-                            matched_items.extend(items)
-
-            # If broad inquiry or keyword search returned nothing, get top store items
-            if not matched_items and has_gen_trig:
-                matched_items = db.query(CatalogItem).filter(
-                    CatalogItem.organization_id == org.id,
-                    CatalogItem.is_available == True
-                ).order_by(CatalogItem.created_at.desc()).limit(3).all()
-
-            if matched_items:
-                unique_dict = {}
-                for itm in matched_items:
-                    unique_dict[str(itm.id)] = itm
-                unique_list = list(unique_dict.values())[:3]
-
-                card_items = []
-                import urllib.parse
-                for ci in unique_list:
-                    price_display = f"{ci.price_currency or 'NGN'} {ci.price_amount:,.0f}".strip() if ci.price_amount else "Contact for pricing"
-                    safe_url = ci.action_url or (f"{base_store_url}/?s={urllib.parse.quote_plus(ci.title)}" if base_store_url else "")
-                    card_items.append({
-                        "id": str(ci.id),
-                        "title": ci.title,
-                        "category": ci.category or "",
-                        "description": ci.description or "",
-                        "price": price_display,
-                        "price_amount": float(ci.price_amount) if ci.price_amount else 0,
-                        "image_url": ci.image_url or "",
-                        "action_url": safe_url,
-                        "attributes": ci.attributes or {}
-                    })
-
-                reply = (
-                    f"Yes! We have authentic, high-quality options in stock with a 1-year warranty and fast nationwide delivery. "
-                    f"Here are top available options:"
-                )
-
-                return {
-                    "matched": True,
-                    "intent": "DIRECT_CATALOG_MATCH",
-                    "reply": reply,
-                    "action": {"type": "SEARCH_CATALOG", "query": cleaned},
-                    "recommended_items": card_items
-                }
-        except Exception as cat_err:
-            logger.warning(f"Rule catalog search error: {cat_err}")
-
-    # No deterministic rule matched -> hand over to fast Gemini LLM
+    # No deterministic rule matched -> hand to Gemini LLM
     return {"matched": False}
