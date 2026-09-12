@@ -715,7 +715,7 @@ async def execute_catalog_search(
             base_store_url = "https://" + base_store_url if base_store_url else ""
 
         for itm in results:
-            clean_title = html.unescape(itm.title or "").strip()
+            clean_title = html.unescape(itm.title or "").replace("\u2033", '"').replace("\u201d", '"').replace("\u201c", '"').replace("\u2018", "'").replace("\u2019", "'").strip()
             clean_desc = html.unescape(itm.description or "").strip()
             clean_cat = html.unescape(itm.category or "").strip()
             price_display = f"{itm.price_currency or 'NGN'} {itm.price_amount:,.0f} {itm.price_unit or ''}".strip() if itm.price_amount else "Contact for pricing"
@@ -824,7 +824,7 @@ Your task: Continue this flow naturally. Ask for whatever is still missing.
             CatalogItem.is_available == True
         ).limit(60).all()
         for ci in cat_items:
-            c_title = html.unescape(ci.title or "").strip()
+            c_title = html.unescape(ci.title or "").replace("\u2033", '"').replace("\u201d", '"').replace("\u201c", '"').replace("\u2018", "'").replace("\u2019", "'").strip()
             c_cat = html.unescape(ci.category or "").strip()
             c_price = f"{ci.price_currency or 'NGN'} {ci.price_amount:,.0f} {ci.price_unit or ''}".strip() if ci.price_amount else "Contact for price"
             line = f"- {c_title} (Category: {c_cat}, Price: {c_price})"
@@ -1440,7 +1440,7 @@ async def trigger_ai_agent_reply(
                     if card_idx > 0:
                         await asyncio.sleep(1.2)
 
-                    clean_title = html.unescape(item.get("title", "Product")).strip()
+                    clean_title = html.unescape(item.get("title", "Product")).replace("\u2033", '"').replace("\u201d", '"').replace("\u201c", '"').replace("\u2018", "'").replace("\u2019", "'").strip()
                     price = item.get("price") or "Contact for price"
                     action_url = item.get("action_url") or ""
                     image_url = item.get("image_url") or ""
