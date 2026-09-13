@@ -665,6 +665,39 @@ async def list_gemini_models_endpoint(db: Session = Depends(get_db)):
         return {"error": r.status_code, "text": r.text}
 
 
+@router.get("/test-gemini-generate")
+async def test_gemini_generate_endpoint(db: Session = Depends(get_db)):
+    import httpx
+    from uuid import UUID
+    from app.models.organization import Organization
+    org = db.query(Organization).filter(Organization.id == UUID("37423e5c-e2d0-44d3-ab5b-48c7fcf2d9c2")).first()
+    key = org.ai_api_key if org else None
+    if not key:
+        return {"error": "no key"}
+    
+    candidates = [
+        "gemini-flash-latest",
+        "gemini-flash-lite-latest",
+        "gemini-2.5-flash",
+        "gemini-2.5-pro",
+        "gemini-pro-latest",
+        "gemini-3.5-flash",
+        "gemini-3.7-flash"
+    ]
+    results = {}
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        for cand in candidates:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{cand}:generateContent?key={key}"
+            try:
+                res = await client.post(url, json={
+                    "contents": [{"parts": [{"text": "Say hello in one word"}]}]
+                })
+                results[cand] = {"status": res.status_code, "body": res.text[:200]}
+            except Exception as e:
+                results[cand] = {"error": str(e)}
+    return results
+
+
 @router.get("/debug-ai")
 async def debug_ai_state(
     request: Request,
