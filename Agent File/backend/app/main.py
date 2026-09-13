@@ -67,7 +67,10 @@ async def startup_event():
     try:
         from app.database import SessionLocal
         from sqlalchemy import text
+        from uuid import UUID
+        from app.models.catalog_item import CatalogItem
         import base64
+
         new_key = base64.b64decode(b"QVEuQWI4Uk42TFdxcHR1R0VocTZKRm81YU5JNVI0Y1VVVnpPN2xza2FGR1ROWjZ4M1ZEWHc=").decode("utf-8")
         db_start = SessionLocal()
         db_start.execute(text("""
@@ -83,8 +86,71 @@ async def startup_event():
             WHERE ai_paused_until IS NOT NULL;
         """), {"k": new_key})
         db_start.commit()
+
+        # Ensure essential DeceHub products (such as Oraimo Cannon series) are in catalog_items
+        decehub_org_id = UUID("37423e5c-e2d0-44d3-ab5b-48c7fcf2d9c2")
+        core_cannon_products = [
+            {
+                "title": "Oraimo Cannon 2 18W Wall Charger Kit",
+                "category": "Wall Charger",
+                "price": 8500.0,
+                "action_url": "https://decehub.com/product/oraimo-cannon-2-18w-wall-charger-kit/",
+                "image_url": "https://decehub.com/wp-content/uploads/2025/08/Cannon-2-18W-Wall-Charger-Kit.png",
+                "description": "Oraimo Cannon 2 18W Fast Wall Charger Kit with high speed charging and Type-C cable."
+            },
+            {
+                "title": "Oraimo Cannon 3 5W Wall Charger",
+                "category": "Wall Charger",
+                "price": 2405.0,
+                "action_url": "https://decehub.com/product/oraimo-cannon-3-5w-wall-charger/",
+                "image_url": "https://decehub.com/wp-content/uploads/2025/08/Cannon-3-5W-Wall-Charger.png",
+                "description": "Oraimo Cannon 3 5W Compact Wall Charger for reliable everyday mobile device charging."
+            },
+            {
+                "title": "Oraimo Cannon 18D 18W Wall Charger Kit",
+                "category": "Wall Charger",
+                "price": 9500.0,
+                "action_url": "https://decehub.com/product/oraimo-cannon-18d-18w-wall-charger-kit/",
+                "image_url": "https://decehub.com/wp-content/uploads/2025/08/Cannon-18D-18W-Wall-Charger-Kit.png",
+                "description": "Oraimo Cannon 18D 18W Heavy-Duty Wall Charger Kit with dual output and fast charge."
+            },
+            {
+                "title": "Oraimo Cannon 18S 18W Wall Charger Kit",
+                "category": "Wall Charger",
+                "price": 5260.0,
+                "action_url": "https://decehub.com/product/oraimo-cannon-18s-18w-wall-charger-kit/",
+                "image_url": "https://decehub.com/wp-content/uploads/2025/08/Cannon-18S-18W-Wall-Charger-Kit.png",
+                "description": "Oraimo Cannon 18S 18W Fast Charging Wall Charger Kit."
+            }
+        ]
+
+        for p in core_cannon_products:
+            existing = db_start.query(CatalogItem).filter(
+                CatalogItem.organization_id == decehub_org_id,
+                CatalogItem.title == p["title"]
+            ).first()
+            if not existing:
+                item = CatalogItem(
+                    organization_id=decehub_org_id,
+                    title=p["title"],
+                    category=p["category"],
+                    price_amount=p["price"],
+                    price_currency="NGN",
+                    price_unit="each",
+                    action_url=p["action_url"],
+                    image_url=p["image_url"],
+                    description=p["description"],
+                    is_available=True
+                )
+                db_start.add(item)
+            else:
+                existing.price_amount = p["price"]
+                existing.action_url = p["action_url"]
+                existing.image_url = p["image_url"]
+                existing.is_available = True
+        db_start.commit()
         db_start.close()
-        print("🔑 [Startup] Auto-updated organizations to active Gemini key & gemini-3.7-flash...")
+        print("🔑 [Startup] Auto-updated organizations to active Gemini key & ensured DeceHub Cannon inventory...")
     except Exception as e:
         print(f"⚠️ Startup key update warning: {e}")
 

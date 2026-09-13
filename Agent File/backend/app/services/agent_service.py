@@ -608,93 +608,91 @@ async def execute_catalog_search(
         )
 
         import html
+        import re
         results = []
         if query_str:
             clean_q = html.unescape(query_str).strip()
-            # Tier 1: Search across title, category, description
+            stop_words = {"want", "need", "looking", "for", "please", "some", "like", "have", "with", "from", "the", "and", "buy", "good", "show", "give", "store", "product", "options", "item", "items"}
+            raw_words = re.findall(r"\w+", clean_q.lower())
+            tokens = [t for t in raw_words if len(t) >= 2 and t not in stop_words]
+
+            # 1. Exact phrase matches (highest priority)
             tier1 = base_query.filter(
                 (CatalogItem.title.ilike(f"%{clean_q}%")) |
-                (CatalogItem.category.ilike(f"%{clean_q}%")) |
-                (CatalogItem.description.ilike(f"%{clean_q}%"))
-            )
-            if max_budget:
-                try:
-                    tier1 = tier1.filter(CatalogItem.price_amount <= float(max_budget))
-                except:
-                    pass
-            all_t1 = tier1.limit(25).all()
-            if all_t1:
-                # Rank candidates: Title matches rank highest, followed by category, then description!
-                def score_t1(item):
+                (CatalogItem.category.ilike(f"%{clean_q}%"))
+            ).limit(20).all()
+
+            # 2. Multi-token intersection (AND): Items that contain ALL key tokens (e.g. "oraimo" AND "cannon")
+            and_matches = []
+            if tokens and len(tokens) >= 2:
+                from sqlalchemy import and_
+                and_filters = []
+                for t in tokens:
+                    and_filters.append(or_(
+                        CatalogItem.title.ilike(f"%{t}%"),
+                        CatalogItem.description.ilike(f"%{t}%"),
+                        CatalogItem.category.ilike(f"%{t}%")
+                    ))
+                and_matches = base_query.filter(and_(*and_filters)).limit(25).all()
+
+            # 3. Individual token union (OR): Fallback candidates if exact intersection not found
+            or_matches = []
+            if tokens and (len(tier1) + len(and_matches)) < 5:
+                or_filters = []
+                for t in tokens:
+                    if len(t) >= 3:
+                        or_filters.append(CatalogItem.title.ilike(f"%{t}%"))
+                        or_filters.append(CatalogItem.category.ilike(f"%{t}%"))
+                if or_filters:
+                    or_matches = base_query.filter(or_(*or_filters)).limit(40).all()
+
+            # Combine candidates without duplicates
+            candidate_pool = []
+            seen_ids = set()
+            for itm in tier1 + and_matches + or_matches:
+                if itm.id not in seen_ids:
+                    seen_ids.add(itm.id)
+                    candidate_pool.append(itm)
+
+            # Score candidates
+            if candidate_pool:
+                def score_item(item):
                     score = 0
                     t_lower = html.unescape(item.title or "").lower()
                     c_lower = html.unescape(item.category or "").lower()
                     d_lower = html.unescape(item.description or "").lower()
                     q_lower = clean_q.lower()
-                    
-                    if t_lower == q_lower:
-                        score += 1000
-                    elif q_lower in t_lower:
-                        score += 500
-                    elif q_lower in c_lower:
-                        score += 200
-                    elif q_lower in d_lower:
-                        score += 5
 
-                    for word in q_lower.split():
-                        if len(word) >= 3:
-                            if word in t_lower:
-                                score += 60
-                            if word in c_lower:
-                                score += 20
-                            if word in d_lower:
-                                score += 1
+                    if t_lower == q_lower:
+                        score += 3000
+                    elif q_lower in t_lower:
+                        score += 1500
+
+                    # Token score
+                    matched_tokens = 0
+                    for tok in tokens:
+                        if tok in t_lower:
+                            score += 150
+                            matched_tokens += 1
+                        elif tok in c_lower:
+                            score += 50
+                            matched_tokens += 1
+                        elif tok in d_lower:
+                            score += 10
+
+                    # Significant bonus if ALL tokens match
+                    if tokens and matched_tokens == len(tokens):
+                        score += 800
+
                     return score
 
-                sorted_t1 = sorted(all_t1, key=score_t1, reverse=True)
-                top_score = score_t1(sorted_t1[0])
-                # If specific product matched with dominant score (>= 500), return only exact match(es)
-                if top_score >= 500 and len(clean_q.split()) >= 2:
-                    results = [itm for itm in sorted_t1 if score_t1(itm) >= 500][:2]
+                sorted_candidates = sorted(candidate_pool, key=score_item, reverse=True)
+                top_score = score_item(sorted_candidates[0])
+                if top_score >= 1500 and len(tokens) >= 2:
+                    results = [itm for itm in sorted_candidates if score_item(itm) >= 600][:3]
                 else:
-                    results = sorted_t1[:5]
-
-            # Tier 2: Token-based alternative search if exact brand/model is not matched
-            # e.g. User asks for "Oraimo charger" -> if no Oraimo charger, returns other chargers (VOTWO, SHPLUS, etc.)
-            if not results:
-                stop_words = {"want", "need", "looking", "for", "please", "some", "like", "have", "with", "from", "the", "and", "buy", "good"}
-                raw_words = clean_q.split()
-                clean_tokens = [re.sub(r"[^\w]", "", w).strip() for w in raw_words]
-                tokens = [t for t in clean_tokens if len(t) >= 3 and t.lower() not in stop_words]
-
-                if tokens:
-                    token_filters = []
-                    for t in tokens:
-                        token_filters.append(CatalogItem.title.ilike(f"%{t}%"))
-                        token_filters.append(CatalogItem.description.ilike(f"%{t}%"))
-                        token_filters.append(CatalogItem.category.ilike(f"%{t}%"))
-
-                    fallback_query = base_query.filter(or_(*token_filters))
-                    all_candidates = fallback_query.limit(25).all()
-                    if all_candidates:
-                        def score_item(item):
-                            score = 0
-                            t_lower = html.unescape(item.title or "").lower()
-                            c_lower = html.unescape(item.category or "").lower()
-                            d_lower = html.unescape(item.description or "").lower()
-                            for tok in tokens:
-                                tok_l = tok.lower()
-                                if tok_l in t_lower:
-                                    score += 60
-                                if tok_l in c_lower:
-                                    score += 20
-                                if tok_l in d_lower:
-                                    score += 1
-                            return score
-
-                        sorted_candidates = sorted(all_candidates, key=score_item, reverse=True)
-                        results = sorted_candidates[:5]
-                        logger.info(f"💡 Tier 2 fallback search found {len(results)} ranked items for '{clean_q}' using tokens: {tokens}")
+                    results = sorted_candidates[:5]
+                logger.info(f"💡 Catalog search for '{clean_q}' evaluated {len(candidate_pool)} candidates -> {len(results)} top items (top score: {top_score})")
         else:
             if category:
                 base_query = base_query.filter(CatalogItem.category.ilike(f"%{category}%"))
@@ -818,17 +816,50 @@ Your task: Continue this flow naturally. Ask for whatever is still missing.
     catalog_inventory_lines = []
     try:
         from app.models.catalog_item import CatalogItem
+        from sqlalchemy import or_
         import html
-        cat_items = db.query(CatalogItem).filter(
+        import re
+
+        # Extract search keywords from current incoming message
+        stop_words = {"want", "need", "looking", "for", "please", "some", "like", "have", "with", "from", "the", "and", "buy", "good", "hello", "hey", "can", "you", "show", "tell", "what", "which", "are", "there"}
+        raw_words = re.findall(r"\w+", incoming_text.lower())
+        query_keywords = [w for w in raw_words if len(w) >= 3 and w not in stop_words]
+
+        # 1. First priority: Specifically target items matching user query keywords
+        targeted_items = []
+        if query_keywords:
+            keyword_filters = []
+            for kw in query_keywords:
+                keyword_filters.append(CatalogItem.title.ilike(f"%{kw}%"))
+                keyword_filters.append(CatalogItem.category.ilike(f"%{kw}%"))
+                keyword_filters.append(CatalogItem.description.ilike(f"%{kw}%"))
+            targeted_items = db.query(CatalogItem).filter(
+                CatalogItem.organization_id == org_id,
+                CatalogItem.is_available == True,
+                or_(*keyword_filters)
+            ).order_by(CatalogItem.created_at.desc()).limit(30).all()
+
+        # 2. Second priority: General active inventory to give broad awareness
+        general_items = db.query(CatalogItem).filter(
             CatalogItem.organization_id == org_id,
             CatalogItem.is_available == True
-        ).limit(60).all()
-        for ci in cat_items:
+        ).order_by(CatalogItem.created_at.desc()).limit(90).all()
+
+        # Combine with priority: targeted items appear at the very top!
+        seen_ids = set()
+        combined_items = []
+        for itm in targeted_items + general_items:
+            if itm.id not in seen_ids:
+                seen_ids.add(itm.id)
+                combined_items.append(itm)
+
+        for ci in combined_items[:100]:
             c_title = html.unescape(ci.title or "").replace("\u2033", '"').replace("\u201d", '"').replace("\u201c", '"').replace("\u2018", "'").replace("\u2019", "'").strip()
             c_cat = html.unescape(ci.category or "").strip()
             c_price = f"{ci.price_currency or 'NGN'} {ci.price_amount:,.0f} {ci.price_unit or ''}".strip() if ci.price_amount else "Contact for price"
             line = f"- {c_title} (Category: {c_cat}, Price: {c_price})"
             catalog_inventory_lines.append(line)
+        logger.info(f"📦 Injected {len(catalog_inventory_lines)} items into prompt inventory ({len(targeted_items)} targeted for '{' '.join(query_keywords)}')")
     except Exception as cat_inv_err:
         logger.warning(f"Error fetching catalog inventory: {cat_inv_err}")
 
@@ -1294,13 +1325,15 @@ async def trigger_ai_agent_reply(
                         if ci not in matched:
                             matched.append(ci)
 
-                # 2. If nothing matched in reply, search by incoming query keywords
-                if not matched and any(w in clean_in for w in ["watch", "charger", "battery", "cable", "earbud", "headphone", "power bank", "phone", "laptop", "sound", "speaker", "case", "pods", "oraimo", "foomee", "buy", "price", "show", "list", "have", "store", "product"]):
-                    search_tokens = [w for w in clean_in.split() if len(w) >= 3 and w not in ["the", "show", "list", "that", "you", "have", "store", "for", "with", "and", "can", "please", "want", "some"]]
+                # 2. If nothing matched in reply, search catalog dynamically by query keywords
+                if not matched and not recommended_items:
+                    search_stop_words = {"the", "show", "list", "that", "you", "have", "store", "for", "with", "and", "can", "please", "want", "some", "like", "need", "hello", "good", "morning", "afternoon", "evening", "there", "what", "which", "give", "tell", "much", "cost", "price"}
+                    search_tokens = [w for w in clean_in.split() if len(w) >= 3 and w not in search_stop_words]
                     if search_tokens:
                         token_q = " ".join(search_tokens)
                         matched_dicts = await execute_catalog_search(org, {"query": token_q}, db)
-                        recommended_items = matched_dicts[:4]
+                        if matched_dicts:
+                            recommended_items = matched_dicts[:4]
 
                 # 3. Follow-up safety net: if user is following up on a previous product inquiry ("where are they", "ok let have", "yes", etc.)
                 if not matched and not recommended_items:
@@ -1428,22 +1461,37 @@ async def trigger_ai_agent_reply(
             last_send_result = {"success": False}
 
             if recommended_items:
-                # 1. Clean the intro text by removing redundant appended text list of options
-                intro_text = re.sub(r'\n\nHere are available options:[\s\S]*$', '', reply_text).strip()
-                if not intro_text:
-                    clean_query = incoming_text.lower().replace("[voice note]:", "").strip()
-                    intro_text = f"Here are available options for {clean_query}:"
+                # 1. Prepare formatted product listing for WhatsApp
+                product_lines = []
+                for itm in recommended_items[:3]:
+                    c_title = html.unescape(itm.get("title", "Product")).replace("\u2033", '"').replace("\u201d", '"').replace("\u201c", '"').replace("\u2018", "'").replace("\u2019", "'").strip()
+                    c_price = itm.get("price") or "Contact for price"
+                    c_url = itm.get("action_url") or ""
+                    c_cat = html.unescape(itm.get("category") or "").strip()
+                    line_parts = [f"*{c_title}*", f"Price: {c_price}"]
+                    if c_cat:
+                        line_parts.append(f"Category: {c_cat}")
+                    if c_url and c_url.startswith("http"):
+                        line_parts.append(f"Order: {c_url}")
+                    product_lines.append("\n".join(line_parts))
 
-                # Send conversational intro text first
+                # Ensure main message body contains complete product options so WhatsApp ALWAYS displays products!
+                base_text = re.sub(r'\n\nHere are available options:[\s\S]*$', '', reply_text).strip()
+                if not base_text:
+                    clean_query = incoming_text.lower().replace("[voice note]:", "").strip()
+                    base_text = f"Here are available options in store:"
+                full_whatsapp_text = f"{base_text}\n\nHere are available options:\n\n" + "\n\n".join(product_lines)
+
+                # Send primary message containing the complete product options, prices, and links!
                 intro_res = await meta_service.send_message(
                     to_phone=contact.phone,
-                    message=intro_text
+                    message=full_whatsapp_text
                 )
                 last_send_result = intro_res
                 out_msg_intro = Message(
                     organization_id=org_id,
                     contact_id=contact.id,
-                    content=intro_text,
+                    content=full_whatsapp_text,
                     type="Outbound",
                     status="Sent" if intro_res.get("success") else "Failed",
                     sent_at=now,
@@ -1452,85 +1500,54 @@ async def trigger_ai_agent_reply(
                 db.add(out_msg_intro)
                 db.commit()
 
-                # Pause between intro text and first card to adhere to Meta Cloud API recipient rate limit
-                await asyncio.sleep(1.2)
+                # Pause before sending individual image cards to prevent Meta rate limiting
+                await asyncio.sleep(1.0)
 
-                # 2. Loop through recommended products and send each as an interactive styled card
+                # 2. Deliver visual product photos for each item if available
                 for card_idx, item in enumerate(recommended_items[:3]):
-                    if card_idx > 0:
-                        await asyncio.sleep(1.2)
+                    image_url = item.get("image_url") or ""
+                    if not image_url or not str(image_url).startswith("http"):
+                        continue
 
                     clean_title = html.unescape(item.get("title", "Product")).replace("\u2033", '"').replace("\u201d", '"').replace("\u201c", '"').replace("\u2018", "'").replace("\u2019", "'").strip()
                     price = item.get("price") or "Contact for price"
                     action_url = item.get("action_url") or ""
-                    image_url = item.get("image_url") or ""
-                    cat = html.unescape(item.get("category") or "").strip()
-
-                    card_lines = [
-                        f"*{clean_title}*",
-                        f"Price: {price}"
-                    ]
-                    if cat:
-                        card_lines.append(f"Category: {cat}")
-                    card_lines.append("Status: In Stock")
-
+                    card_caption = f"*{clean_title}*\nPrice: {price}"
                     if action_url and action_url.startswith("http"):
-                        card_lines.append(f"\nOrder Here: {action_url}")
+                        card_caption += f"\nOrder: {action_url}"
 
-                    card_caption = "\n".join(card_lines)
-
-                    card_sent = False
-                    if image_url and str(image_url).startswith("http"):
-                        try:
-                            img_res = await meta_service.send_media(
-                                to_phone=contact.phone,
-                                media_type="image",
-                                media_data=image_url,
-                                caption=card_caption
-                            )
-                            if img_res.get("success"):
-                                card_sent = True
-                                last_send_result = img_res
-                                card_msg = Message(
-                                    organization_id=org_id,
-                                    contact_id=contact.id,
-                                    content=card_caption,
-                                    attachment_url=image_url,
-                                    attachment_type="image",
-                                    type="Outbound",
-                                    status="Sent",
-                                    sent_at=now,
-                                    whatsapp_message_id=img_res.get("messageId")
-                                )
-                                db.add(card_msg)
-                                db.commit()
-                        except Exception as media_err:
-                            logger.warning(f"Failed to send product image card on WhatsApp for {clean_title}: {media_err}")
-
-                    # If no valid image or media sending failed, send as formatted text card
-                    if not card_sent:
-                        card_txt_res = await meta_service.send_message(
+                    try:
+                        img_res = await meta_service.send_media(
                             to_phone=contact.phone,
-                            message=card_caption
+                            media_type="image",
+                            media_data=image_url,
+                            caption=card_caption
                         )
-                        last_send_result = card_txt_res
-                        card_msg = Message(
-                            organization_id=org_id,
-                            contact_id=contact.id,
-                            content=card_caption,
-                            type="Outbound",
-                            status="Sent" if card_txt_res.get("success") else "Failed",
-                            sent_at=now,
-                            whatsapp_message_id=card_txt_res.get("messageId")
-                        )
-                        db.add(card_msg)
-                        db.commit()
+                        if img_res.get("success"):
+                            last_send_result = img_res
+                            card_msg = Message(
+                                organization_id=org_id,
+                                contact_id=contact.id,
+                                content=card_caption,
+                                attachment_url=image_url,
+                                attachment_type="image",
+                                type="Outbound",
+                                status="Sent",
+                                sent_at=now,
+                                whatsapp_message_id=img_res.get("messageId")
+                            )
+                            db.add(card_msg)
+                            db.commit()
+                            await asyncio.sleep(1.2)
+                    except Exception as media_err:
+                        logger.warning(f"Could not deliver photo for {clean_title}: {media_err}")
 
-                logger.info(f"🚀 Multi-product visual cards sent to WhatsApp ({len(recommended_items[:3])} cards)")
+                logger.info(f"🚀 Delivered {len(recommended_items[:3])} products to WhatsApp for {contact.phone}")
                 return {
                     "reply": reply_text,
                     "action": action,
                     "recommended_items": recommended_items,
+                    "message_id": str(out_msg_intro.id),
                     "delivery_result": last_send_result
                 }
 

@@ -715,9 +715,29 @@ async def debug_ai_state(
     except Exception:
         pass
 
+    catalog_breakdown = {}
+    cannon_items = []
+    try:
+        cat_counts = db.execute(text("SELECT organization_id, count(*) FROM catalog_items GROUP BY organization_id")).fetchall()
+        for c in cat_counts:
+            catalog_breakdown[str(c[0])] = c[1]
+        c_rows = db.execute(text("SELECT id, organization_id, title, category, price_amount, is_available FROM catalog_items WHERE title ILIKE '%cannon%' OR title ILIKE '%oraimo%'")).fetchall()
+        for cr in c_rows:
+            cannon_items.append({
+                "id": str(cr[0]),
+                "org_id": str(cr[1]),
+                "title": cr[2],
+                "category": cr[3],
+                "price": float(cr[4]) if cr[4] else 0.0,
+                "is_available": cr[5]
+            })
+    except Exception as ce:
+        catalog_breakdown["error"] = str(ce)
+
     for o in orgs_data:
         o["contacts_count"] = contacts_breakdown.get(o["id"], 0)
         o["messages_count"] = messages_breakdown.get(o["id"], 0)
+        o["catalog_count"] = catalog_breakdown.get(o["id"], 0)
 
     # Return JSON if requested
     accept = request.headers.get("accept", "")
@@ -726,6 +746,8 @@ async def debug_ai_state(
             "organizations_count": len(orgs_data),
             "users": users_data,
             "organizations": orgs_data,
+            "catalog_breakdown": catalog_breakdown,
+            "oraimo_cannon_items": cannon_items,
             "server_gemini_env_key": "SET ✅" if bool(app_settings.gemini_api_key) else "NOT SET ❌"
         }
 
@@ -1411,11 +1433,11 @@ async def sync_decehub_catalog_direct(
 
     synced_items = []
     page = 1
-    max_pages = 4
+    max_pages = 8
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=35.0) as client:
         while page <= max_pages:
-            url = f"https://decehub.com/wp-json/wc/store/v1/products?per_page=100&page={page}"
+            url = f"https://decehub.com/wp-json/wc/store/v1/products?per_page=30&page={page}"
             try:
                 resp = await client.get(url, headers=headers)
                 if not resp.is_success:
@@ -1477,7 +1499,7 @@ async def sync_decehub_catalog_direct(
                     synced_items.append({"title": title, "price": price_amount, "image": bool(img_url)})
 
                 db.commit()
-                if len(wc_products) < 100:
+                if len(wc_products) < 30:
                     break
                 page += 1
             except Exception as page_err:

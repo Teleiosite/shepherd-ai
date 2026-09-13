@@ -181,27 +181,38 @@ class MetaWhatsAppService:
                 # guarantees 100% reliable image delivery to the customer's WhatsApp.
                 uploaded_id = None
                 try:
-                    async with httpx.AsyncClient(timeout=12.0, headers={"User-Agent": "Mozilla/5.0"}) as dl_cli:
+                    dl_headers = {
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                        "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8"
+                    }
+                    async with httpx.AsyncClient(timeout=15.0, headers=dl_headers, follow_redirects=True) as dl_cli:
                         dl_res = await dl_cli.get(media_data)
                         if dl_res.status_code == 200 and len(dl_res.content) > 100:
-                            c_type = dl_res.headers.get("Content-Type", "image/jpeg").split(";")[0]
+                            c_type = dl_res.headers.get("Content-Type", "image/jpeg").split(";")[0].strip()
+                            ext = "png" if "png" in c_type or media_data.lower().endswith(".png") else ("webp" if "webp" in c_type else "jpg")
+                            if "png" in media_data.lower() and c_type in ("application/octet-stream", "text/plain"):
+                                c_type = "image/png"
                             async with httpx.AsyncClient(timeout=25.0) as up_cli:
                                 up_res = await up_cli.post(
                                     f"{self.base_url}/{self.phone_number_id}/media",
                                     headers={"Authorization": f"Bearer {self.access_token}"},
                                     data={"messaging_product": "whatsapp", "type": c_type},
-                                    files={"file": ("product.jpg", dl_res.content, c_type)}
+                                    files={"file": (f"product.{ext}", dl_res.content, c_type)}
                                 )
                                 if up_res.status_code == 200:
                                     uploaded_id = up_res.json().get("id")
                                     logger.info(f"✅ Product image pre-uploaded to Meta /media: {uploaded_id}")
+                                else:
+                                    logger.warning(f"Meta /media upload rejected HTTP {up_res.status_code}: {up_res.text[:200]}")
                 except Exception as up_err:
                     logger.warning(f"Meta image pre-upload exception: {up_err}")
 
                 if uploaded_id:
                     media_payload = {"id": uploaded_id}
                 else:
-                    media_payload = {"link": media_data}
+                    # Never send raw link payloads that Meta's crawler silently drops!
+                    logger.warning(f"Could not pre-upload image to Meta, aborting media card to avoid silent drop: {media_data[:60]}")
+                    return {"success": False, "error": "Image pre-upload to Meta failed"}
 
             elif media_data.startswith("http://") or media_data.startswith("https://"):
                 # Media is already a URL

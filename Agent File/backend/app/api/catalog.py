@@ -302,15 +302,15 @@ async def sync_woocommerce_catalog(
 
     synced_items = []
     page = 1
-    max_pages = 4
+    max_pages = 8
 
     if clear_old:
         db.query(CatalogItem).filter(CatalogItem.organization_id == current_user.organization_id).delete()
         db.commit()
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=35.0) as client:
         while page <= max_pages:
-            url = f"{store}/wp-json/wc/store/v1/products?per_page=100&page={page}"
+            url = f"{store}/wp-json/wc/store/v1/products?per_page=30&page={page}"
             try:
                 resp = await client.get(url, headers=headers)
                 if not resp.is_success:
@@ -390,7 +390,7 @@ async def sync_woocommerce_catalog(
                     synced_items.append(title)
 
                 db.commit()
-                if len(wc_products) < 100:
+                if len(wc_products) < 30:
                     break
                 page += 1
             except Exception as page_err:
