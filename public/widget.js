@@ -409,22 +409,10 @@
         if (pData.messages && pData.messages.length > 0) {
           let hasNew = false;
           pData.messages.forEach(m => {
+            if (!m.id || seenMessageIds.has(m.id)) return;
+            seenMessageIds.add(m.id);
             const cleanContent = (m.content || '').trim();
             if (!cleanContent) return;
-            if (seenMessageIds.has(m.id) || seenMessageTexts.has(cleanContent)) {
-              return;
-            }
-            // Check existing DOM in-bubbles to avoid duplicates
-            const inBubbles = msgs.querySelectorAll('.shepherd-msg-in');
-            for (let i = 0; i < inBubbles.length; i++) {
-              if (inBubbles[i].textContent.trim() === cleanContent) {
-                seenMessageIds.add(m.id);
-                seenMessageTexts.add(cleanContent);
-                return;
-              }
-            }
-            seenMessageIds.add(m.id);
-            seenMessageTexts.add(cleanContent);
             hasNew = true;
             const botBubble = document.createElement('div');
             botBubble.className = 'shepherd-msg shepherd-msg-in';
@@ -580,31 +568,18 @@
       if (res && res.ok) {
         const data = await res.json();
         
-        // Track message IDs and reply content to prevent duplicate bubble from poller
+        // Track message IDs so poller will never duplicate this reply
         if (data.message_id) seenMessageIds.add(data.message_id);
         if (data.outbound_message_id) seenMessageIds.add(data.outbound_message_id);
         if (data.inbound_message_id) seenMessageIds.add(data.inbound_message_id);
 
         const cleanReply = extractCleanReply(data.reply);
-        if (cleanReply) seenMessageTexts.add(cleanReply.trim());
 
-        // Check if poller already rendered this identical text
-        let alreadyInDom = false;
-        const inBubbles = msgs.querySelectorAll('.shepherd-msg-in');
-        for (let i = 0; i < inBubbles.length; i++) {
-          if (inBubbles[i].textContent.trim() === cleanReply.trim()) {
-            alreadyInDom = true;
-            break;
-          }
-        }
-
-        if (!alreadyInDom) {
-          // AI Text Reply
-          const botBubble = document.createElement('div');
-          botBubble.className = 'shepherd-msg shepherd-msg-in';
-          botBubble.textContent = cleanReply;
-          msgs.appendChild(botBubble);
-        }
+        // AI Text Reply
+        const botBubble = document.createElement('div');
+        botBubble.className = 'shepherd-msg shepherd-msg-in';
+        botBubble.textContent = cleanReply;
+        msgs.appendChild(botBubble);
 
         // Render Recommended Item Cards if present
         if (data.recommended_items && data.recommended_items.length > 0) {
@@ -822,23 +797,11 @@
             const cleanVoiceReply = extractCleanReply(data.reply);
             if (cleanVoiceReply) seenMessageTexts.add(cleanVoiceReply.trim());
 
-            // Check if poller already rendered this identical text
-            let alreadyInDom = false;
-            const inBubbles = msgs.querySelectorAll('.shepherd-msg-in');
-            for (let i = 0; i < inBubbles.length; i++) {
-              if (inBubbles[i].textContent.trim() === cleanVoiceReply.trim()) {
-                alreadyInDom = true;
-                break;
-              }
-            }
-
-            if (!alreadyInDom) {
-              // Render AI response
-              const botBubble = document.createElement('div');
-              botBubble.className = 'shepherd-msg shepherd-msg-in';
-              botBubble.textContent = cleanVoiceReply;
-              msgs.appendChild(botBubble);
-            }
+            // Render AI response
+            const botBubble = document.createElement('div');
+            botBubble.className = 'shepherd-msg shepherd-msg-in';
+            botBubble.textContent = cleanVoiceReply;
+            msgs.appendChild(botBubble);
 
             if (data.recommended_items && data.recommended_items.length > 0) {
               const cardsEl = renderCatalogCards(data.recommended_items);
