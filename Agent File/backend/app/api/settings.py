@@ -647,6 +647,24 @@ async def generate_ai_completion(
         raise HTTPException(status_code=500, detail=str(err))
 
 
+@router.get("/list-gemini-models")
+async def list_gemini_models_endpoint(db: Session = Depends(get_db)):
+    import httpx
+    from uuid import UUID
+    from app.models.organization import Organization
+    org = db.query(Organization).filter(Organization.id == UUID("37423e5c-e2d0-44d3-ab5b-48c7fcf2d9c2")).first()
+    key = org.ai_api_key if org else None
+    if not key:
+        return {"error": "no key"}
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        r = await client.get(f"https://generativelanguage.googleapis.com/v1beta/models?key={key}")
+        if r.status_code == 200:
+            data = r.json()
+            models = [m.get("name") for m in data.get("models", []) if "generateContent" in m.get("supportedGenerationMethods", [])]
+            return {"models": models}
+        return {"error": r.status_code, "text": r.text}
+
+
 @router.get("/debug-ai")
 async def debug_ai_state(
     request: Request,
