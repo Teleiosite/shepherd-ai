@@ -397,10 +397,11 @@
   // Track seen messages to avoid duplicates
   const seenMessageIds = new Set();
   const seenMessageTexts = new Set();
+  let isWaitingReply = false;
 
   // Poll for replies from human agents in the dashboard
   const pollAgentMessages = async () => {
-    if (!orgId || !visitorId || box.style.display !== 'flex') return;
+    if (!orgId || !visitorId || box.style.display !== 'flex' || isWaitingReply) return;
     try {
       const pRes = await fetch(`${apiUrl}/api/widget/poll/${orgId}/${visitorId}`);
       if (pRes.ok) {
@@ -409,15 +410,26 @@
           let hasNew = false;
           pData.messages.forEach(m => {
             const cleanContent = (m.content || '').trim();
-            if (!seenMessageIds.has(m.id) && !seenMessageTexts.has(cleanContent)) {
-              seenMessageIds.add(m.id);
-              seenMessageTexts.add(cleanContent);
-              hasNew = true;
-              const botBubble = document.createElement('div');
-              botBubble.className = 'shepherd-msg shepherd-msg-in';
-              botBubble.textContent = m.content;
-              msgs.appendChild(botBubble);
+            if (!cleanContent) return;
+            if (seenMessageIds.has(m.id) || seenMessageTexts.has(cleanContent)) {
+              return;
             }
+            // Check existing DOM in-bubbles to avoid duplicates
+            const inBubbles = msgs.querySelectorAll('.shepherd-msg-in');
+            for (let i = 0; i < inBubbles.length; i++) {
+              if (inBubbles[i].textContent.trim() === cleanContent) {
+                seenMessageIds.add(m.id);
+                seenMessageTexts.add(cleanContent);
+                return;
+              }
+            }
+            seenMessageIds.add(m.id);
+            seenMessageTexts.add(cleanContent);
+            hasNew = true;
+            const botBubble = document.createElement('div');
+            botBubble.className = 'shepherd-msg shepherd-msg-in';
+            botBubble.textContent = m.content;
+            msgs.appendChild(botBubble);
           });
           if (hasNew) msgs.scrollTop = msgs.scrollHeight;
         }
@@ -532,6 +544,7 @@
     msgs.appendChild(userBubble);
     msgs.scrollTop = msgs.scrollHeight;
 
+    isWaitingReply = true;
     showTyping();
 
     try {
@@ -562,6 +575,7 @@
       }
 
       hideTyping();
+      isWaitingReply = false;
 
       if (res && res.ok) {
         const data = await res.json();
@@ -574,11 +588,23 @@
         const cleanReply = extractCleanReply(data.reply);
         if (cleanReply) seenMessageTexts.add(cleanReply.trim());
 
-        // AI Text Reply
-        const botBubble = document.createElement('div');
-        botBubble.className = 'shepherd-msg shepherd-msg-in';
-        botBubble.textContent = cleanReply;
-        msgs.appendChild(botBubble);
+        // Check if poller already rendered this identical text
+        let alreadyInDom = false;
+        const inBubbles = msgs.querySelectorAll('.shepherd-msg-in');
+        for (let i = 0; i < inBubbles.length; i++) {
+          if (inBubbles[i].textContent.trim() === cleanReply.trim()) {
+            alreadyInDom = true;
+            break;
+          }
+        }
+
+        if (!alreadyInDom) {
+          // AI Text Reply
+          const botBubble = document.createElement('div');
+          botBubble.className = 'shepherd-msg shepherd-msg-in';
+          botBubble.textContent = cleanReply;
+          msgs.appendChild(botBubble);
+        }
 
         // Render Recommended Item Cards if present
         if (data.recommended_items && data.recommended_items.length > 0) {
@@ -595,6 +621,7 @@
       }
     } catch (err) {
       hideTyping();
+      isWaitingReply = false;
       console.error('[Shepherd Widget Error]:', err);
       const errBubble = document.createElement('div');
       errBubble.className = 'shepherd-msg shepherd-msg-in';
@@ -658,7 +685,7 @@
           speechRecognizer = new SpeechRecognition();
           speechRecognizer.continuous = !isMobile;
           speechRecognizer.interimResults = true;
-          speechRecognizer.lang = 'en-US';
+          speechRecognizer.lang = navigator.language || 'en-NG';
           speechRecognizer.onresult = (event) => {
             let combined = '';
             for (let i = 0; i < event.results.length; ++i) {
@@ -736,6 +763,7 @@
           msgs.appendChild(userBubble);
           msgs.scrollTop = msgs.scrollHeight;
 
+          isWaitingReply = true;
           showTyping();
 
           let res;
@@ -779,6 +807,7 @@
           }
 
           hideTyping();
+          isWaitingReply = false;
 
           if (res && res.ok) {
             const data = await res.json();
@@ -793,11 +822,23 @@
             const cleanVoiceReply = extractCleanReply(data.reply);
             if (cleanVoiceReply) seenMessageTexts.add(cleanVoiceReply.trim());
 
-            // Render AI response
-            const botBubble = document.createElement('div');
-            botBubble.className = 'shepherd-msg shepherd-msg-in';
-            botBubble.textContent = cleanVoiceReply;
-            msgs.appendChild(botBubble);
+            // Check if poller already rendered this identical text
+            let alreadyInDom = false;
+            const inBubbles = msgs.querySelectorAll('.shepherd-msg-in');
+            for (let i = 0; i < inBubbles.length; i++) {
+              if (inBubbles[i].textContent.trim() === cleanVoiceReply.trim()) {
+                alreadyInDom = true;
+                break;
+              }
+            }
+
+            if (!alreadyInDom) {
+              // Render AI response
+              const botBubble = document.createElement('div');
+              botBubble.className = 'shepherd-msg shepherd-msg-in';
+              botBubble.textContent = cleanVoiceReply;
+              msgs.appendChild(botBubble);
+            }
 
             if (data.recommended_items && data.recommended_items.length > 0) {
               const cardsEl = renderCatalogCards(data.recommended_items);
@@ -806,6 +847,7 @@
 
             msgs.scrollTop = msgs.scrollHeight;
           } else {
+            isWaitingReply = false;
             const errBubble = document.createElement('div');
             errBubble.className = 'shepherd-msg shepherd-msg-in';
             errBubble.textContent = "I received your voice note, but could not decode it clearly. Please type what you need and I will assist right away.";

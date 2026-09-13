@@ -213,37 +213,39 @@ async def handle_widget_voice_message(
         raise HTTPException(status_code=404, detail="Organization not found")
 
     transcription = ""
-    # 1. First priority: Check if visitor's browser already transcribed the voice note via Web Speech API
-    if payload.speech_transcript and payload.speech_transcript.strip():
-        transcription = payload.speech_transcript.strip()
-        logger.info(f"🎙️ Using visitor browser client-side transcription: '{transcription}'")
-
-    # 2. Decode audio bytes and transcribe on backend if no browser transcription was available
-    if not transcription:
+    # 1. First priority: High-accuracy backend neural transcription (Groq Whisper / Gemini Multimodal)
+    # Supports Nigerian English, Yoruba, Hausa, Igbo, Pidgin, and accented voice notes
+    audio_bytes = None
+    try:
+        raw_b64 = payload.audio_base64 or ""
+        if "," in raw_b64:
+            raw_b64 = raw_b64.split(",", 1)[1]
+        raw_b64 = raw_b64.strip()
+        missing_padding = len(raw_b64) % 4
+        if missing_padding:
+            raw_b64 += "=" * (4 - missing_padding)
+        if raw_b64:
+            audio_bytes = base64.b64decode(raw_b64)
+    except Exception as dec_err:
+        logger.warning(f"Invalid base64 audio in widget voice message: {dec_err}")
         audio_bytes = None
-        try:
-            raw_b64 = payload.audio_base64 or ""
-            if "," in raw_b64:
-                raw_b64 = raw_b64.split(",", 1)[1]
-            raw_b64 = raw_b64.strip()
-            missing_padding = len(raw_b64) % 4
-            if missing_padding:
-                raw_b64 += "=" * (4 - missing_padding)
-            if raw_b64:
-                audio_bytes = base64.b64decode(raw_b64)
-        except Exception as dec_err:
-            logger.warning(f"Invalid base64 audio in widget voice message: {dec_err}")
-            audio_bytes = None
 
-        if audio_bytes and len(audio_bytes) > 50:
-            effective_key = org.ai_api_key or getattr(settings, "gemini_api_key", None)
-            transcription = await transcribe_voice_note(
-                audio_bytes=audio_bytes,
-                mime_type=payload.audio_mime_type or "audio/webm",
-                api_key=effective_key,
-                provider=getattr(org, "ai_provider", "gemini") or "gemini",
-                base_url=getattr(org, "ai_base_url", None)
-            )
+    if audio_bytes and len(audio_bytes) > 50:
+        effective_key = org.ai_api_key or getattr(settings, "gemini_api_key", None)
+        transcription = await transcribe_voice_note(
+            audio_bytes=audio_bytes,
+            mime_type=payload.audio_mime_type or "audio/webm",
+            api_key=effective_key,
+            provider=getattr(org, "ai_provider", "gemini") or "gemini",
+            base_url=getattr(org, "ai_base_url", None)
+        )
+        if transcription:
+            logger.info(f"🎙️ Backend neural transcription succeeded: '{transcription[:100]}'")
+
+    # 2. Fallback to visitor browser client-side transcript if audio could not be decoded
+    if not transcription and payload.speech_transcript and payload.speech_transcript.strip():
+        transcription = payload.speech_transcript.strip()
+        logger.info(f"🎙️ Falling back to browser client-side transcription: '{transcription}'")
 
     has_valid_transcription = bool(transcription and transcription.strip())
     if has_valid_transcription:

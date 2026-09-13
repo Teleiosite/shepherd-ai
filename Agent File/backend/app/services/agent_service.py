@@ -180,6 +180,84 @@ def strip_emojis(text: str) -> str:
     return re.sub(r" +", " ", cleaned).strip()
 
 
+def _is_pure_greeting(text: str) -> bool:
+    """Detect if an incoming message is purely a greeting or conversational pleasantry without product requests."""
+    if not text:
+        return True
+    t = text.strip().lower()
+    t = re.sub(r"^\[voice (?:note|message)[^\]]*\]:?\s*", "", t)
+    t = re.sub(r"[^\w\s]", " ", t)
+    words = [w for w in t.split() if w]
+    if not words:
+        return True
+    
+    greeting_words = {
+        "hello", "hi", "hey", "hy", "helo", "helloo", "hiya", "howdy",
+        "good", "morning", "afternoon", "evening", "day", "night",
+        "there", "anyone", "online", "here", "decehub", "assistant",
+        "sannu", "bawo", "ni", "kedu", "greetings", "wassup", "whats", "what", "up",
+        "thanks", "thank", "you", "ok", "okay", "alright", "fine", "cool"
+    }
+    product_terms = {
+        "product", "products", "item", "items", "store", "buy", "price", "prices",
+        "cost", "order", "charger", "chargers", "watch", "watches", "battery",
+        "batteries", "cable", "cables", "earbud", "earbuds", "headphone", "headphones",
+        "power", "bank", "banks", "powerbank", "powerbanks", "speaker", "speakers",
+        "cord", "cords", "clipper", "clippers", "airpod", "airpods", "adapter",
+        "adapters", "case", "cases", "controller", "screen", "trimmer"
+    }
+    if any(pt in words for pt in product_terms):
+        return False
+    if len(words) <= 4 and all(w in greeting_words for w in words):
+        return True
+    return False
+
+
+def _normalize_token(tok: str) -> list:
+    """Return token and common stems / singular forms so 'chargers' matches 'charger'."""
+    forms = [tok]
+    if tok.endswith("ies") and len(tok) > 4:
+        forms.append(tok[:-3] + "y")
+    elif tok.endswith("es") and len(tok) > 3:
+        forms.append(tok[:-2])
+    elif tok.endswith("s") and len(tok) > 3:
+        forms.append(tok[:-1])
+    
+    SYNONYMS = {
+        "smartwatch": ["smart", "watch"],
+        "smartwatches": ["smart", "watch"],
+        "powerbank": ["power", "bank"],
+        "powerbanks": ["power", "bank"],
+        "earphone": ["earbud", "earphone"],
+        "earphones": ["earbud", "earphone"],
+        "airpod": ["airpods", "earbud"],
+        "airpods": ["airpod", "earbud"],
+        "cord": ["cable", "cord"],
+        "cords": ["cable", "cord"],
+        "trimmer": ["clipper", "shaver"],
+        "trimmers": ["clipper", "shaver"],
+        "shaving": ["shaver", "clipper"]
+    }
+    if tok in SYNONYMS:
+        forms.extend(SYNONYMS[tok])
+    return list(dict.fromkeys(forms))
+
+
+def deduplicate_reply_text(text: str) -> str:
+    """Deduplicate repetitive blocks or identical paragraphs in AI text reply."""
+    if not text:
+        return ""
+    paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
+    seen = set()
+    deduped = []
+    for p in paragraphs:
+        norm = " ".join(p.lower().split())
+        if norm not in seen:
+            seen.add(norm)
+            deduped.append(p)
+    return "\n\n".join(deduped)
+
+
 def parse_agent_response(raw_text: str) -> Dict[str, Any]:
     """Parse JSON reply and action from AI response with robust fallback extraction."""
     if not raw_text:
@@ -628,11 +706,15 @@ async def execute_catalog_search(
                 from sqlalchemy import and_
                 and_filters = []
                 for t in tokens:
-                    and_filters.append(or_(
-                        CatalogItem.title.ilike(f"%{t}%"),
-                        CatalogItem.description.ilike(f"%{t}%"),
-                        CatalogItem.category.ilike(f"%{t}%")
-                    ))
+                    forms = _normalize_token(t)
+                    sub_f = []
+                    for f in forms:
+                        sub_f.extend([
+                            CatalogItem.title.ilike(f"%{f}%"),
+                            CatalogItem.description.ilike(f"%{f}%"),
+                            CatalogItem.category.ilike(f"%{f}%")
+                        ])
+                    and_filters.append(or_(*sub_f))
                 and_matches = base_query.filter(and_(*and_filters)).limit(25).all()
 
             # 3. Individual token union (OR): Fallback candidates if exact intersection not found
@@ -640,9 +722,11 @@ async def execute_catalog_search(
             if tokens and (len(tier1) + len(and_matches)) < 5:
                 or_filters = []
                 for t in tokens:
-                    if len(t) >= 3:
-                        or_filters.append(CatalogItem.title.ilike(f"%{t}%"))
-                        or_filters.append(CatalogItem.category.ilike(f"%{t}%"))
+                    forms = _normalize_token(t)
+                    for f in forms:
+                        if len(f) >= 3:
+                            or_filters.append(CatalogItem.title.ilike(f"%{f}%"))
+                            or_filters.append(CatalogItem.category.ilike(f"%{f}%"))
                 if or_filters:
                     or_matches = base_query.filter(or_(*or_filters)).limit(40).all()
 
@@ -671,14 +755,23 @@ async def execute_catalog_search(
                     # Token score
                     matched_tokens = 0
                     for tok in tokens:
-                        if tok in t_lower:
-                            score += 150
+                        forms = _normalize_token(tok)
+                        tok_matched = False
+                        for f in forms:
+                            if f in t_lower:
+                                score += 150
+                                tok_matched = True
+                                break
+                            elif f in c_lower:
+                                score += 50
+                                tok_matched = True
+                                break
+                            elif f in d_lower:
+                                score += 10
+                                tok_matched = True
+                                break
+                        if tok_matched:
                             matched_tokens += 1
-                        elif tok in c_lower:
-                            score += 50
-                            matched_tokens += 1
-                        elif tok in d_lower:
-                            score += 10
 
                     # Significant bonus if ALL tokens match
                     if tokens and matched_tokens == len(tokens):
@@ -830,20 +923,23 @@ Your task: Continue this flow naturally. Ask for whatever is still missing.
         if query_keywords:
             keyword_filters = []
             for kw in query_keywords:
-                keyword_filters.append(CatalogItem.title.ilike(f"%{kw}%"))
-                keyword_filters.append(CatalogItem.category.ilike(f"%{kw}%"))
-                keyword_filters.append(CatalogItem.description.ilike(f"%{kw}%"))
-            targeted_items = db.query(CatalogItem).filter(
-                CatalogItem.organization_id == org_id,
-                CatalogItem.is_available == True,
-                or_(*keyword_filters)
-            ).order_by(CatalogItem.created_at.desc()).limit(30).all()
+                for form in _normalize_token(kw):
+                    keyword_filters.append(CatalogItem.title.ilike(f"%{form}%"))
+                    keyword_filters.append(CatalogItem.category.ilike(f"%{form}%"))
+                    keyword_filters.append(CatalogItem.description.ilike(f"%{form}%"))
+            targeted_filters = or_(*keyword_filters) if keyword_filters else None
+            if targeted_filters is not None:
+                targeted_items = db.query(CatalogItem).filter(
+                    CatalogItem.organization_id == org_id,
+                    CatalogItem.is_available == True,
+                    targeted_filters
+                ).order_by(CatalogItem.created_at.desc()).limit(50).all()
 
-        # 2. Second priority: General active inventory to give broad awareness
+        # 2. Second priority: General active inventory to give complete store awareness
         general_items = db.query(CatalogItem).filter(
             CatalogItem.organization_id == org_id,
             CatalogItem.is_available == True
-        ).order_by(CatalogItem.created_at.desc()).limit(90).all()
+        ).order_by(CatalogItem.created_at.desc()).limit(250).all()
 
         # Combine with priority: targeted items appear at the very top!
         seen_ids = set()
@@ -853,7 +949,7 @@ Your task: Continue this flow naturally. Ask for whatever is still missing.
                 seen_ids.add(itm.id)
                 combined_items.append(itm)
 
-        for ci in combined_items[:100]:
+        for ci in combined_items[:250]:
             c_title = html.unescape(ci.title or "").replace("\u2033", '"').replace("\u201d", '"').replace("\u201c", '"').replace("\u2018", "'").replace("\u2019", "'").strip()
             c_cat = html.unescape(ci.category or "").strip()
             c_price = f"{ci.price_currency or 'NGN'} {ci.price_amount:,.0f} {ci.price_unit or ''}".strip() if ci.price_amount else "Contact for price"
@@ -1294,13 +1390,20 @@ async def trigger_ai_agent_reply(
                 if act_url and act_url.startswith("http"):
                     line += f"\nView / Order: {act_url}"
                 card_summaries.append(line)
-            if card_summaries and not any(itm['title'].lower() in reply_text.lower() for itm in recommended_items):
+            if card_summaries and channel != "web_widget" and not any(itm['title'].lower() in reply_text.lower() for itm in recommended_items):
                 reply_text += f"\n\nHere are available options:\n\n" + "\n\n".join(card_summaries)
 
         # Automatic Visual Catalog Card Attachment Fallback:
         # If the AI provided a text reply without setting action_type=="SEARCH_CATALOG",
         # but the reply or user prompt mentions products in the catalog, attach them!
-        if not recommended_items:
+        # CRITICAL: If the customer just greeted (hello, hi, good morning) or asked store info (EMPTY, GREETING, LOCATION, HOURS, etc.),
+        # NEVER auto-attach products! "Let them request for product before showing them."
+        is_greeting_intent = is_rule_handled and rule_res.get("intent") in [
+            "GREETING", "EMPTY", "LOCATION", "HOURS", "PAYMENT_METHOD", "ABOUT", "DELIVERY", "POLICY"
+        ]
+        if is_greeting_intent or _is_pure_greeting(incoming_text):
+            recommended_items = []
+        elif not recommended_items:
             try:
                 from app.models.catalog_item import CatalogItem
                 import urllib.parse
@@ -1380,6 +1483,9 @@ async def trigger_ai_agent_reply(
 
         # 11. If channel is Web Chat Widget, return reply directly (bypasses WhatsApp Meta & Bridge)
         if channel == "web_widget":
+            if recommended_items:
+                reply_text = re.sub(r'\n\nHere are available options:[\s\S]*$', '', reply_text).strip()
+            reply_text = deduplicate_reply_text(reply_text)
             out_msg = Message(
                 organization_id=org_id,
                 contact_id=contact.id,
