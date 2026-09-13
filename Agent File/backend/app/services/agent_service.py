@@ -41,12 +41,13 @@ async def call_ai_provider(
         raise ValueError("AI API key is missing.")
 
     if provider == "gemini":
-        # Genuine Google Gemini production models
+        # Verified active Google Gemini production models from API catalog
         FAST_GEMINI_MODELS = [
-            "gemini-2.0-flash",
-            "gemini-1.5-flash",
             "gemini-2.5-flash",
-            "gemini-1.5-flash-latest"
+            "gemini-flash-latest",
+            "gemini-2.5-flash-lite",
+            "gemini-3.5-flash",
+            "gemini-3.7-flash"
         ]
 
         EXCLUDE_KEYWORDS = (
@@ -54,7 +55,7 @@ async def call_ai_provider(
             "aqa", "robotics", "computer-use", "clip", "banana", "lyria"
         )
         OBSOLETE_MODELS = (
-            "gemini-pro", "gemini-1.0-pro", "gemini-3.5-flash-lite", "gemini-3.7-flash"
+            "gemini-pro", "gemini-1.0-pro", "gemini-1.5-flash", "gemini-2.0-flash"
         )
 
         candidates = []
@@ -108,12 +109,12 @@ async def call_ai_provider(
             import google.generativeai as genai
             import asyncio
             genai.configure(api_key=api_key)
-            fallback_model_name = candidates[0] if candidates else "gemini-3.5-flash-lite"
+            fallback_model_name = candidates[0] if candidates else "gemini-2.5-flash"
             logger.info(f"🔄 Trying SDK fallback with '{fallback_model_name}'...")
             sdk_model = genai.GenerativeModel(fallback_model_name)
             response = await asyncio.wait_for(
                 asyncio.to_thread(sdk_model.generate_content, full_text_turn, generation_config={"temperature": 0.7}),
-                timeout=7.0
+                timeout=25.0
             )
             if response and response.text:
                 return response.text.strip()
