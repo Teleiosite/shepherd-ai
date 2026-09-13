@@ -752,8 +752,8 @@ async def execute_catalog_search(
 
                     if t_lower == q_lower:
                         score += 3000
-                    elif q_lower in t_lower:
-                        score += 1500
+                    elif q_lower in t_lower or t_lower in q_lower:
+                        score += 2000
 
                     # Token score
                     matched_tokens = 0
@@ -911,53 +911,50 @@ Your task: Continue this flow naturally. Ask for whatever is still missing.
     # 4b. Fetch active catalog inventory so the AI knows real stock, brands, and prices
     catalog_inventory_lines = []
     try:
-        from app.models.catalog_item import CatalogItem
-        from sqlalchemy import or_
-        import html
-        import re
-
-        # Extract search keywords from current incoming message
-        stop_words = {"want", "need", "looking", "for", "please", "some", "like", "have", "with", "from", "the", "and", "buy", "good", "hello", "hey", "can", "you", "show", "tell", "what", "which", "are", "there"}
-        raw_words = re.findall(r"\w+", incoming_text.lower())
-        query_keywords = [w for w in raw_words if len(w) >= 3 and w not in stop_words]
-
-        # 1. First priority: Specifically target items matching user query keywords
-        targeted_items = []
-        if query_keywords:
-            keyword_filters = []
-            for kw in query_keywords:
-                for form in _normalize_token(kw):
-                    keyword_filters.append(CatalogItem.title.ilike(f"%{form}%"))
-                    keyword_filters.append(CatalogItem.category.ilike(f"%{form}%"))
-                    keyword_filters.append(CatalogItem.description.ilike(f"%{form}%"))
-            if keyword_filters:
-                targeted_items = db.query(CatalogItem).filter(
-                    CatalogItem.organization_id == org_id,
-                    CatalogItem.is_available == True,
-                    or_(*keyword_filters)
-                ).order_by(CatalogItem.created_at.desc()).limit(50).all()
-
-        # 2. Second priority: General active inventory to give broad store awareness
-        general_items = db.query(CatalogItem).filter(
+        # Fetch ALL active items for this organization — full store catalog visibility
+        all_catalog_items = db.query(CatalogItem).filter(
             CatalogItem.organization_id == org_id,
             CatalogItem.is_available == True
-        ).order_by(CatalogItem.created_at.desc()).limit(80).all()
+        ).all()
 
-        # Combine with priority: targeted items appear at the very top!
-        seen_ids = set()
-        combined_items = []
-        for itm in targeted_items + general_items:
-            if itm.id not in seen_ids:
-                seen_ids.add(itm.id)
-                combined_items.append(itm)
+        # Extract search keywords from incoming message
+        stop_words = {"want", "need", "looking", "for", "please", "some", "like", "have", "with", "from", "the", "and", "buy", "good", "hello", "hey", "can", "you", "show", "tell", "what", "which", "are", "there"}
+        raw_words = re.findall(r"\w+", incoming_text.lower())
+        query_keywords = [w for w in raw_words if len(w) >= 2 and w not in stop_words]
 
-        for ci in combined_items[:100]:
+        # Score items so that items matching the user's specific query appear at the very top of the inventory
+        def score_for_prompt(ci):
+            score = 0
+            t_low = (ci.title or "").lower()
+            c_low = (ci.category or "").lower()
+            d_low = (ci.description or "").lower()
+            in_low = incoming_text.lower()
+
+            # Exact title or substantial phrase match
+            if t_low and (t_low in in_low or in_low in t_low):
+                score += 5000
+
+            for kw in query_keywords:
+                forms = _normalize_token(kw)
+                for f in forms:
+                    if f in t_low:
+                        score += 300
+                    elif f in c_low:
+                        score += 100
+                    elif f in d_low:
+                        score += 40
+            return score
+
+        sorted_items = sorted(all_catalog_items, key=score_for_prompt, reverse=True)
+
+        # Include up to 1000 items (covers 100% of store inventory without discarding products)
+        for ci in sorted_items[:1000]:
             c_title = html.unescape(ci.title or "").replace("\u2033", '"').replace("\u201d", '"').replace("\u201c", '"').replace("\u2018", "'").replace("\u2019", "'").strip()
             c_cat = html.unescape(ci.category or "").strip()
             c_price = f"{ci.price_currency or 'NGN'} {ci.price_amount:,.0f} {ci.price_unit or ''}".strip() if ci.price_amount else "Contact for price"
             line = f"- {c_title} (Category: {c_cat}, Price: {c_price})"
             catalog_inventory_lines.append(line)
-        logger.info(f"📦 Injected {len(catalog_inventory_lines)} items into prompt inventory ({len(targeted_items)} targeted for '{' '.join(query_keywords)}')")
+        logger.info(f"📦 Injected {len(catalog_inventory_lines)} active catalog items into AI prompt (total in DB: {len(all_catalog_items)})")
     except Exception as cat_inv_err:
         logger.warning(f"Error fetching catalog inventory: {cat_inv_err}")
 
@@ -1420,7 +1417,7 @@ async def trigger_ai_agent_reply(
                     title_lower = title_clean.lower()
                     words = [w for w in title_lower.split() if len(w) > 2]
                     first_3 = " ".join(words[:3]) if len(words) >= 3 else title_lower
-                    if title_lower in reply_text.lower() or (first_3 and first_3 in reply_text.lower()):
+                    if title_lower in reply_text.lower() or (first_3 and first_3 in reply_text.lower()) or title_lower in clean_in or (first_3 and first_3 in clean_in):
                         if ci not in matched:
                             matched.append(ci)
 
