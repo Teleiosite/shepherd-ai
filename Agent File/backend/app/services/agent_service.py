@@ -7,22 +7,26 @@ intent detection, slot filling, voice note transcription, and auto-reply deliver
 import json
 import logging
 import re
+import html
+import urllib.parse
 import base64
 import asyncio
 import tempfile
 import os
+import traceback
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, Tuple
 from uuid import UUID, uuid4
 import httpx
 from sqlalchemy.orm import Session
-from sqlalchemy import text
+from sqlalchemy import text, or_, and_
 
 from app.models.contact import Contact
 from app.models.message import Message
 from app.models.booking import Booking
 from app.models.conversation_session import ConversationSession
 from app.models.organization import Organization
+from app.models.catalog_item import CatalogItem
 from app.services.rag_service import search_knowledge_base
 
 logger = logging.getLogger(__name__)
@@ -1087,7 +1091,7 @@ ACTION TYPE GUIDE:
     # 6. Call AI Provider
     model_to_use = org.ai_model
     if not model_to_use or "3." in model_to_use or "flash-lite" in model_to_use:
-        model_to_use = "gemini-2.0-flash"
+        model_to_use = "gemini-2.5-flash"
     elif model_to_use.startswith("models/"):
         model_to_use = model_to_use.replace("models/", "").strip()
 
@@ -1313,7 +1317,6 @@ async def trigger_ai_agent_reply(
             raw_time = (action.get("preferredTime") or (collected_data.get("time") if session else None) or "").strip()
 
             # Resolve relative dates (tomorrow / today / ISO)
-            import re
             resolved_date = ""
             if "tomorrow" in raw_date:
                 resolved_date = (now + timedelta(days=1)).strftime("%Y-%m-%d")
@@ -1400,8 +1403,6 @@ async def trigger_ai_agent_reply(
             recommended_items = []
         elif not recommended_items:
             try:
-                from app.models.catalog_item import CatalogItem
-                import urllib.parse
                 clean_in = incoming_text.lower().replace("[voice note]:", "").strip()
                 base_store_url = (getattr(org, "ai_payment_link", None) or getattr(org, "external_search_webhook_url", None) or "https://decehub.com").rstrip("/")
                 if not base_store_url.startswith("http"):
