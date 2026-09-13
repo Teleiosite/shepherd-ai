@@ -177,7 +177,9 @@ async def handle_widget_message(
             "message_id": outbound_msg_id or str(in_msg.id),
             "outbound_message_id": outbound_msg_id,
             "inbound_message_id": str(in_msg.id),
-            "ai_name": org.ai_name or "DeceHub Assistant"
+            "ai_name": org.ai_name or "DeceHub Assistant",
+            "debug_error": agent_result.get("error") if agent_result else None,
+            "debug_tb": agent_result.get("traceback") if agent_result else None
         }
     except Exception as e:
         logger.error(f"Error handling widget message: {e}", exc_info=True)

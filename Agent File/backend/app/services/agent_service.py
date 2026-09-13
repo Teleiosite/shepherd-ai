@@ -41,13 +41,12 @@ async def call_ai_provider(
         raise ValueError("AI API key is missing.")
 
     if provider == "gemini":
-        # Verified ultra-fast production models (sub-2-second latency)
+        # Genuine Google Gemini production models
         FAST_GEMINI_MODELS = [
-            "gemini-3.5-flash-lite",
-            "gemini-3-flash-preview",
-            "gemini-3.1-flash-lite",
-            "gemini-3.7-flash",
-            "gemini-flash-latest"
+            "gemini-2.0-flash",
+            "gemini-1.5-flash",
+            "gemini-2.5-flash",
+            "gemini-1.5-flash-latest"
         ]
 
         EXCLUDE_KEYWORDS = (
@@ -55,8 +54,7 @@ async def call_ai_provider(
             "aqa", "robotics", "computer-use", "clip", "banana", "lyria"
         )
         OBSOLETE_MODELS = (
-            "gemini-1.5-flash", "gemini-2.0-flash", "gemini-2.5-flash",
-            "gemini-1.5-pro", "gemini-pro", "gemini-3.8-flash", "gemini-3.6-flash"
+            "gemini-pro", "gemini-1.0-pro", "gemini-3.5-flash-lite", "gemini-3.7-flash"
         )
 
         candidates = []
@@ -74,7 +72,7 @@ async def call_ai_provider(
 
         # 1. Primary: Direct Async REST API (Ultra-low latency, non-blocking)
         import httpx
-        async with httpx.AsyncClient(timeout=7.0) as client:
+        async with httpx.AsyncClient(timeout=25.0) as client:
             for cand in candidates:
                 try:
                     logger.info(f"🤖 Fast REST call to Gemini '{cand}'...")
@@ -927,19 +925,18 @@ Your task: Continue this flow naturally. Ask for whatever is still missing.
                     keyword_filters.append(CatalogItem.title.ilike(f"%{form}%"))
                     keyword_filters.append(CatalogItem.category.ilike(f"%{form}%"))
                     keyword_filters.append(CatalogItem.description.ilike(f"%{form}%"))
-            targeted_filters = or_(*keyword_filters) if keyword_filters else None
-            if targeted_filters is not None:
+            if keyword_filters:
                 targeted_items = db.query(CatalogItem).filter(
                     CatalogItem.organization_id == org_id,
                     CatalogItem.is_available == True,
-                    targeted_filters
+                    or_(*keyword_filters)
                 ).order_by(CatalogItem.created_at.desc()).limit(50).all()
 
-        # 2. Second priority: General active inventory to give complete store awareness
+        # 2. Second priority: General active inventory to give broad store awareness
         general_items = db.query(CatalogItem).filter(
             CatalogItem.organization_id == org_id,
             CatalogItem.is_available == True
-        ).order_by(CatalogItem.created_at.desc()).limit(250).all()
+        ).order_by(CatalogItem.created_at.desc()).limit(80).all()
 
         # Combine with priority: targeted items appear at the very top!
         seen_ids = set()
@@ -949,7 +946,7 @@ Your task: Continue this flow naturally. Ask for whatever is still missing.
                 seen_ids.add(itm.id)
                 combined_items.append(itm)
 
-        for ci in combined_items[:250]:
+        for ci in combined_items[:100]:
             c_title = html.unescape(ci.title or "").replace("\u2033", '"').replace("\u201d", '"').replace("\u201c", '"').replace("\u2018", "'").replace("\u2019", "'").strip()
             c_cat = html.unescape(ci.category or "").strip()
             c_price = f"{ci.price_currency or 'NGN'} {ci.price_amount:,.0f} {ci.price_unit or ''}".strip() if ci.price_amount else "Contact for price"
@@ -1088,13 +1085,10 @@ ACTION TYPE GUIDE:
 
     # 6. Call AI Provider
     model_to_use = org.ai_model
-    if not model_to_use or model_to_use in (
-        "gemini-3.5-flash", "models/gemini-3.5-flash",
-        "gemini-1.5-flash", "models/gemini-1.5-flash",
-        "gemini-2.0-flash", "models/gemini-2.0-flash",
-        "gemini-2.5-flash", "models/gemini-2.5-flash"
-    ):
-        model_to_use = "gemini-3.5-flash-lite"
+    if not model_to_use or "3." in model_to_use or "flash-lite" in model_to_use:
+        model_to_use = "gemini-2.0-flash"
+    elif model_to_use.startswith("models/"):
+        model_to_use = model_to_use.replace("models/", "").strip()
 
     raw_reply = await call_ai_provider(
         provider=org.ai_provider or "gemini",
