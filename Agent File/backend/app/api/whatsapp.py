@@ -337,6 +337,81 @@ async def verify_whatsapp_webhook(
     return {"status": "ok"}
 
 
+async def _deliver_resilient_whatsapp_fallback(
+    contact_id: UUID,
+    content: str,
+    org_id: UUID,
+    db: Session
+):
+    """
+    Guarantees that WhatsApp customer NEVER gets left on read.
+    If LLM times out or encounters temporary upstream issues,
+    this sends a relevant catalog response or friendly acknowledgement.
+    """
+    try:
+        from app.models.contact import Contact
+        from app.models.organization import Organization
+        from app.models.chat import Message
+        from app.models.catalog_item import CatalogItem
+        from app.api.whatsapp import get_organization_whatsapp_config
+        from app.services.meta_whatsapp_service import get_meta_whatsapp_service
+        import re, html
+
+        contact = db.query(Contact).filter(Contact.id == contact_id).first()
+        org = db.query(Organization).filter(Organization.id == org_id).first()
+        if not contact or not org or not contact.phone:
+            return
+
+        config = get_organization_whatsapp_config(db, org_id)
+        if config.get("delivery_method") != "meta" or not config.get("phone_number_id") or not config.get("access_token"):
+            return
+
+        words = [w for w in re.findall(r"\w+", content.lower()) if len(w) >= 3 and w not in {"the", "and", "need", "want", "have", "some", "like", "you", "for", "are", "there", "can", "please"}]
+        matched_items = []
+        if words:
+            all_ci = db.query(CatalogItem).filter(
+                CatalogItem.organization_id == org_id,
+                CatalogItem.is_available == True
+            ).all()
+            for ci in all_ci:
+                t_low = (ci.title or "").lower()
+                c_low = (ci.category or "").lower()
+                if any(w in t_low or w in c_low for w in words):
+                    matched_items.append(ci)
+
+        org_name = org.name or "our store"
+        ai_name = org.ai_name or "Assistant"
+        if matched_items:
+            lines = []
+            for item in matched_items[:3]:
+                title = html.unescape(item.title or "").strip()
+                price = f"{item.price_currency or 'NGN'} {item.price_amount:,.0f}".strip() if item.price_amount else "Contact for price"
+                order_url = item.action_url or f"https://decehub.com/?s={title}"
+                lines.append(f"*{title}*\nPrice: {price}\nOrder: {order_url}")
+            fallback_text = f"Hello! We have several options in stock for you at {org_name}:\n\n" + "\n\n".join(lines) + "\n\nWhich of these would you prefer?"
+        else:
+            fallback_text = f"Hello! Welcome to {org_name}. I am {ai_name}, your sales assistant. How can I help you with our products and services today?"
+
+        meta_svc = get_meta_whatsapp_service(config["phone_number_id"], config["access_token"])
+        send_res = await meta_svc.send_message(to_phone=contact.phone, message=fallback_text)
+
+        out_msg = Message(
+            organization_id=org_id,
+            contact_id=contact.id,
+            content=fallback_text,
+            type="Outbound",
+            status="Sent" if send_res.get("success") else "Failed",
+            sent_at=datetime.utcnow(),
+            whatsapp_message_id=send_res.get("messageId")
+        )
+        db.add(out_msg)
+        contact.updated_at = datetime.utcnow()
+        db.commit()
+        logger.info(f"🛡️ Resilient fallback delivered to {contact.phone} on WhatsApp")
+    except Exception as e:
+        logger.warning(f"Error in _deliver_resilient_whatsapp_fallback: {e}")
+
+
 async def _async_trigger_reply(
     contact_id: UUID,
     content: str,
@@ -373,10 +448,17 @@ async def _async_trigger_reply(
         )
         if isinstance(res, dict) and "error" in res:
             logger.error(f"❌ [ASYNC BG] AI auto-reply error: {res}")
+            err_str = str(res.get("error", ""))
+            if "disabled" not in err_str.lower() and "paused" not in err_str.lower():
+                await _deliver_resilient_whatsapp_fallback(contact_id, content, org_id, db_bg)
         else:
             logger.info(f"✅ [ASYNC BG] AI auto-reply completed: {res}")
     except Exception as agent_err:
         logger.error(f"❌ [ASYNC BG] Exception in background AI auto-reply: {agent_err}", exc_info=True)
+        try:
+            await _deliver_resilient_whatsapp_fallback(contact_id, content, org_id, db_bg)
+        except Exception as fb_err:
+            logger.error(f"Failed to deliver resilient fallback: {fb_err}")
     finally:
         db_bg.close()
 

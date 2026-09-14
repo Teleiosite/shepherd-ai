@@ -77,7 +77,7 @@ async def startup_event():
             UPDATE organizations 
             SET ai_api_key = :k,
                 ai_provider = 'gemini',
-                ai_model = 'gemini-3.7-flash',
+                ai_model = 'gemini-flash-latest',
                 ai_auto_reply_enabled = 'true',
                 ai_reply_mode = 'auto-send';
 

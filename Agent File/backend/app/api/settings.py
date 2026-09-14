@@ -1119,12 +1119,12 @@ async def test_reply_endpoint(
     if not org_row:
         return {"error": "No organization found"}
 
-    org_id = org_row[0]
+    org_id = contact.organization_id if contact else org_row[0]
     org = db.query(Organization).filter(Organization.id == org_id).first()
 
-    # Auto-heal: ensure org.ai_model in DB is a valid active model (gemini-1.5-flash)
-    if org and (not org.ai_model or org.ai_model in ("gemini-3.5-flash", "models/gemini-3.5-flash")):
-        org.ai_model = "gemini-1.5-flash"
+    # Auto-heal: ensure org.ai_model in DB is a valid active model (gemini-flash-latest)
+    if org and (not org.ai_model or "1.5" in org.ai_model or "2.0" in org.ai_model or "2.5" in org.ai_model):
+        org.ai_model = "gemini-flash-latest"
         db.commit()
         db.refresh(org)
 

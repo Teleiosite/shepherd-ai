@@ -160,11 +160,46 @@ async def handle_widget_message(
         )
 
         reply_text = (agent_result.get("reply") or "").strip() if agent_result else ""
+        recommended_items = agent_result.get("recommended_items", []) if agent_result else []
+
         if not reply_text:
             err_msg = agent_result.get("error") if agent_result else "None"
             logger.warning(f"AI Agent returned empty or error reply for widget: {err_msg}")
-            reply_text = "Hello! Welcome to our store. How can I assist you with our products and services today?"
-        recommended_items = agent_result.get("recommended_items", []) if agent_result else []
+            # Try to match catalog items from visitor's query
+            try:
+                from app.models.catalog_item import CatalogItem
+                import re
+                words = [w for w in re.findall(r"\w+", payload.message.lower()) if len(w) >= 3 and w not in {"the", "and", "need", "want", "have", "some", "like", "you", "for", "are", "there", "can", "please"}]
+                matched_items = []
+                if words:
+                    all_ci = db.query(CatalogItem).filter(
+                        CatalogItem.organization_id == org_id,
+                        CatalogItem.is_available == True
+                    ).all()
+                    for ci in all_ci:
+                        t_low = (ci.title or "").lower()
+                        c_low = (ci.category or "").lower()
+                        if any(w in t_low or w in c_low for w in words):
+                            price_display = f"{ci.price_currency or 'NGN'} {ci.price_amount:,.0f}".strip() if ci.price_amount else "Contact for pricing"
+                            matched_items.append({
+                                "id": str(ci.id),
+                                "title": ci.title,
+                                "category": ci.category or "",
+                                "description": ci.description or "",
+                                "price": price_display,
+                                "price_amount": float(ci.price_amount) if ci.price_amount else 0,
+                                "image_url": ci.image_url or "",
+                                "action_url": ci.action_url or f"https://decehub.com/?s={ci.title}",
+                                "attributes": ci.attributes or {}
+                            })
+                if matched_items:
+                    recommended_items = matched_items[:5]
+                    reply_text = f"We have several options in stock for you! Here are our available products:"
+                else:
+                    reply_text = f"Hello! Welcome to {org.name}. How can I assist you with our products and services today?"
+            except Exception as fb_err:
+                logger.warning(f"Widget catalog fallback error: {fb_err}")
+                reply_text = f"Hello! Welcome to {org.name}. How can I assist you with our products and services today?"
 
         outbound_msg_id = agent_result.get("message_id") if agent_result else None
 

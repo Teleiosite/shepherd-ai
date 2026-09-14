@@ -18,7 +18,7 @@ interface SettingsProps {
 }
 
 const DEFAULT_MODELS = {
-    gemini: 'gemini-3.7-flash',
+    gemini: 'gemini-flash-latest',
     openai: 'gpt-4o',
     deepseek: 'deepseek-chat',
     groq: 'llama3-70b-8192',

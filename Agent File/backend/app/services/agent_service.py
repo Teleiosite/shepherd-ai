@@ -47,11 +47,9 @@ async def call_ai_provider(
     if provider == "gemini":
         # Verified active Google Gemini production models from API catalog
         FAST_GEMINI_MODELS = [
-            "gemini-2.5-flash",
             "gemini-flash-latest",
-            "gemini-2.5-flash-lite",
             "gemini-3.5-flash",
-            "gemini-3.7-flash"
+            "gemini-3.5-flash-lite"
         ]
 
         EXCLUDE_KEYWORDS = (
@@ -59,7 +57,8 @@ async def call_ai_provider(
             "aqa", "robotics", "computer-use", "clip", "banana", "lyria"
         )
         OBSOLETE_MODELS = (
-            "gemini-pro", "gemini-1.0-pro", "gemini-1.5-flash", "gemini-2.0-flash"
+            "gemini-pro", "gemini-1.0-pro", "gemini-1.5-flash", "gemini-2.0-flash",
+            "gemini-2.5-flash", "gemini-2.5-flash-lite"
         )
 
         candidates = []
@@ -113,7 +112,7 @@ async def call_ai_provider(
             import google.generativeai as genai
             import asyncio
             genai.configure(api_key=api_key)
-            fallback_model_name = candidates[0] if candidates else "gemini-2.5-flash"
+            fallback_model_name = candidates[0] if candidates else "gemini-flash-latest"
             logger.info(f"🔄 Trying SDK fallback with '{fallback_model_name}'...")
             sdk_model = genai.GenerativeModel(fallback_model_name)
             response = await asyncio.wait_for(
@@ -456,11 +455,10 @@ async def transcribe_voice_note(
             )
 
             AUDIO_MODELS = [
-                "gemini-2.5-flash",
-                "gemini-1.5-flash",
-                "gemini-2.0-flash",
+                "gemini-flash-latest",
+                "gemini-3.5-transcribe",
                 "gemini-3.5-flash-lite",
-                "gemini-flash-latest"
+                "gemini-3.5-flash"
             ]
 
             async with httpx.AsyncClient(timeout=15.0) as client:
@@ -1087,8 +1085,8 @@ ACTION TYPE GUIDE:
 
     # 6. Call AI Provider
     model_to_use = org.ai_model
-    if not model_to_use or "3." in model_to_use or "flash-lite" in model_to_use:
-        model_to_use = "gemini-2.5-flash"
+    if not model_to_use or "2.5" in model_to_use or "1.5" in model_to_use or "flash-lite" in model_to_use:
+        model_to_use = "gemini-flash-latest"
     elif model_to_use.startswith("models/"):
         model_to_use = model_to_use.replace("models/", "").strip()
 
