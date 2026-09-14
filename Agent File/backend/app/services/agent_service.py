@@ -260,6 +260,37 @@ def deduplicate_reply_text(text: str) -> str:
     return "\n\n".join(deduped)
 
 
+def deduplicate_catalog_items(items: list) -> list:
+    """
+    Ensure each distinct product is listed exactly once.
+    Eliminates duplicates caused by identical titles, scraper variants like '(1)',
+    or repeated IDs.
+    """
+    if not items:
+        return []
+    deduped = []
+    seen_keys = set()
+    for itm in items:
+        if not isinstance(itm, dict):
+            continue
+        raw_title = str(itm.get("title") or "").strip().lower()
+        clean_title = re.sub(r"\s*\(\d+\)$", "", raw_title)
+        clean_title = re.sub(r"\s+", " ", clean_title).strip()
+        itm_id = str(itm.get("id") or "").strip()
+
+        if clean_title and clean_title in seen_keys:
+            continue
+        if itm_id and itm_id in seen_keys:
+            continue
+
+        if clean_title:
+            seen_keys.add(clean_title)
+        if itm_id:
+            seen_keys.add(itm_id)
+        deduped.append(itm)
+    return deduped
+
+
 def parse_agent_response(raw_text: str) -> Dict[str, Any]:
     """Parse JSON reply and action from AI response with robust fallback extraction."""
     if not raw_text:
@@ -734,9 +765,13 @@ async def execute_catalog_search(
             # Combine candidates without duplicates
             candidate_pool = []
             seen_ids = set()
+            seen_cand_titles = set()
             for itm in tier1 + and_matches + or_matches:
-                if itm.id not in seen_ids:
+                t_norm = re.sub(r"\s*\(\d+\)$", "", re.sub(r"\s+", " ", (itm.title or "").strip().lower()))
+                if itm.id not in seen_ids and (not t_norm or t_norm not in seen_cand_titles):
                     seen_ids.add(itm.id)
+                    if t_norm:
+                        seen_cand_titles.add(t_norm)
                     candidate_pool.append(itm)
 
             # Score candidates
@@ -806,8 +841,14 @@ async def execute_catalog_search(
         if not base_store_url.startswith("http"):
             base_store_url = "https://" + base_store_url if base_store_url else ""
 
+        seen_res_titles = set()
         for itm in results:
             clean_title = html.unescape(itm.title or "").replace("\u2033", '"').replace("\u201d", '"').replace("\u201c", '"').replace("\u2018", "'").replace("\u2019", "'").strip()
+            norm_t = re.sub(r"\s*\(\d+\)$", "", re.sub(r"\s+", " ", clean_title.lower()))
+            if norm_t and norm_t in seen_res_titles:
+                continue
+            if norm_t:
+                seen_res_titles.add(norm_t)
             clean_desc = html.unescape(itm.description or "").strip()
             clean_cat = html.unescape(itm.category or "").strip()
             price_display = f"{itm.price_currency or 'NGN'} {itm.price_amount:,.0f} {itm.price_unit or ''}".strip() if itm.price_amount else "Contact for pricing"
@@ -827,7 +868,7 @@ async def execute_catalog_search(
     except Exception as e:
         logger.warning(f"Internal catalog query failed: {e}")
 
-    return items
+    return deduplicate_catalog_items(items)
 
 
 async def _execute_generative_ai_pipeline(
@@ -1409,15 +1450,17 @@ async def trigger_ai_agent_reply(
                 ).all()
 
                 matched = []
+                seen_matched_keys = set()
                 # 1. Match if any product title is mentioned in reply_text
                 for ci in all_items:
                     title_clean = ci.title.strip()
                     title_lower = title_clean.lower()
+                    norm_k = re.sub(r"\s*\(\d+\)$", "", re.sub(r"\s+", " ", title_lower))
                     words = [w for w in title_lower.split() if len(w) > 2]
                     first_3 = " ".join(words[:3]) if len(words) >= 3 else title_lower
-                    if title_lower in reply_text.lower() or (first_3 and first_3 in reply_text.lower()) or title_lower in clean_in or (first_3 and first_3 in clean_in):
-                        if ci not in matched:
-                            matched.append(ci)
+                    if (title_lower in reply_text.lower() or (first_3 and first_3 in reply_text.lower()) or title_lower in clean_in or (first_3 and first_3 in clean_in)) and norm_k not in seen_matched_keys:
+                        seen_matched_keys.add(norm_k)
+                        matched.append(ci)
 
                 # 2. If nothing matched in reply, search catalog dynamically by query keywords
                 if not matched and not recommended_items:
@@ -1474,6 +1517,7 @@ async def trigger_ai_agent_reply(
 
         # 11. If channel is Web Chat Widget, return reply directly (bypasses WhatsApp Meta & Bridge)
         if channel == "web_widget":
+            recommended_items = deduplicate_catalog_items(recommended_items)
             if recommended_items:
                 reply_text = re.sub(r'\n\nHere are available options:[\s\S]*$', '', reply_text).strip()
             reply_text = deduplicate_reply_text(reply_text)

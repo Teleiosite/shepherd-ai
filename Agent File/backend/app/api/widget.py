@@ -159,8 +159,9 @@ async def handle_widget_message(
             channel="web_widget"
         )
 
+        from app.services.agent_service import deduplicate_catalog_items
         reply_text = (agent_result.get("reply") or "").strip() if agent_result else ""
-        recommended_items = agent_result.get("recommended_items", []) if agent_result else []
+        recommended_items = deduplicate_catalog_items(agent_result.get("recommended_items", [])) if agent_result else []
 
         if not reply_text:
             err_msg = agent_result.get("error") if agent_result else "None"
@@ -193,7 +194,7 @@ async def handle_widget_message(
                                 "attributes": ci.attributes or {}
                             })
                 if matched_items:
-                    recommended_items = matched_items[:5]
+                    recommended_items = deduplicate_catalog_items(matched_items)[:5]
                     reply_text = f"We have several options in stock for you! Here are our available products:"
                 else:
                     reply_text = f"Hello! Welcome to {org.name}. How can I assist you with our products and services today?"
@@ -201,6 +202,7 @@ async def handle_widget_message(
                 logger.warning(f"Widget catalog fallback error: {fb_err}")
                 reply_text = f"Hello! Welcome to {org.name}. How can I assist you with our products and services today?"
 
+        recommended_items = deduplicate_catalog_items(recommended_items)
         outbound_msg_id = agent_result.get("message_id") if agent_result else None
 
         return {

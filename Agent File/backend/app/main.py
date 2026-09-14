@@ -100,6 +100,19 @@ async def startup_event():
         """), {"k": new_key})
         db_start.commit()
 
+        # Deduplicate catalog items in database (eliminate duplicate rows with identical normalized titles)
+        try:
+            db_start.execute(text("""
+                DELETE FROM catalog_items a
+                USING catalog_items b
+                WHERE a.ctid < b.ctid
+                  AND a.organization_id = b.organization_id
+                  AND LOWER(TRIM(REGEXP_REPLACE(a.title, '\\s*\\(\\d+\\)$', ''))) = LOWER(TRIM(REGEXP_REPLACE(b.title, '\\s*\\(\\d+\\)$', '')));
+            """))
+            db_start.commit()
+        except Exception as dedup_err:
+            pass
+
         # Ensure essential DeceHub products (such as Oraimo Cannon series) are in catalog_items
         decehub_org_id = UUID("37423e5c-e2d0-44d3-ab5b-48c7fcf2d9c2")
         core_cannon_products = [

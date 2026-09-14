@@ -480,7 +480,23 @@
     const list = document.createElement('div');
     list.className = 'shepherd-cards-list';
 
+    // Deduplicate items so the visitor never sees the same product twice
+    const seenTitles = new Set();
+    const uniqueItems = [];
     items.forEach(itm => {
+      if (!itm) return;
+      const rawTitle = (itm.title || '').trim().toLowerCase().replace(/\s*\(\d+\)$/, '').replace(/\s+/g, ' ');
+      const itmId = (itm.id || '').toString().trim();
+      if (rawTitle && seenTitles.has(rawTitle)) return;
+      if (itmId && seenTitles.has(itmId)) return;
+      if (rawTitle) seenTitles.add(rawTitle);
+      if (itmId) seenTitles.add(itmId);
+      uniqueItems.push(itm);
+    });
+
+    if (!uniqueItems.length) return null;
+
+    uniqueItems.forEach(itm => {
       const card = document.createElement('div');
       card.className = 'shepherd-card';
 
