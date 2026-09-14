@@ -192,6 +192,13 @@ function App() {
         // Have token, fetch user data
         const userData = await authService.getCurrentUser();
         setUser(userData);
+        if (userData?.organizationName) {
+          const storedOrg = localStorage.getItem('shepherd_org_name');
+          if (!storedOrg || storedOrg === 'My Local Church' || storedOrg === 'My Organization') {
+            setOrganizationName(userData.organizationName);
+            localStorage.setItem('shepherd_org_name', userData.organizationName);
+          }
+        }
       } else {
         // No token, clear any old data
         setUser(null);

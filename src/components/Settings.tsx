@@ -179,6 +179,10 @@ const Settings: React.FC<SettingsProps> = ({
                         setVoiceName(autoData.voice_name);
                         localStorage.setItem('shepherd_voice_name', autoData.voice_name);
                     }
+                    if (autoData.business_type) {
+                        setBusinessType?.(autoData.business_type);
+                        localStorage.setItem('shepherd_business_type', autoData.business_type);
+                    }
                     localStorage.setItem('shepherd_agent_enabled', String(effectiveEnabled));
                     localStorage.setItem('shepherd_agent_mode', effectiveMode);
 
