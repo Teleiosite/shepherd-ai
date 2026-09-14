@@ -210,9 +210,8 @@ class MetaWhatsAppService:
                 if uploaded_id:
                     media_payload = {"id": uploaded_id}
                 else:
-                    # Never send raw link payloads that Meta's crawler silently drops!
-                    logger.warning(f"Could not pre-upload image to Meta, aborting media card to avoid silent drop: {media_data[:60]}")
-                    return {"success": False, "error": "Image pre-upload to Meta failed"}
+                    logger.warning(f"Could not pre-upload image to Meta, falling back to direct URL: {media_data[:60]}")
+                    media_payload = {"link": media_data}
 
             elif media_data.startswith("http://") or media_data.startswith("https://"):
                 # Media is already a URL

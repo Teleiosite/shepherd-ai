@@ -427,11 +427,10 @@ async def process_received_message(
         ).order_by(Contact.created_at.desc()).first()
 
     if contact:
-        # If org_id was already resolved from incoming webhook (e.g. from phone_number_id), keep it;
-        # otherwise preserve the organization where the contact belongs
-        if not org_id:
-            org_id = contact.organization_id
-        logger.info(f"👤 Found existing contact {contact.name} in organization {contact.organization_id} (active org: {org_id})")
+        # Route strictly to the organization that owns this contact
+        org_id = contact.organization_id
+        contact.updated_at = datetime.utcnow()
+        logger.info(f"👤 Found existing contact {contact.name} in organization {contact.organization_id}")
     else:
         # 2. For a brand new contact, route to the primary active organization
         # (the one with active users and existing contacts, e.g. Seye's workspace)
@@ -451,7 +450,7 @@ async def process_received_message(
         elif allowed_org_ids:
             org_id = allowed_org_ids[0]
         elif not org_id:
-            fallback_row = db.execute(text("SELECT id FROM organizations LIMIT 1")).fetchone()
+            fallback_row = db.execute(text("SELECT id FROM organizations ORDER BY created_at DESC LIMIT 1")).fetchone()
             if fallback_row:
                 org_id = fallback_row[0]
             
@@ -464,8 +463,9 @@ async def process_received_message(
             phone=clean_phone if clean_phone.startswith('+') else "+" + clean_phone,
             whatsapp_id=whatsapp_id,
             category="New Convert",
-            join_date=datetime.now(),
-            notes=f"Auto-created from incoming message on {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+            join_date=datetime.utcnow(),
+            updated_at=datetime.utcnow(),
+            notes=f"Auto-created from incoming message on {datetime.utcnow().strftime('%Y-%m-%d %H:%M')}"
         )
         db.add(contact)
         db.flush()
@@ -475,6 +475,7 @@ async def process_received_message(
             contact.whatsapp_id = whatsapp_id
         if pushname and not contact.name:
             contact.name = pushname
+        contact.updated_at = datetime.utcnow()
 
     message_data = {
         "organization_id": org_id,
@@ -483,8 +484,8 @@ async def process_received_message(
         "content": content,
         "status": "Received",
         "whatsapp_message_id": whatsapp_message_id,
-        "sent_at": datetime.now(),
-        "created_at": datetime.now()
+        "sent_at": datetime.utcnow(),
+        "created_at": datetime.utcnow()
     }
     
     message = Message(**message_data)
@@ -494,6 +495,7 @@ async def process_received_message(
         message.attachment_type = media_type
         
     db.add(message)
+    contact.updated_at = datetime.utcnow()
     db.commit()
     logger.info(f"✅ Incoming message saved for contact {contact.name} (ID: {contact.id}) in organization {org_id}")
 
@@ -561,7 +563,14 @@ async def whatsapp_incoming_webhook(
                         if phone_number_id:
                             clean_pid = str(phone_number_id).strip()
                             org_rows = db.execute(
-                                text("SELECT id, ai_api_key, whatsapp_access_token, ai_provider, ai_base_url FROM organizations WHERE whatsapp_phone_id = :phone_id"),
+                                text("""
+                                    SELECT o.id, o.ai_api_key, o.whatsapp_access_token, o.ai_provider, o.ai_base_url 
+                                    FROM organizations o
+                                    LEFT JOIN contacts c ON c.organization_id = o.id
+                                    WHERE o.whatsapp_phone_id = :phone_id
+                                    GROUP BY o.id
+                                    ORDER BY COUNT(c.id) DESC, o.created_at DESC
+                                """),
                                 {"phone_id": clean_pid}
                             ).fetchall()
                             if org_rows:

@@ -1510,9 +1510,16 @@ async def trigger_ai_agent_reply(
         voice_reply_mode = getattr(org, "ai_voice_reply_mode", "text") or "text"
         voice_name = getattr(org, "ai_voice_name", "en-NG-EzinneNeural") or "en-NG-EzinneNeural"
 
-        is_inbound_voice = incoming_text.startswith("[Voice Note") or incoming_text.startswith("[Voice message")
+        is_inbound_voice = (
+            incoming_text.startswith("[Voice Note") or 
+            incoming_text.startswith("[Voice message") or 
+            incoming_text.startswith("🎙️") or 
+            "[voice" in incoming_text.lower()
+        )
         should_send_voice = (voice_reply_mode == "voice") or (voice_reply_mode == "match_input" and is_inbound_voice)
 
+        voice_sent = False
+        voice_out_msg = None
         if should_send_voice and config.get("delivery_method") == "meta":
             logger.info(f"🎙️ Synthesizing voice note response using voice: {voice_name}")
             try:
@@ -1527,7 +1534,7 @@ async def trigger_ai_agent_reply(
                         audio_bytes=voice_bytes,
                         mime_type="audio/ogg; codecs=opus"
                     )
-                    out_msg = Message(
+                    voice_out_msg = Message(
                         organization_id=org_id,
                         contact_id=contact.id,
                         content=reply_text,
@@ -1538,16 +1545,21 @@ async def trigger_ai_agent_reply(
                         sent_at=now,
                         whatsapp_message_id=send_result.get("messageId")
                     )
-                    db.add(out_msg)
+                    db.add(voice_out_msg)
+                    contact.updated_at = now
                     db.commit()
+                    voice_sent = True
                     logger.info(f"🎙️ AI Voice Note auto-reply sent to {contact.phone} via Meta Cloud API")
-                    return {
-                        "reply": reply_text,
-                        "action": action,
-                        "message_id": str(out_msg.id),
-                        "is_voice": True,
-                        "delivery_result": send_result
-                    }
+                    if not recommended_items:
+                        return {
+                            "reply": reply_text,
+                            "action": action,
+                            "message_id": str(voice_out_msg.id),
+                            "is_voice": True,
+                            "delivery_result": send_result
+                        }
+                    # If recommended items exist, pause briefly and continue down to deliver product details and photos
+                    await asyncio.sleep(1.0)
             except Exception as voice_err:
                 logger.warning(f"Voice synthesis/sending failed, falling back to text: {voice_err}")
 
@@ -1597,6 +1609,7 @@ async def trigger_ai_agent_reply(
                     whatsapp_message_id=intro_res.get("messageId")
                 )
                 db.add(out_msg_intro)
+                contact.updated_at = now
                 db.commit()
 
                 # Pause before sending individual image cards to prevent Meta rate limiting
@@ -1636,6 +1649,7 @@ async def trigger_ai_agent_reply(
                                 whatsapp_message_id=img_res.get("messageId")
                             )
                             db.add(card_msg)
+                            contact.updated_at = now
                             db.commit()
                             await asyncio.sleep(1.2)
                     except Exception as media_err:
@@ -1666,6 +1680,7 @@ async def trigger_ai_agent_reply(
                     whatsapp_message_id=send_result.get("messageId")
                 )
                 db.add(out_msg)
+                contact.updated_at = now
                 db.commit()
                 logger.info(f"🚀 AI Auto-reply sent to {contact.phone} via Meta Cloud API (success={send_result.get('success')})")
                 return {
@@ -1686,6 +1701,7 @@ async def trigger_ai_agent_reply(
                 created_at=now
             )
             db.add(out_msg)
+            contact.updated_at = now
             db.commit()
             logger.info(f"📬 AI Auto-reply queued for WPPConnect bridge to send to {contact.phone}")
             return {

@@ -667,35 +667,53 @@ async def list_gemini_models_endpoint(db: Session = Depends(get_db)):
 
 @router.get("/test-gemini-generate")
 async def test_gemini_generate_endpoint(db: Session = Depends(get_db)):
-    import httpx
-    from uuid import UUID
-    from app.models.organization import Organization
-    org = db.query(Organization).filter(Organization.id == UUID("37423e5c-e2d0-44d3-ab5b-48c7fcf2d9c2")).first()
-    key = org.ai_api_key if org else None
-    if not key:
-        return {"error": "no key"}
+    rows = db.execute(text("""
+        SELECT c.id, c.name, c.phone, c.organization_id, o.name, c.updated_at
+        FROM contacts c
+        JOIN organizations o ON o.id = c.organization_id
+        WHERE c.phone LIKE '%9035523402%' OR c.name ILIKE '%Seye%'
+        ORDER BY c.created_at DESC
+    """)).fetchall()
     
-    candidates = [
-        "gemini-flash-latest",
-        "gemini-flash-lite-latest",
-        "gemini-2.5-flash",
-        "gemini-2.5-pro",
-        "gemini-pro-latest",
-        "gemini-3.5-flash",
-        "gemini-3.7-flash"
-    ]
-    results = {}
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        for cand in candidates:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{cand}:generateContent?key={key}"
-            try:
-                res = await client.post(url, json={
-                    "contents": [{"parts": [{"text": "Say hello in one word"}]}]
-                })
-                results[cand] = {"status": res.status_code, "body": res.text[:200]}
-            except Exception as e:
-                results[cand] = {"error": str(e)}
-    return results
+    contacts_info = []
+    for r in rows:
+        contacts_info.append({
+            "contact_id": str(r[0]),
+            "name": r[1],
+            "phone": r[2],
+            "org_id": str(r[3]),
+            "org_name": r[4],
+            "updated_at": str(r[5])
+        })
+        
+    msg_rows = db.execute(text("""
+        SELECT m.id, m.content, m.type, m.organization_id, o.name, m.created_at, m.attachment_type, m.attachment_url
+        FROM messages m
+        JOIN organizations o ON o.id = m.organization_id
+        WHERE m.contact_id IN (
+            SELECT id FROM contacts WHERE phone LIKE '%9035523402%' OR name ILIKE '%Seye%'
+        )
+        ORDER BY m.created_at DESC
+        LIMIT 15
+    """)).fetchall()
+    
+    msgs_info = []
+    for m in msg_rows:
+        msgs_info.append({
+            "id": str(m[0]),
+            "content": m[1][:80] if m[1] else "",
+            "type": m[2],
+            "org_id": str(m[3]),
+            "org_name": m[4],
+            "created_at": str(m[5]),
+            "attachment_type": m[6],
+            "attachment_url": m[7]
+        })
+        
+    return {
+        "contacts": contacts_info,
+        "recent_messages": msgs_info
+    }
 
 
 @router.get("/debug-ai")

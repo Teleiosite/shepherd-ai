@@ -70,6 +70,12 @@ async def list_conversations(
             "last_message_type": last_msg.type if last_msg else None
         })
 
+    # Sort results so the contact with the latest message is always at the top
+    results.sort(
+        key=lambda x: x.get("last_message_time") or "",
+        reverse=True
+    )
+
     return results
 
 

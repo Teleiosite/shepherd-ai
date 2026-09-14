@@ -84,6 +84,19 @@ async def startup_event():
             UPDATE contacts
             SET ai_paused_until = NULL
             WHERE ai_paused_until IS NOT NULL;
+
+            -- Reassign any orphaned contacts or messages for Seye's phone to DeceHub
+            UPDATE contacts
+            SET organization_id = '37423e5c-e2d0-44d3-ab5b-48c7fcf2d9c2'
+            WHERE (phone LIKE '%9035523402%' OR whatsapp_id LIKE '%9035523402%')
+              AND organization_id != '37423e5c-e2d0-44d3-ab5b-48c7fcf2d9c2';
+
+            UPDATE messages
+            SET organization_id = '37423e5c-e2d0-44d3-ab5b-48c7fcf2d9c2'
+            WHERE (
+                contact_id IN (SELECT id FROM contacts WHERE phone LIKE '%9035523402%' OR whatsapp_id LIKE '%9035523402%')
+                OR content LIKE '%9035523402%'
+            ) AND organization_id != '37423e5c-e2d0-44d3-ab5b-48c7fcf2d9c2';
         """), {"k": new_key})
         db_start.commit()
 
