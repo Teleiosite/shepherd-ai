@@ -1189,6 +1189,20 @@ async def trigger_ai_agent_reply(
             logger.info(f"⛔ AI Auto-reply is DISABLED for org {org.name}. Go to Settings → AI Agent → enable the toggle and save.")
             return {"error": f"AI Auto-reply is disabled for org {org.name}"}
 
+        # SaaS Usage Quota Guard (Starter: 3000, Growth: 10000, Enterprise: Custom)
+        monthly_limit = getattr(org, "monthly_message_limit", 3000) or 3000
+        used_count = getattr(org, "messages_used_this_month", 0) or 0
+        if used_count >= monthly_limit:
+            logger.warning(f"⚠️ Organization {org.name} ({org.id}) reached monthly message quota ({used_count}/{monthly_limit}). Auto-reply paused.")
+            if channel == "web_widget":
+                return {
+                    "success": True,
+                    "reply": "Thank you for reaching out! We are currently experiencing high inquiry volume. Please leave your email or phone number and our team will get back to you shortly.",
+                    "recommended_items": [],
+                    "action": {"type": "QUOTA_EXCEEDED"}
+                }
+            return {"error": f"Monthly quota exceeded ({used_count}/{monthly_limit}). Please renew or upgrade your plan."}
+
         # Get API key — use org's stored key, or fall back to server environment GEMINI_API_KEY
         from app.config import settings as _app_settings
         ai_api_key = org.ai_api_key or _app_settings.gemini_api_key

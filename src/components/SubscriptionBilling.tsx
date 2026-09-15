@@ -45,6 +45,7 @@ export default function SubscriptionBilling() {
         'Embeddable Web Chat Widget',
         'Zero Meta setup needed',
         'Built-in Catalog (up to 100 items)',
+        'Multi-language AI support (several languages)',
         'Standard booking scheduler',
         'Email & community support'
       ],
@@ -87,7 +88,16 @@ export default function SubscriptionBilling() {
   ];
 
   const handleUpgrade = (planId: string) => {
-    alert(`Upgrading to ${planId.toUpperCase()} plan. This opens your Paystack secure recurring payment link!`);
+    const plan = plans.find(p => p.id === planId);
+    const planName = plan ? plan.name : planId.toUpperCase();
+    const planPrice = plan ? plan.price : '';
+    alert(
+      `Paystack Subscription — ${planName} (${planPrice}/month)\n\n` +
+      `To connect live Paystack payments in your deployment:\n` +
+      `1. Log into your Paystack Dashboard (dashboard.paystack.com -> Payment Pages or Plans)\n` +
+      `2. Create a monthly recurring plan for ${planPrice}\n` +
+      `3. Once connected, clicking this button securely charges subscribers via Debit Card, Bank Transfer, or USSD and automatically upgrades their monthly quota!`
+    );
   };
 
   return (
@@ -102,6 +112,21 @@ export default function SubscriptionBilling() {
           Manage your organization plan, monthly message quotas, and recurring billing.
         </p>
       </div>
+
+      {/* Quota Exceeded Warning Banner */}
+      {messagesUsed >= monthlyLimit && (
+        <div className="bg-amber-50 border border-amber-200 text-amber-900 px-5 py-4 rounded-2xl flex items-start sm:items-center justify-between gap-4 shadow-xs">
+          <div className="flex items-start sm:items-center gap-3">
+            <AlertCircle className="text-amber-600 shrink-0 mt-0.5 sm:mt-0" size={22} />
+            <div>
+              <p className="text-sm font-bold">Monthly AI Message Quota Reached ({messagesUsed.toLocaleString()} / {monthlyLimit.toLocaleString()})</p>
+              <p className="text-xs text-amber-700 mt-0.5">
+                Your monthly message allowance has been exhausted. Automated AI replies are paused. Please choose an upgrade plan below to unlock additional messaging volume.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Usage Meter Card */}
       <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-100 shadow-sm space-y-4">

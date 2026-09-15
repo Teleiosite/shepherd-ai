@@ -449,7 +449,7 @@ async def _async_trigger_reply(
         if isinstance(res, dict) and "error" in res:
             logger.error(f"❌ [ASYNC BG] AI auto-reply error: {res}")
             err_str = str(res.get("error", ""))
-            if "disabled" not in err_str.lower() and "paused" not in err_str.lower():
+            if "disabled" not in err_str.lower() and "paused" not in err_str.lower() and "quota" not in err_str.lower():
                 await _deliver_resilient_whatsapp_fallback(contact_id, content, org_id, db_bg)
         else:
             logger.info(f"✅ [ASYNC BG] AI auto-reply completed: {res}")
