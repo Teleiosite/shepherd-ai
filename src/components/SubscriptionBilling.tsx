@@ -37,14 +37,14 @@ export default function SubscriptionBilling() {
     {
       id: 'starter',
       name: 'Starter Concierge',
-      price: '₦35,000',
+      price: '₦100,000',
       period: '/ month',
       description: 'Ideal for single-location businesses, boutique stores, and salons.',
-      quota: '1,000 AI messages / mo',
+      quota: '3,000 AI messages / mo',
       features: [
         'Embeddable Web Chat Widget',
         'Zero Meta setup needed',
-        'Built-in Catalog (up to 50 items)',
+        'Built-in Catalog (up to 100 items)',
         'Standard booking scheduler',
         'Email & community support'
       ],
@@ -53,10 +53,10 @@ export default function SubscriptionBilling() {
     {
       id: 'growth',
       name: 'Growth & Omnichannel',
-      price: '₦95,000',
+      price: '₦250,000',
       period: '/ month',
       description: 'For growing businesses, clinics, and churches needing WhatsApp + Web.',
-      quota: '5,000 AI messages / mo',
+      quota: '10,000 AI messages / mo',
       features: [
         'Web Widget + WhatsApp Cloud API',
         'WhatsApp Bridge & QR code pairing',
@@ -70,7 +70,7 @@ export default function SubscriptionBilling() {
     {
       id: 'enterprise',
       name: 'Enterprise & Marketplace',
-      price: '₦250,000',
+      price: '₦500,000',
       period: '/ month',
       description: 'For platforms like Rentigram, real estate firms, and multi-location fleets.',
       quota: 'Unlimited / Custom quota',
