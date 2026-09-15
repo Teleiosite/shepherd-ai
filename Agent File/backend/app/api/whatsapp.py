@@ -617,13 +617,35 @@ async def whatsapp_incoming_webhook(
     Supports both WPPConnect format and official Meta JSON payload
     """
     try:
+        raw_body = await request.body()
         body = {}
-        try:
-            body = await request.json()
-        except:
-            pass
+        if raw_body:
+            import json
+            try:
+                body = json.loads(raw_body.decode('utf-8'))
+            except Exception:
+                pass
 
         if body and "object" in body and body.get("object") == "whatsapp_business_account":
+            # Verify Meta webhook HMAC signature if secret configured
+            from app.config import settings
+            if settings.meta_app_secret and settings.meta_app_secret.strip():
+                import hmac
+                import hashlib
+                signature_header = request.headers.get("X-Hub-Signature-256", "")
+                if not signature_header or not signature_header.startswith("sha256="):
+                    logger.warning("Rejected Meta webhook: missing or invalid X-Hub-Signature-256 header")
+                    raise HTTPException(status_code=401, detail="Invalid signature header")
+                received_sig = signature_header.split("sha256=")[1]
+                expected_sig = hmac.new(
+                    settings.meta_app_secret.strip().encode("utf-8"),
+                    raw_body,
+                    hashlib.sha256
+                ).hexdigest()
+                if not hmac.compare_digest(expected_sig, received_sig):
+                    logger.warning("Rejected Meta webhook: signature mismatch")
+                    raise HTTPException(status_code=401, detail="Signature mismatch")
+
             logger.info("📩 Processing incoming message from Meta Webhook")
             entries = body.get("entry", [])
             contact_id_str = ""

@@ -4,7 +4,7 @@ Allows website visitors to chat directly with Shepherd AI.
 Runs through the exact same 24/7 AI Agent, RAG, and Intent engine.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from pydantic import BaseModel
@@ -73,12 +73,24 @@ async def get_widget_config(
 @router.post("/message")
 async def handle_widget_message(
     payload: WidgetMessageRequest,
+    request: Request,
     db: Session = Depends(get_db)
 ):
     """
     Public webhook for website live chat widget.
     Processes inbound message and returns AI reply + recommended catalog items.
     """
+    # SEC-11: Rate limiting on public chat widget (30 requests per minute per IP)
+    client_ip = request.client.host if request.client else "unknown"
+    from app.utils.security_utils import widget_rate_limiter
+    allowed, retry_after = widget_rate_limiter.is_allowed(client_ip, max_requests=30, window_seconds=60)
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Too many requests. Please wait {retry_after} seconds.",
+            headers={"Retry-After": str(retry_after)}
+        )
+
     try:
         org_id = UUID(payload.org_id)
     except:
@@ -232,12 +244,24 @@ async def handle_widget_message(
 @router.post("/voice-message")
 async def handle_widget_voice_message(
     payload: WidgetVoiceMessageRequest,
+    request: Request,
     db: Session = Depends(get_db)
 ):
     """
     Handles voice notes recorded by website visitors on the live chat widget.
     Transcribes audio via client Web Speech API, Groq Whisper, or Google Gemini Audio API.
     """
+    # SEC-11: Rate limiting on public voice widget (15 requests per minute per IP)
+    client_ip = request.client.host if request.client else "unknown"
+    from app.utils.security_utils import widget_rate_limiter
+    allowed, retry_after = widget_rate_limiter.is_allowed(f"voice_{client_ip}", max_requests=15, window_seconds=60)
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Too many voice requests. Please wait {retry_after} seconds.",
+            headers={"Retry-After": str(retry_after)}
+        )
+
     import base64
     from app.services.agent_service import transcribe_voice_note
     from app.config import settings

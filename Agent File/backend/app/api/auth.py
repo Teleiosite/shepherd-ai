@@ -1,6 +1,6 @@
 """Authentication API routes."""
 from datetime import timedelta
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.user import User
@@ -71,8 +71,19 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
 
 
 @router.post("/login", response_model=Token)
-async def login(credentials: UserLogin, db: Session = Depends(get_db)):
+async def login(credentials: UserLogin, request: Request, db: Session = Depends(get_db)):
     """Login user and return JWT token."""
+    
+    # SEC-11: Rate limiting on authentication (10 attempts per minute per IP)
+    client_ip = request.client.host if request.client else "unknown"
+    from app.utils.security_utils import auth_rate_limiter
+    allowed, retry_after = auth_rate_limiter.is_allowed(client_ip, max_requests=10, window_seconds=60)
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Too many login attempts. Please try again in {retry_after} seconds.",
+            headers={"Retry-After": str(retry_after)}
+        )
     
     # Find user by email
     user = db.query(User).filter(User.email == credentials.email).first()

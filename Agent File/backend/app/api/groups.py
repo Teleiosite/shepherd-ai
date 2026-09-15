@@ -23,9 +23,8 @@ router = APIRouter()
 # Helper function for bridge authentication using connection code
 def get_user_by_connection_code(code: str, db: Session) -> User:
     """Authenticate using bridge connection code."""
-    user = db.query(User).filter(
-        cast(User.id, String).like(f"{code.lower()}%")
-    ).first()
+    from app.utils.security_utils import find_user_by_connection_code
+    user = find_user_by_connection_code(code, db)
     
     if not user:
         raise HTTPException(
@@ -475,11 +474,8 @@ async def get_welcome_queue(
     
     # Filter by organization if connection code provided
     if code:
-        # Find user by connection code
-        user = db.query(User).filter(
-            cast(User.id, String).like(f"{code.lower()}%")
-        ).first()
-        
+        from app.utils.security_utils import find_user_by_connection_code
+        user = find_user_by_connection_code(code, db)
         if user:
             query = query.filter(Group.organization_id == user.organization_id)
     

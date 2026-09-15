@@ -19,6 +19,7 @@ from app.dependencies import get_current_user
 from app.models.user import User
 from app.models.organization import Organization
 from app.models.catalog_item import CatalogItem
+from app.utils.security_utils import is_safe_url
 
 logger = logging.getLogger(__name__)
 
@@ -232,6 +233,11 @@ async def test_catalog_webhook(
     """
     if not payload.webhook_url.startswith("http"):
         raise HTTPException(status_code=400, detail="Invalid webhook URL. Must start with http:// or https://")
+
+    # SSRF Protection: Validate target URL against private/internal IP address spaces
+    safe, reason = is_safe_url(payload.webhook_url)
+    if not safe:
+        raise HTTPException(status_code=400, detail=f"SSRF Protection: {reason}")
 
     headers = {"Content-Type": "application/json"}
     if payload.webhook_secret:

@@ -82,12 +82,10 @@ async def register_bridge(
     
     # Find user by connection code (first 8 chars of UUID)
     from app.models import Organization
-    from sqlalchemy import or_, cast, String
+    from app.utils.security_utils import find_user_by_connection_code
     
-    # Search for user whose ID starts with this code
-    user = db.query(User).filter(
-        cast(User.id, String).like(f"{registration.code.lower()}%")
-    ).first()
+    # Search for user whose ID matches this code
+    user = find_user_by_connection_code(registration.code, db)
     
     if not user:
         raise HTTPException(

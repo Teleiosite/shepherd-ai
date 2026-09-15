@@ -716,16 +716,53 @@ async def test_gemini_generate_endpoint(db: Session = Depends(get_db)):
     }
 
 
+def verify_admin_access(request: Request, admin_key: Optional[str] = None):
+    """
+    Verify that caller has administrative access via either:
+    1. Admin secret key matching settings.secret_key (passed via X-Admin-Key header, form data, or admin_key query param)
+    2. Valid Authorization Bearer token belonging to an authenticated user
+    """
+    from app.config import settings as app_settings
+
+    # 1. Header or Query secret check
+    provided_key = (
+        request.headers.get("X-Admin-Key")
+        or request.query_params.get("admin_key")
+        or admin_key
+    )
+    if provided_key and app_settings.secret_key and provided_key == app_settings.secret_key:
+        return True
+
+    # 2. Authorization Bearer JWT check
+    auth_header = request.headers.get("Authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header.split("Bearer ")[1].strip()
+        try:
+            from jose import jwt
+            payload = jwt.decode(token, app_settings.secret_key, algorithms=[app_settings.algorithm])
+            if payload.get("sub"):
+                return True
+        except Exception:
+            pass
+
+    raise HTTPException(
+        status_code=403,
+        detail="Administrative access required. Provide a valid Authorization Bearer token or ?admin_key= parameter."
+    )
+
+
 @router.get("/debug-ai")
 async def debug_ai_state(
     request: Request,
     db: Session = Depends(get_db),
-    format: Optional[str] = None
+    format: Optional[str] = None,
+    admin_key: Optional[str] = None
 ):
     """
     Diagnostic dashboard & direct activator.
-    Open directly in browser: https://shepherd-ai-backend.onrender.com/api/settings/debug-ai
+    Protected: requires admin authentication or admin_key parameter.
     """
+    verify_admin_access(request, admin_key)
     from app.config import settings as app_settings
 
     # Query ALL organizations in the database
@@ -928,9 +965,11 @@ async def debug_ai_activate(
 ):
     """
     Handles form submission from /api/settings/debug-ai
-    Updates organizations directly in PostgreSQL
+    Updates organizations directly in PostgreSQL.
+    Protected: requires admin authentication or admin_key.
     """
     form_data = await request.form()
+    verify_admin_access(request, admin_key=form_data.get("admin_key"))
     gemini_key = str(form_data.get("gemini_api_key") or "").strip()
     phone_id = str(form_data.get("phone_number_id") or "").strip()
     wa_token = str(form_data.get("whatsapp_token") or "").strip()
@@ -1012,11 +1051,13 @@ async def debug_ai_activate(
 
 @router.get("/set-gemini-key")
 @router.post("/set-gemini-key")
-async def set_gemini_key_direct(key: str, db: Session = Depends(get_db)):
+async def set_gemini_key_direct(request: Request, key: str, db: Session = Depends(get_db)):
     """
     Direct 1-click update of Gemini API key across all organizations.
-    Example: /api/settings/set-gemini-key?key=AQ.Ab8RN6...
+    Protected: requires admin authentication or admin_key.
+    Example: /api/settings/set-gemini-key?key=AQ.Ab8RN6...&admin_key=SECRET
     """
+    verify_admin_access(request)
     clean_k = key.strip()
     if not clean_k:
         raise HTTPException(status_code=400, detail="key is required")
@@ -1043,15 +1084,18 @@ async def set_gemini_key_direct(key: str, db: Session = Depends(get_db)):
 
 @router.get("/quick-activate")
 async def quick_activate_get(
+    request: Request,
     api_key: str,
     phone_id: str = "1122719754267706",
     token: str = "",
     db: Session = Depends(get_db)
 ):
     """
-    Emergency URL activator via GET:
-    /api/settings/quick-activate?api_key=AIza...&token=EAAXt...&phone_id=1122719754267706
+    Emergency URL activator via GET.
+    Protected: requires admin authentication or admin_key.
+    /api/settings/quick-activate?api_key=AIza...&token=EAAXt...&phone_id=1122719754267706&admin_key=SECRET
     """
+    verify_admin_access(request)
     if not api_key:
         raise HTTPException(status_code=400, detail="api_key is required")
 
@@ -1085,14 +1129,17 @@ async def quick_activate_get(
 
 @router.get("/test-reply")
 async def test_reply_endpoint(
+    request: Request,
     phone: str = "+2349035523402",
     text_message: str = "Hello",
     db: Session = Depends(get_db)
 ):
     """
-    Live test endpoint — forces AI agent auto-reply and returns step-by-step diagnostics.
-    Usage: /api/settings/test-reply?phone=+2349035523402&text_message=Hello
+    Live test endpoint - forces AI agent auto-reply and returns step-by-step diagnostics.
+    Protected: requires admin authentication or admin_key.
+    Usage: /api/settings/test-reply?phone=+2349035523402&text_message=Hello&admin_key=SECRET
     """
+    verify_admin_access(request)
     import traceback
     from datetime import datetime
     from app.services.agent_service import trigger_ai_agent_reply, call_ai_provider, parse_agent_response
@@ -1234,14 +1281,15 @@ async def test_reply_endpoint(
 
 @router.get("/sync-workspace")
 async def sync_workspace(
+    request: Request,
     phone_query: Optional[str] = "9035523402",
     db: Session = Depends(get_db)
 ):
     """
     Consolidates contacts and messages into the active user's organization workspace.
-    Ensures Seye's WhatsApp contact (+2349035523402) and conversation logs appear
-    directly in Seye's Live Chats dashboard.
+    Protected: requires admin authentication or admin_key.
     """
+    verify_admin_access(request)
     # Find primary organization (the one owned by seye@gmail.com, or the one with the most contacts)
     primary_row = db.execute(text("""
         SELECT organization_id FROM users WHERE email ILIKE '%seye%' LIMIT 1

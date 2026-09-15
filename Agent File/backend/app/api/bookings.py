@@ -7,6 +7,7 @@ from datetime import datetime
 
 from app.database import get_db
 from app.models.booking import Booking
+from app.models.contact import Contact
 from app.dependencies import get_current_user
 from app.models.user import User
 
@@ -33,8 +34,14 @@ async def list_bookings(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Retrieve all bookings."""
-    bookings = db.query(Booking).order_by(Booking.created_at.desc()).all()
+    """Retrieve all bookings for the authenticated user's organization."""
+    bookings = (
+        db.query(Booking)
+        .join(Contact, Booking.contact_id == Contact.id)
+        .filter(Contact.organization_id == current_user.organization_id)
+        .order_by(Booking.created_at.desc())
+        .all()
+    )
     
     result = []
     for b in bookings:
@@ -61,15 +68,32 @@ async def create_booking(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Create a new booking."""
+    """Create a new booking scoped to the user's organization."""
+    # Verify the referenced contact belongs to current user's organization
+    contact_uuid = uuid.UUID(booking_in.contactId)
+    contact = db.query(Contact).filter(
+        Contact.id == contact_uuid,
+        Contact.organization_id == current_user.organization_id
+    ).first()
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contact not found in this organization")
+
     # Check if exists
-    existing = db.query(Booking).filter(Booking.id == uuid.UUID(booking_in.id)).first()
+    existing = (
+        db.query(Booking)
+        .join(Contact, Booking.contact_id == Contact.id)
+        .filter(
+            Booking.id == uuid.UUID(booking_in.id),
+            Contact.organization_id == current_user.organization_id
+        )
+        .first()
+    )
     if existing:
         return {"status": "already_exists", "id": booking_in.id}
 
     booking = Booking(
         id=uuid.UUID(booking_in.id),
-        contact_id=uuid.UUID(booking_in.contactId),
+        contact_id=contact_uuid,
         contact_name=booking_in.contactName,
         contact_phone=booking_in.contactPhone,
         purpose=booking_in.purpose,
@@ -93,8 +117,16 @@ async def update_booking_status(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Update status of a booking."""
-    booking = db.query(Booking).filter(Booking.id == uuid.UUID(booking_id)).first()
+    """Update status of a booking (strictly scoped to user's organization)."""
+    booking = (
+        db.query(Booking)
+        .join(Contact, Booking.contact_id == Contact.id)
+        .filter(
+            Booking.id == uuid.UUID(booking_id),
+            Contact.organization_id == current_user.organization_id
+        )
+        .first()
+    )
     if not booking:
         raise HTTPException(status_code=404, detail="Booking not found")
         
@@ -114,8 +146,16 @@ async def delete_booking(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Delete a booking record."""
-    booking = db.query(Booking).filter(Booking.id == uuid.UUID(booking_id)).first()
+    """Delete a booking record (strictly scoped to user's organization)."""
+    booking = (
+        db.query(Booking)
+        .join(Contact, Booking.contact_id == Contact.id)
+        .filter(
+            Booking.id == uuid.UUID(booking_id),
+            Contact.organization_id == current_user.organization_id
+        )
+        .first()
+    )
     if not booking:
         raise HTTPException(status_code=404, detail="Booking not found")
         

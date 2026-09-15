@@ -69,10 +69,21 @@ async def upload_media_file(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    """Upload a file to the organization's media library."""
     contents = await file.read()
-    mime_type = file.content_type or "application/octet-stream"
     file_size = len(contents)
+
+    # SEC-10: Max file size limit (15 MB) to prevent resource exhaustion
+    MAX_FILE_SIZE = 15 * 1024 * 1024
+    if file_size > MAX_FILE_SIZE:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="File size exceeds maximum allowed limit of 15MB"
+        )
+
+    # SEC-10: Sanitize filename to prevent path traversal attacks
+    from app.utils.security_utils import sanitize_filename
+    safe_filename = sanitize_filename(file.filename or "file")
+    mime_type = file.content_type or "application/octet-stream"
 
     # Supabase Storage Integration (with base64 fallback)
     supabase_url = os.getenv("SUPABASE_URL")
@@ -84,7 +95,7 @@ async def upload_media_file(
         try:
             from supabase import create_client
             supabase = create_client(supabase_url, supabase_key)
-            file_path = f"{current_user.organization_id}/{file.filename}"
+            file_path = f"{current_user.organization_id}/{safe_filename}"
             supabase.storage.from_("shepherd-media").upload(
                 path=file_path,
                 file=contents,
@@ -108,7 +119,7 @@ async def upload_media_file(
         mime_type=mime_type,
         file_key=file_key,
         url=public_url,
-        file_name=file.filename or "file",
+        file_name=safe_filename,
         file_size=file_size
     )
     db.add(record)

@@ -51,12 +51,10 @@ async def get_pending_messages(
     Returns:
         List of pending messages to send
     """
-    from sqlalchemy import cast, String
+    from app.utils.security_utils import find_user_by_connection_code
     
     # Find user by connection code
-    user = db.query(User).filter(
-        cast(User.id, String).like(f"{code.lower()}%")
-    ).first()
+    user = find_user_by_connection_code(code, db)
     
     if not user:
         raise HTTPException(
@@ -113,12 +111,10 @@ async def update_message_status(
     Returns:
         Success status
     """
-    from sqlalchemy import cast, String
+    from app.utils.security_utils import find_user_by_connection_code
     
     # Validate connection code
-    user = db.query(User).filter(
-        cast(User.id, String).like(f"{code.lower()}%")
-    ).first()
+    user = find_user_by_connection_code(code, db)
     
     if not user:
         raise HTTPException(
