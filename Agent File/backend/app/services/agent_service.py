@@ -47,6 +47,9 @@ async def call_ai_provider(
     if provider == "gemini":
         # Verified active Google Gemini production models from API catalog
         FAST_GEMINI_MODELS = [
+            "gemini-3.5-flash-lite",
+            "gemini-3.5-flash",
+            "gemini-3.8-flash",
             "gemini-2.0-flash",
             "gemini-1.5-flash",
             "gemini-flash-latest"
@@ -1161,9 +1164,9 @@ ACTION TYPE GUIDE:
     # Tier 2: Google Gemini (Fallback if Groq unavailable or unconfigured)
     if not raw_reply and ai_api_key:
         logger.info("🔄 [Tier 2: Gemini LLM Fallback] Generating reply via Google Gemini...")
-        model_to_use = org.ai_model or "gemini-2.0-flash"
-        if not model_to_use or "3.5" in model_to_use or "flash-lite" in model_to_use:
-            model_to_use = "gemini-2.0-flash"
+        model_to_use = org.ai_model or "gemini-3.5-flash-lite"
+        if not model_to_use:
+            model_to_use = "gemini-3.5-flash-lite"
         elif model_to_use.startswith("models/"):
             model_to_use = model_to_use.replace("models/", "").strip()
 
