@@ -383,7 +383,8 @@ async def transcribe_voice_note(
     mime_type: str = "audio/ogg",
     api_key: Optional[str] = None,
     provider: str = "gemini",
-    base_url: Optional[str] = None
+    base_url: Optional[str] = None,
+    groq_api_key: Optional[str] = None
 ) -> str:
     """
     Transcribes WhatsApp voice notes (OGG/Opus) and Web Widget voice notes (WebM/MP4/WAV).
@@ -429,7 +430,7 @@ async def transcribe_voice_note(
 
     # Resolve API keys
     effective_gemini_key = api_key or getattr(_app_settings, "gemini_api_key", None) or os.getenv("GEMINI_API_KEY")
-    effective_groq_key = os.getenv("GROQ_API_KEY") or getattr(_app_settings, "groq_api_key", None)
+    effective_groq_key = groq_api_key or os.getenv("GROQ_API_KEY") or getattr(_app_settings, "groq_api_key", None)
     if not effective_groq_key and effective_gemini_key and effective_gemini_key.startswith("gsk_"):
         effective_groq_key = effective_gemini_key
 
@@ -1279,7 +1280,8 @@ async def trigger_ai_agent_reply(
                             mime_type=_mime,
                             api_key=ai_api_key,
                             provider=getattr(org, "ai_provider", "gemini") or "gemini",
-                            base_url=getattr(org, "ai_base_url", None)
+                            base_url=getattr(org, "ai_base_url", None),
+                            groq_api_key=getattr(org, "groq_api_key", None)
                         )
                         if _transcript and len(_transcript) > 2:
                             incoming_text = f"[Voice Note]: {_transcript}"

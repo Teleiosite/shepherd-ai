@@ -48,6 +48,7 @@ const Settings: React.FC<SettingsProps> = ({
     const [aiConfig, setAiConfig] = useState<AIConfig>({
         provider: 'gemini',
         apiKey: '',
+        groqApiKey: '',
         model: DEFAULT_MODELS.gemini,
         baseUrl: ''
     });
@@ -75,14 +76,24 @@ const Settings: React.FC<SettingsProps> = ({
         // Load AI Config from local storage first (fallback)
         const storedAiConfig = localStorage.getItem('shepherd_ai_config');
         if (storedAiConfig) {
-            setAiConfig(JSON.parse(storedAiConfig));
+            try {
+                const parsed = JSON.parse(storedAiConfig);
+                setAiConfig({
+                    ...parsed,
+                    groqApiKey: parsed.groqApiKey || localStorage.getItem('shepherd_groq_api_key') || ''
+                });
+            } catch {
+                // Ignore parse error
+            }
         } else {
             // Backward compatibility
             const oldGeminiKey = localStorage.getItem('shepherd_google_api_key');
-            if (oldGeminiKey) {
+            const oldGroqKey = localStorage.getItem('shepherd_groq_api_key');
+            if (oldGeminiKey || oldGroqKey) {
                 setAiConfig({
                     provider: 'gemini',
-                    apiKey: oldGeminiKey,
+                    apiKey: oldGeminiKey || '',
+                    groqApiKey: oldGroqKey || '',
                     model: DEFAULT_MODELS.gemini
                 });
             }
@@ -114,10 +125,11 @@ const Settings: React.FC<SettingsProps> = ({
                 });
                 if (aiRes.ok) {
                     const aiData = await aiRes.json();
-                    if (aiData.configured) {
+                    if (aiData.configured || aiData.groq_api_key_masked) {
                         setAiConfig(prev => ({
                             provider: aiData.provider || prev.provider,
                             apiKey: (prev.apiKey && !prev.apiKey.startsWith('***')) ? prev.apiKey : (aiData.api_key_masked || ''),
+                            groqApiKey: (prev.groqApiKey && !prev.groqApiKey.startsWith('***')) ? prev.groqApiKey : (aiData.groq_api_key_masked || ''),
                             model: aiData.model || prev.model || DEFAULT_MODELS.gemini,
                             baseUrl: aiData.base_url || prev.baseUrl || ''
                         }));
@@ -263,23 +275,33 @@ const Settings: React.FC<SettingsProps> = ({
         // Save locally first for compatibility - NEVER overwrite unmasked key with masked key
         const existingConfigStr = localStorage.getItem('shepherd_ai_config');
         let unmaskedKey = '';
+        let unmaskedGroqKey = '';
         if (existingConfigStr) {
             try {
                 const parsed = JSON.parse(existingConfigStr);
                 if (parsed.apiKey && !parsed.apiKey.startsWith('***')) unmaskedKey = parsed.apiKey;
+                if (parsed.groqApiKey && !parsed.groqApiKey.startsWith('***')) unmaskedGroqKey = parsed.groqApiKey;
             } catch {}
         }
         if (!unmaskedKey) {
             const oldKey = localStorage.getItem('shepherd_google_api_key');
             if (oldKey && !oldKey.startsWith('***')) unmaskedKey = oldKey;
         }
+        if (!unmaskedGroqKey) {
+            const oldGroq = localStorage.getItem('shepherd_groq_api_key');
+            if (oldGroq && !oldGroq.startsWith('***')) unmaskedGroqKey = oldGroq;
+        }
 
         const effectiveApiKey = (!aiConfig.apiKey || aiConfig.apiKey.startsWith('***')) ? unmaskedKey : aiConfig.apiKey;
-        const configToSave = { ...aiConfig, apiKey: effectiveApiKey };
+        const effectiveGroqKey = (!aiConfig.groqApiKey || aiConfig.groqApiKey.startsWith('***')) ? unmaskedGroqKey : aiConfig.groqApiKey;
+        const configToSave = { ...aiConfig, apiKey: effectiveApiKey, groqApiKey: effectiveGroqKey };
 
         localStorage.setItem('shepherd_ai_config', JSON.stringify(configToSave));
         if (configToSave.provider === 'gemini' && configToSave.apiKey) {
             localStorage.setItem('shepherd_google_api_key', configToSave.apiKey);
+        }
+        if (configToSave.groqApiKey) {
+            localStorage.setItem('shepherd_groq_api_key', configToSave.groqApiKey);
         }
 
         localStorage.setItem('shepherd_wa_config', JSON.stringify(waConfig));
@@ -295,6 +317,7 @@ const Settings: React.FC<SettingsProps> = ({
                     // AI Config
                     provider: aiConfig.provider || 'gemini',
                     api_key: effectiveApiKey || '',
+                    groq_api_key: effectiveGroqKey || '',
                     model: aiConfig.model || 'gemini-3.7-flash',
                     base_url: aiConfig.baseUrl || null,
                     // Autopilot
@@ -821,30 +844,119 @@ const Settings: React.FC<SettingsProps> = ({
                 </div>
 
                 <div className="p-8 space-y-8">
-                    {/* AI Config */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div className="col-span-1">
-                            <label className="block text-base font-bold text-slate-800 mb-2">AI Intelligence Provider</label>
-                            <select
-                                value={aiConfig.provider}
-                                onChange={handleProviderChange}
-                                className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-base focus:ring-2 focus:ring-primary-500 outline-none bg-white"
-                            >
-                                <option value="gemini">Google Gemini (Free Tier)</option>
-                                <option value="openai">OpenAI (GPT-4 / GPT-3.5)</option>
-                                <option value="deepseek">DeepSeek</option>
-                                <option value="groq">Groq (Llama 3)</option>
-                            </select>
+                    {/* AI & Voice Intelligence Keys */}
+                    <div className="space-y-6">
+                        {/* 1. Google Gemini / Primary AI Key */}
+                        <div className="bg-slate-50 p-6 rounded-xl border border-slate-200">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+                                <div>
+                                    <h4 className="text-base font-bold text-slate-800 flex items-center gap-2">
+                                        <BrainCircuit size={20} className="text-indigo-600" />
+                                        Primary AI Reasoning & Intelligence Key
+                                    </h4>
+                                    <p className="text-xs text-slate-500 mt-1">
+                                        Powers auto-replies, product recommendations, catalog lookups, and appointment bookings.
+                                    </p>
+                                </div>
+                                <a
+                                    href="https://aistudio.google.com/app/apikey"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg border border-indigo-200 transition-colors w-fit"
+                                >
+                                    Get Free Gemini Key <ExternalLink size={13} />
+                                </a>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                                <div className="md:col-span-1">
+                                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">
+                                        Provider
+                                    </label>
+                                    <select
+                                        value={aiConfig.provider}
+                                        onChange={handleProviderChange}
+                                        className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
+                                    >
+                                        <option value="gemini">Google Gemini (Recommended - Free Tier)</option>
+                                        <option value="openai">OpenAI (GPT-4 / GPT-3.5)</option>
+                                        <option value="deepseek">DeepSeek</option>
+                                        <option value="groq">Groq (Llama 3)</option>
+                                    </select>
+                                </div>
+                                <div className="md:col-span-2">
+                                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">
+                                        {aiConfig.provider === 'gemini' ? 'Google Gemini API Key' : `${aiConfig.provider.toUpperCase()} API Key`}
+                                    </label>
+                                    <div className="relative">
+                                        <input
+                                            type="password"
+                                            value={aiConfig.apiKey}
+                                            onChange={(e) => setAiConfig({ ...aiConfig, apiKey: e.target.value })}
+                                            placeholder={aiConfig.provider === 'gemini' ? "AIzaSy..." : `Enter ${aiConfig.provider} API Key`}
+                                            className="w-full border border-slate-300 rounded-lg pl-3 pr-10 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none font-mono"
+                                        />
+                                        <Key size={16} className="absolute right-3 top-2.5 text-slate-400 pointer-events-none" />
+                                    </div>
+                                    <p className="text-[11px] text-slate-500 mt-1">
+                                        Stored securely. Keys starting with <code className="text-slate-700 bg-slate-200 px-1 rounded">***</code> remain preserved upon saving.
+                                    </p>
+                                </div>
+                            </div>
                         </div>
-                        <div className="col-span-1">
-                            <label className="block text-base font-bold text-slate-800 mb-2">API Key</label>
-                            <input
-                                type="password"
-                                value={aiConfig.apiKey}
-                                onChange={(e) => setAiConfig({ ...aiConfig, apiKey: e.target.value })}
-                                placeholder={`Enter ${aiConfig.provider} API Key`}
-                                className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-base focus:ring-2 focus:ring-primary-500 outline-none font-mono"
-                            />
+
+                        {/* 2. Groq Cloud API Key for Instant Voice Transcription */}
+                        <div className="bg-amber-50/60 p-6 rounded-xl border border-amber-200">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <h4 className="text-base font-bold text-slate-800 flex items-center gap-2">
+                                            <Zap size={20} className="text-amber-600" />
+                                            Groq Cloud API Key
+                                        </h4>
+                                        <span className="text-[11px] font-bold bg-amber-200 text-amber-900 px-2 py-0.5 rounded-full uppercase tracking-wider">
+                                            0.3s Voice Transcription
+                                        </span>
+                                    </div>
+                                    <p className="text-xs text-slate-600 mt-1">
+                                        Transcribes incoming WhatsApp and Web Widget audio notes instantly using Groq Whisper (<code className="font-mono text-slate-700">whisper-large-v3-turbo</code>). Free tier includes 7,200 requests/day and handles Nigerian Pidgin, Yoruba, Hausa, Igbo, and English.
+                                    </p>
+                                </div>
+                                <a
+                                    href="https://console.groq.com/keys"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-700 hover:text-amber-900 bg-amber-100 hover:bg-amber-200 px-3 py-1.5 rounded-lg border border-amber-300 transition-colors w-fit"
+                                >
+                                    Get Free Groq Key <ExternalLink size={13} />
+                                </a>
+                            </div>
+
+                            <div className="mt-4">
+                                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                                    Groq API Key (starts with gsk_...)
+                                </label>
+                                <div className="relative">
+                                    <input
+                                        type="password"
+                                        value={aiConfig.groqApiKey || ''}
+                                        onChange={(e) => setAiConfig({ ...aiConfig, groqApiKey: e.target.value })}
+                                        placeholder="gsk_..."
+                                        className="w-full border border-amber-300 rounded-lg pl-3 pr-10 py-2 text-sm focus:ring-2 focus:ring-amber-500 outline-none font-mono bg-white"
+                                    />
+                                    <Key size={16} className="absolute right-3 top-2.5 text-amber-500 pointer-events-none" />
+                                </div>
+                                <div className="flex flex-wrap items-center justify-between gap-2 mt-1.5">
+                                    <p className="text-[11px] text-slate-500">
+                                        Optional but strongly recommended for instant voice responses under 60 seconds. Without this key, voice notes fall back to CPU audio conversion.
+                                    </p>
+                                    {aiConfig.groqApiKey && (
+                                        <span className="text-[11px] text-emerald-700 font-semibold flex items-center gap-1">
+                                            <Check size={12} /> Groq configured
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
                         </div>
                     </div>
 

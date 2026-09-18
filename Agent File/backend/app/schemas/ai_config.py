@@ -12,6 +12,7 @@ class AIConfigCreate(BaseModel):
     """Schema for creating/updating AI configuration"""
     provider: str  # 'gemini', 'openai', 'deepseek', 'groq', 'custom'
     api_key: str
+    groq_api_key: Optional[str] = None  # Dedicated Groq key for ultra-fast voice transcription
     model: str = 'gemini-pro'
     base_url: Optional[str] = None  # For custom providers
 
@@ -20,6 +21,7 @@ class AIConfigUpdate(BaseModel):
     """Schema for updating AI configuration"""
     provider: Optional[str] = None
     api_key: Optional[str] = None
+    groq_api_key: Optional[str] = None
     model: Optional[str] = None
     base_url: Optional[str] = None
 
@@ -30,6 +32,7 @@ class AIConfigResponse(BaseModel):
     organization_id: UUID4
     provider: str
     api_key_masked: str  # Returns as "***...last4chars"
+    groq_api_key_masked: Optional[str] = None
     model: str
     base_url: Optional[str]
     created_at: datetime

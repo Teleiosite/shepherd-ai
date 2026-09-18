@@ -38,34 +38,36 @@ async def get_ai_config(
 ):
     """
     Get AI configuration for user's organization
-    Returns masked API key for security
+    Returns masked API keys for security
     """
     # Query organization for AI config
     result = db.execute(
         text("""
-            SELECT ai_provider, ai_api_key, ai_model, ai_base_url
+            SELECT ai_provider, ai_api_key, ai_model, ai_base_url, groq_api_key
             FROM organizations
             WHERE id = :org_id
         """),
         {"org_id": str(current_user.organization_id)}
     ).fetchone()
     
-    if not result or not result[1]:  # No API key
-        # Return default/empty config
+    if not result:
         return {
             "provider": "gemini",
             "api_key_masked": "",
+            "groq_api_key_masked": "",
             "model": "gemini-1.5-flash",
             "base_url": None,
             "configured": False
         }
     
+    groq_masked = mask_api_key(result[4]) if len(result) > 4 and result[4] else ""
     return {
         "provider": result[0] or "gemini",
-        "api_key_masked": mask_api_key(result[1]),
+        "api_key_masked": mask_api_key(result[1]) if result[1] else "",
+        "groq_api_key_masked": groq_masked,
         "model": result[2] or "gemini-1.5-flash",
         "base_url": result[3],
-        "configured": True
+        "configured": bool(result[1])
     }
 
 
@@ -84,7 +86,7 @@ async def save_all_settings(
     logger.info(f"💾 save-all called for org {org_id} by user {current_user.id}")
 
     try:
-        # --- 1. AI API Key ---
+        # --- 1. AI API Key (Gemini / Primary) ---
         new_api_key = payload.get("api_key", "")
         if new_api_key and new_api_key.startswith("***"):
             # Masked — keep existing DB value
@@ -96,6 +98,19 @@ async def save_all_settings(
             logger.info(f"🔑 API key is masked — keeping existing DB key (set={bool(new_api_key)})")
         else:
             logger.info(f"🔑 API key provided: set={bool(new_api_key)}, length={len(new_api_key)}")
+
+        # --- 1b. Groq Cloud API Key (Whisper Voice Transcription) ---
+        new_groq_key = payload.get("groq_api_key", "")
+        if new_groq_key and new_groq_key.startswith("***"):
+            # Masked — keep existing DB value
+            existing_groq = db.execute(
+                text("SELECT groq_api_key FROM organizations WHERE id = :org_id"),
+                {"org_id": org_id}
+            ).fetchone()
+            new_groq_key = (existing_groq[0] if existing_groq and existing_groq[0] else "")
+            logger.info(f"🔑 Groq key is masked — keeping existing DB key (set={bool(new_groq_key)})")
+        else:
+            logger.info(f"🔑 Groq key provided: set={bool(new_groq_key)}, length={len(new_groq_key)}")
 
         # --- 2. WhatsApp Access Token ---
         new_wa_token = payload.get("access_token", "")
@@ -114,6 +129,13 @@ async def save_all_settings(
         if new_api_key:
             ai_fields.append("ai_api_key = :api_key")
             ai_params["api_key"] = new_api_key
+
+        if "groq_api_key" in payload:
+            if new_groq_key:
+                ai_fields.append("groq_api_key = :groq_key")
+                ai_params["groq_key"] = new_groq_key
+            elif payload.get("groq_api_key") == "":
+                ai_fields.append("groq_api_key = NULL")
 
         if payload.get("provider"):
             ai_fields.append("ai_provider = :provider")
@@ -178,7 +200,7 @@ async def save_all_settings(
 
         # --- 6. Return current state ---
         row = db.execute(
-            text("SELECT ai_provider, ai_api_key, ai_model, ai_auto_reply_enabled, ai_reply_mode, whatsapp_phone_id, whatsapp_access_token FROM organizations WHERE id = :org_id"),
+            text("SELECT ai_provider, ai_api_key, ai_model, ai_auto_reply_enabled, ai_reply_mode, whatsapp_phone_id, whatsapp_access_token, groq_api_key FROM organizations WHERE id = :org_id"),
             {"org_id": org_id}
         ).fetchone()
 
@@ -187,6 +209,7 @@ async def save_all_settings(
             "message": "Settings saved successfully",
             "state": {
                 "api_key_saved": bool(row[1]) if row else False,
+                "groq_key_saved": bool(row[7]) if row and len(row) > 7 and row[7] else False,
                 "provider": row[0] if row else "gemini",
                 "model": row[2] if row else "gemini-1.5-flash",
                 "auto_reply_enabled": row[3] if row else "false",
@@ -225,21 +248,40 @@ async def update_ai_config(
             if existing and existing[0]:
                 api_key = existing[0]
 
+        groq_api_key = config.groq_api_key
+        if groq_api_key and groq_api_key.startswith("***"):
+            existing_groq = db.execute(
+                text("SELECT groq_api_key FROM organizations WHERE id = :org_id"),
+                {"org_id": str(current_user.organization_id)}
+            ).fetchone()
+            if existing_groq and existing_groq[0]:
+                groq_api_key = existing_groq[0]
+
         # Update organization AI config
+        update_clauses = [
+            "ai_provider = :provider",
+            "ai_api_key = :api_key",
+            "ai_model = :model",
+            "ai_base_url = :base_url"
+        ]
+        params = {
+            "provider": config.provider,
+            "api_key": api_key,
+            "model": config.model,
+            "base_url": config.base_url,
+            "org_id": str(current_user.organization_id)
+        }
+        if config.groq_api_key is not None:
+            update_clauses.append("groq_api_key = :groq_api_key")
+            params["groq_api_key"] = groq_api_key or None
+
         db.execute(
-            text("""
+            text(f"""
                 UPDATE organizations
-                SET ai_provider = :provider, ai_api_key = :api_key, 
-                    ai_model = :model, ai_base_url = :base_url
+                SET {', '.join(update_clauses)}
                 WHERE id = :org_id
             """),
-            {
-                "provider": config.provider,
-                "api_key": api_key,
-                "model": config.model,
-                "base_url": config.base_url,
-                "org_id": str(current_user.organization_id)
-            }
+            params
         )
         db.commit()
         logger.info(f"Updated AI config for org {current_user.organization_id}")
@@ -248,7 +290,8 @@ async def update_ai_config(
             "success": True,
             "message": "AI configuration saved successfully",
             "provider": config.provider,
-            "api_key_masked": mask_api_key(config.api_key)
+            "api_key_masked": mask_api_key(config.api_key),
+            "groq_api_key_masked": mask_api_key(groq_api_key) if groq_api_key else ""
         }
         
     except Exception as e:

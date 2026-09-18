@@ -300,7 +300,8 @@ async def handle_widget_voice_message(
             mime_type=payload.audio_mime_type or "audio/webm",
             api_key=effective_key,
             provider=getattr(org, "ai_provider", "gemini") or "gemini",
-            base_url=getattr(org, "ai_base_url", None)
+            base_url=getattr(org, "ai_base_url", None),
+            groq_api_key=getattr(org, "groq_api_key", None)
         )
         if transcription:
             logger.info(f"🎙️ Backend neural transcription succeeded: '{transcription[:100]}'")

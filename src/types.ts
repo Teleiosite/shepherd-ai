@@ -32,6 +32,7 @@ export interface User {
 export interface AIConfig {
   provider: 'gemini' | 'openai' | 'deepseek' | 'groq' | 'custom';
   apiKey: string;
+  groqApiKey?: string;
   model: string;
   baseUrl?: string;
 }
