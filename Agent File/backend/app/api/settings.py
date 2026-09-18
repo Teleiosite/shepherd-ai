@@ -130,12 +130,9 @@ async def save_all_settings(
             ai_fields.append("ai_api_key = :api_key")
             ai_params["api_key"] = new_api_key
 
-        if "groq_api_key" in payload:
-            if new_groq_key:
-                ai_fields.append("groq_api_key = :groq_key")
-                ai_params["groq_key"] = new_groq_key
-            elif payload.get("groq_api_key") == "":
-                ai_fields.append("groq_api_key = NULL")
+        if new_groq_key:
+            ai_fields.append("groq_api_key = :groq_key")
+            ai_params["groq_key"] = new_groq_key
 
         if payload.get("provider"):
             ai_fields.append("ai_provider = :provider")

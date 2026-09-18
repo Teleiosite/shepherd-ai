@@ -47,11 +47,12 @@ async def call_ai_provider(
     if provider == "gemini":
         # Verified active Google Gemini production models from API catalog
         FAST_GEMINI_MODELS = [
+            "gemini-2.5-flash",
+            "gemini-1.5-flash",
             "gemini-3.5-flash-lite",
             "gemini-3.5-flash",
             "gemini-3.8-flash",
             "gemini-2.0-flash",
-            "gemini-1.5-flash",
             "gemini-flash-latest"
         ]
 
@@ -76,9 +77,9 @@ async def call_ai_provider(
         full_text_turn = f"System Instructions:\n{system_prompt}\n\nCustomer Message:\n{user_turn}\n\nGenerate your JSON response."
         attempt_errors = []
 
-        # 1. Primary: Direct Async REST API (Ultra-low latency, non-blocking)
+        # 1. Primary: Direct Async REST API (Ultra-low latency, non-blocking with 6.0s timeout)
         import httpx
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        async with httpx.AsyncClient(timeout=6.0) as client:
             for cand in candidates:
                 try:
                     logger.info(f"🤖 Fast REST call to Gemini '{cand}'...")
@@ -114,12 +115,12 @@ async def call_ai_provider(
             import google.generativeai as genai
             import asyncio
             genai.configure(api_key=api_key)
-            fallback_model_name = candidates[0] if candidates else "gemini-2.0-flash"
+            fallback_model_name = candidates[0] if candidates else "gemini-2.5-flash"
             logger.info(f"🔄 Trying SDK fallback with '{fallback_model_name}'...")
             sdk_model = genai.GenerativeModel(fallback_model_name)
             response = await asyncio.wait_for(
                 asyncio.to_thread(sdk_model.generate_content, full_text_turn, generation_config={"temperature": 0.7}),
-                timeout=15.0
+                timeout=6.0
             )
             if response and response.text:
                 return response.text.strip()
@@ -143,13 +144,13 @@ async def call_ai_provider(
 
     url = url.rstrip('/')
 
-    # For Groq, default to latest high-speed Llama 3.3 70B model
+    # For Groq, default to ultra-fast Llama 3.1 8B instant
     selected_model = model
     if provider == "groq":
-        if not selected_model or selected_model in ("gemini-flash-latest", "gemini-2.0-flash", "gemini-1.5-flash", "llama3-70b-8192"):
-            selected_model = "llama-3.3-70b-versatile"
+        if not selected_model or selected_model in ("gemini-flash-latest", "gemini-2.0-flash", "gemini-1.5-flash", "llama3-70b-8192", "gemini-2.5-flash", "gemini-3.5-flash-lite"):
+            selected_model = "llama-3.1-8b-instant"
 
-    async with httpx.AsyncClient(timeout=18.0) as client:
+    async with httpx.AsyncClient(timeout=4.5) as client:
         response = await client.post(
             f"{url}/chat/completions",
             headers={
@@ -157,7 +158,7 @@ async def call_ai_provider(
                 "Authorization": f"Bearer {api_key}"
             },
             json={
-                "model": selected_model or "llama-3.3-70b-versatile",
+                "model": selected_model or "llama-3.1-8b-instant",
                 "messages": [
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_turn}
@@ -200,27 +201,76 @@ def _is_pure_greeting(text: str) -> bool:
     words = [w for w in t.split() if w]
     if not words:
         return True
-    
+
+    # If the message explicitly asks for products, it is NOT a pure greeting
+    if _has_explicit_product_intent(text):
+        return False
+
+    greeting_phrases = [
+        "hello", "hi", "hey", "hy", "helo", "helloo", "hiya", "howdy",
+        "good morning", "good afternoon", "good evening", "good day", "good night",
+        "are you there", "you there", "anyone there", "anyone online", "anyone here",
+        "see dada", "se dada", "dada ni", "dada le wa", "le wa", "bawo", "bawo ni",
+        "ekaaro", "e kaaro", "ekaasan", "e kaasan", "eku irole", "e ku irole", "pele", "alafia",
+        "how far", "how you dey", "how body", "wetin dey", "i dey", "we dey", "you dey",
+        "sannu", "ina kwana", "lafiya", "yaya dai",
+        "kedu", "kedu kwanu", "daalu", "nnoo",
+        "thanks", "thank you", "ok", "okay", "alright", "fine", "cool", "bye"
+    ]
+    if any(gp in t for gp in greeting_phrases):
+        return True
+
     greeting_words = {
         "hello", "hi", "hey", "hy", "helo", "helloo", "hiya", "howdy",
         "good", "morning", "afternoon", "evening", "day", "night",
         "there", "anyone", "online", "here", "decehub", "assistant",
         "sannu", "bawo", "ni", "kedu", "greetings", "wassup", "whats", "what", "up",
+        "see", "dada", "le", "wa", "se", "o", "dupe", "olorun", "ekaaro", "ekaasan",
+        "how", "far", "dey", "body", "wetin", "sup",
         "thanks", "thank", "you", "ok", "okay", "alright", "fine", "cool"
     }
-    product_terms = {
-        "product", "products", "item", "items", "store", "buy", "price", "prices",
-        "cost", "order", "charger", "chargers", "watch", "watches", "battery",
-        "batteries", "cable", "cables", "earbud", "earbuds", "headphone", "headphones",
-        "power", "bank", "banks", "powerbank", "powerbanks", "speaker", "speakers",
-        "cord", "cords", "clipper", "clippers", "airpod", "airpods", "adapter",
-        "adapters", "case", "cases", "controller", "screen", "trimmer"
-    }
-    if any(pt in words for pt in product_terms):
-        return False
-    if len(words) <= 4 and all(w in greeting_words for w in words):
+    if len(words) <= 6 and any(w in greeting_words for w in words):
         return True
     return False
+
+
+def _has_explicit_product_intent(text: str) -> bool:
+    """Check if the user is explicitly requesting, asking about, or searching for products."""
+    if not text:
+        return False
+    t = text.strip().lower()
+    t = re.sub(r"^\[voice (?:note|message)[^\]]*\]:?\s*", "", t)
+
+    # Specific product action/inquiry triggers
+    action_triggers = [
+        "buy", "purchase", "order", "price", "how much", "cost", "how much is",
+        "do you have", "have you got", "are there", "show me", "send me picture",
+        "send picture", "in stock", "available", "catalog", "catalogue", "products",
+        "items", "i need", "i want", "looking for", "spec", "features", "discount",
+        "recommend", "options", "sell", "which one",
+        # Pidgin
+        "i wan buy", "wetin una get", "you get", "una get", "shey una get", "abeg show",
+        # Yoruba
+        "elo ni", "se e ni", "mo fe ra", "mo fe", "oja", "owo",
+        # Hausa
+        "nawa ne", "kuna da", "ina so in saya",
+        # Igbo
+        "ego ole", "enwere m", "achom"
+    ]
+    if any(trig in t for trig in action_triggers):
+        return True
+
+    # Specific product categories / hardware terms
+    product_keywords = [
+        "charger", "chargers", "watch", "watches", "smartwatch", "battery",
+        "batteries", "cable", "cables", "earbud", "earbuds", "headphone", "headphones",
+        "power bank", "powerbank", "power banks", "speaker", "speakers",
+        "cord", "cords", "clipper", "clippers", "airpod", "airpods", "adapter",
+        "adapters", "case", "cases", "controller", "screen", "trimmer",
+        "oraimo", "foomee", "iphone", "samsung", "pixel", "car", "cars"
+    ]
+    words = re.findall(r"\w+", t)
+    return any(pk in words or pk in t for pk in product_keywords)
 
 
 def _normalize_token(tok: str) -> list:
@@ -1474,17 +1524,19 @@ async def trigger_ai_agent_reply(
             if card_summaries and channel != "web_widget" and not any(itm['title'].lower() in reply_text.lower() for itm in recommended_items):
                 reply_text += f"\n\nHere are available options:\n\n" + "\n\n".join(card_summaries)
 
-        # Automatic Visual Catalog Card Attachment Fallback:
-        # If the AI provided a text reply without setting action_type=="SEARCH_CATALOG",
-        # but the reply or user prompt mentions products in the catalog, attach them!
-        # CRITICAL: If the customer just greeted (hello, hi, good morning) or asked store info (EMPTY, GREETING, LOCATION, HOURS, etc.),
-        # NEVER auto-attach products! "Let them request for product before showing them."
-        is_greeting_intent = is_rule_handled and rule_res.get("intent") in [
-            "GREETING", "EMPTY", "LOCATION", "HOURS", "PAYMENT_METHOD", "ABOUT", "DELIVERY", "POLICY"
-        ]
-        if is_greeting_intent or _is_pure_greeting(incoming_text):
+        # Automatic Visual Catalog Card Attachment:
+        # STRICT RULE: "Let them request for product before showing them."
+        # ONLY attach product cards if:
+        # 1. Action type is explicitly SEARCH_CATALOG, OR
+        # 2. The user's incoming message has explicit product intent (e.g. asking for price, to buy, looking for an item, or naming a product).
+        # If the customer is simply greeting (in English, Yoruba, Pidgin, Hausa, Igbo) or asking general questions (hours, location, support),
+        # NEVER show product cards!
+        user_wants_products = _has_explicit_product_intent(incoming_text)
+        is_greeting = is_greeting_intent or _is_pure_greeting(incoming_text)
+
+        if is_greeting or (not user_wants_products and action_type != "SEARCH_CATALOG"):
             recommended_items = []
-        elif not recommended_items:
+        elif not recommended_items and (user_wants_products or action_type == "SEARCH_CATALOG"):
             try:
                 clean_in = incoming_text.lower().replace("[voice note]:", "").strip()
                 base_store_url = (getattr(org, "ai_payment_link", None) or getattr(org, "external_search_webhook_url", None) or "https://decehub.com").rstrip("/")
@@ -1498,7 +1550,7 @@ async def trigger_ai_agent_reply(
 
                 matched = []
                 seen_matched_keys = set()
-                # 1. Match if any product title is mentioned in reply_text
+                # 1. Match if any product title is mentioned in reply_text or clean_in
                 for ci in all_items:
                     title_clean = ci.title.strip()
                     title_lower = title_clean.lower()
@@ -1509,32 +1561,20 @@ async def trigger_ai_agent_reply(
                         seen_matched_keys.add(norm_k)
                         matched.append(ci)
 
-                # 2. If nothing matched in reply, search catalog dynamically by query keywords
+                # 2. If nothing matched directly, search catalog dynamically using extracted product query keywords
                 if not matched and not recommended_items:
-                    search_stop_words = {"the", "show", "list", "that", "you", "have", "store", "for", "with", "and", "can", "please", "want", "some", "like", "need", "hello", "good", "morning", "afternoon", "evening", "there", "what", "which", "give", "tell", "much", "cost", "price"}
+                    search_stop_words = {
+                        "the", "show", "list", "that", "you", "have", "store", "for", "with", "and", "can", "please",
+                        "want", "some", "like", "need", "hello", "good", "morning", "afternoon", "evening", "there",
+                        "what", "which", "give", "tell", "much", "cost", "price", "how", "are", "see", "dada", "wa",
+                        "dey", "abeg", "una", "get", "se", "ni", "mo", "fe", "kedu"
+                    }
                     search_tokens = [w for w in clean_in.split() if len(w) >= 3 and w not in search_stop_words]
                     if search_tokens:
                         token_q = " ".join(search_tokens)
                         matched_dicts = await execute_catalog_search(org, {"query": token_q}, db)
                         if matched_dicts:
                             recommended_items = matched_dicts[:4]
-
-                # 3. Follow-up safety net: if user is following up on a previous product inquiry ("where are they", "ok let have", "yes", etc.)
-                if not matched and not recommended_items:
-                    follow_up_triggers = ["where", "let have", "show", "more detail", "see", "send", "give me", "i thought", "what are", "display", "bring", "yes", "ok", "okay", "sure", "alright"]
-                    if any(trig in clean_in for trig in follow_up_triggers) or len(clean_in.split()) <= 3:
-                        recent_msgs = db.query(Message).filter(
-                            Message.contact_id == contact.id
-                        ).order_by(Message.created_at.desc()).limit(6).all()
-                        recent_text = " ".join([m.content or "" for m in recent_msgs]).lower()
-                        cat_keywords = ["charger", "watch", "battery", "cable", "earbud", "headphone", "power bank", "speaker", "oraimo", "foomee", "controller", "adapter", "case"]
-                        history_matches = [kw for kw in cat_keywords if kw in recent_text or kw in clean_in]
-                        if history_matches:
-                            token_q = " ".join(history_matches[:2])
-                            matched_dicts = await execute_catalog_search(org, {"query": token_q}, db)
-                            if matched_dicts:
-                                recommended_items = matched_dicts[:4]
-                                logger.info(f"✨ Follow-up auto-attached {len(recommended_items)} items using history keyword '{token_q}'")
 
                 if matched and not recommended_items:
                     for mi in matched[:4]:
@@ -1551,7 +1591,7 @@ async def trigger_ai_agent_reply(
                             "action_url": safe_url,
                             "attributes": mi.attributes or {}
                         })
-                    logger.info(f"✨ Auto-attached {len(recommended_items)} visual catalog cards to reply for '{clean_in[:50]}'")
+                    logger.info(f"✨ Attached {len(recommended_items)} visual catalog cards for customer product request: '{clean_in[:50]}'")
             except Exception as auto_cat_err:
                 logger.warning(f"Auto catalog attachment error: {auto_cat_err}")
 

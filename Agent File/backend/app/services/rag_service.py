@@ -30,92 +30,53 @@ async def search_knowledge_base(
     seen_ids = set()
 
     clean_q = query.strip().lower()
-    is_greeting_or_short = len(clean_q) < 8 or clean_q in [
-        "hello", "hi", "hey", "good morning", "good afternoon", "good evening", 
-        "ok", "okay", "wow", "great", "wow that's great", "thanks", "thank you", "bye", "are you there"
-    ]
+    # Fast greeting check across English, Yoruba, Pidgin, Hausa, Igbo, and short utterances
+    GREETING_INDICATORS = {
+        "hello", "hi", "hey", "good morning", "good afternoon", "good evening", "good day",
+        "ok", "okay", "wow", "great", "thanks", "thank you", "bye", "are you there",
+        "bawo", "bawo ni", "se dada", "dada", "le wa", "see dada", "ekaaro", "ekaasan",
+        "how far", "how you dey", "how body", "wetin dey", "i dey", "we dey", "you dey",
+        "sannu", "ina kwana", "lafiya", "kedu", "kedu kwanu", "daalu", "nnoo"
+    }
+    is_greeting_or_short = len(clean_q) < 8 or any(g in clean_q for g in GREETING_INDICATORS)
+
+    # If it is a greeting or pleasantry, skip knowledge search completely (0ms)
+    if is_greeting_or_short:
+        return []
 
     # Quick check: does this organization have any knowledge resources?
-    # If not, return immediately to eliminate latency and avoid any external API calls
     try:
         has_kb = db.query(KnowledgeResource.id).filter(KnowledgeResource.organization_id == organization_id).first()
         if not has_kb:
             return []
     except Exception:
-        pass
+        return []
 
-    # 1. Fast text/keyword search first (Instant < 5ms directly in database)
-    if not is_greeting_or_short and clean_q:
-        words = [w.strip() for w in clean_q.split() if len(w.strip()) > 3 and w not in ("what", "where", "when", "which", "tell", "have", "with", "from", "show", "please", "want", "need")]
-        if words:
-            from sqlalchemy import or_
-            query_filters = []
-            for word in words[:4]:
-                query_filters.append(KnowledgeResource.title.ilike(f"%{word}%"))
-                query_filters.append(KnowledgeResource.content.ilike(f"%{word}%"))
-            
-            try:
-                fb_results = db.query(KnowledgeResource).filter(
-                    KnowledgeResource.organization_id == organization_id,
-                    or_(*query_filters)
-                ).limit(limit).all()
-
-                for res in fb_results:
-                    if res.id not in seen_ids:
-                        resources.append((res, 0.9))
-                        seen_ids.add(res.id)
-            except Exception as kw_err:
-                pass
-
-    # 2. If keyword search found relevant resources, return immediately (eliminates 2-4s embedding API call)
-    if resources:
-        return resources
-
-    # 3. Vector search fallback only if keyword search had no match and embeddings actually exist
-    if not is_greeting_or_short:
-        has_embeddings = False
+    # 1. Ultra-fast direct text/keyword search in PostgreSQL (<5ms, zero network delay)
+    stop_words = {
+        "what", "where", "when", "which", "tell", "have", "with", "from", "show", "please",
+        "want", "need", "about", "your", "this", "that", "there", "some", "like", "know"
+    }
+    words = [w.strip() for w in clean_q.split() if len(w.strip()) > 2 and w not in stop_words]
+    if words:
+        from sqlalchemy import or_
+        query_filters = []
+        for word in words[:5]:
+            query_filters.append(KnowledgeResource.title.ilike(f"%{word}%"))
+            query_filters.append(KnowledgeResource.content.ilike(f"%{word}%"))
+        
         try:
-            emb_check = db.query(KnowledgeEmbedding.id).join(KnowledgeResource).filter(
-                KnowledgeResource.organization_id == organization_id
-            ).first()
-            has_embeddings = bool(emb_check)
-        except Exception:
-            has_embeddings = False
+            fb_results = db.query(KnowledgeResource).filter(
+                KnowledgeResource.organization_id == organization_id,
+                or_(*query_filters)
+            ).limit(limit).all()
 
-        if has_embeddings:
-            try:
-                query_embedding = await generate_embedding(query, api_key=api_key)
-                if query_embedding:
-                    sql = text("""
-                        SELECT resource_id, chunk_text, 1 - (embedding <=> :embedding) as similarity
-                        FROM knowledge_embeddings
-                        JOIN knowledge_resources ON knowledge_embeddings.resource_id = knowledge_resources.id
-                        WHERE knowledge_resources.organization_id = :org_id
-                        ORDER BY embedding <=> :embedding
-                        LIMIT :limit
-                    """)
-                    results = db.execute(
-                        sql, 
-                        {
-                            "embedding": str(query_embedding), 
-                            "org_id": str(organization_id),
-                            "limit": limit
-                        }
-                    ).fetchall()
-                    
-                    for row in results:
-                        resource_id = row[0]
-                        similarity = row[2]
-                        if resource_id not in seen_ids:
-                            resource = db.query(KnowledgeResource).filter(KnowledgeResource.id == resource_id).first()
-                            if resource:
-                                resources.append((resource, similarity))
-                                seen_ids.add(resource_id)
-            except Exception as vec_err:
-                try:
-                    db.rollback()
-                except Exception:
-                    pass
+            for res in fb_results:
+                if res.id not in seen_ids:
+                    resources.append((res, 0.9))
+                    seen_ids.add(res.id)
+        except Exception as kw_err:
+            pass
 
     return resources
 
