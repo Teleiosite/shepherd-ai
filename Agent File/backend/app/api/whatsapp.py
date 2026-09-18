@@ -425,7 +425,7 @@ async def _async_trigger_reply(
     from app.services.agent_service import trigger_ai_agent_reply
     db_bg = SessionLocal()
     try:
-        # Show "typing..." indicator immediately on WhatsApp so user knows the AI is processing
+        # Show "typing..." indicator concurrently on WhatsApp so AI agent starts processing immediately
         if whatsapp_message_id:
             try:
                 from app.api.whatsapp import get_organization_whatsapp_config
@@ -433,7 +433,8 @@ async def _async_trigger_reply(
                 cfg = get_organization_whatsapp_config(db_bg, org_id)
                 if cfg.get("delivery_method") == "meta" and cfg.get("phone_number_id") and cfg.get("access_token"):
                     meta_svc = get_meta_whatsapp_service(cfg["phone_number_id"], cfg["access_token"])
-                    await meta_svc.send_typing_indicator(whatsapp_message_id)
+                    import asyncio
+                    asyncio.create_task(meta_svc.send_typing_indicator(whatsapp_message_id))
             except Exception as t_err:
                 logger.warning(f"Could not trigger WhatsApp typing indicator: {t_err}")
 

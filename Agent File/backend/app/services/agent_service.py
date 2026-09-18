@@ -1141,9 +1141,9 @@ ACTION TYPE GUIDE:
 
     effective_groq_key = groq_api_key or getattr(org, "groq_api_key", None) or os.getenv("GROQ_API_KEY")
 
-    # Tier 1: Groq Cloud Llama 3.3 70B / 8B (Ultra-fast text generation)
+    # Tier 1: Groq Cloud Llama 3.1 8B / Llama 3.3 70B (Ultra-fast text generation)
     if effective_groq_key:
-        groq_candidates = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
+        groq_candidates = ["llama-3.1-8b-instant", "llama-3.3-70b-versatile"]
         for g_model in groq_candidates:
             try:
                 logger.info(f"⚡ [Tier 1: Groq LLM] Generating reply via {g_model}...")
@@ -1283,7 +1283,7 @@ async def trigger_ai_agent_reply(
                     }
                     _audio_content = None
                     _mime = audio_mime_type or "audio/ogg"
-                    async with _httpx.AsyncClient(timeout=35.0, follow_redirects=False) as _client:
+                    async with _httpx.AsyncClient(timeout=15.0, follow_redirects=True) as _client:
                         _info = await _client.get(
                             f"https://graph.facebook.com/v18.0/{audio_media_id}",
                             headers=_dl_headers
@@ -1293,29 +1293,15 @@ async def trigger_ai_agent_reply(
                             _down_url = _info.json().get("url")
                             _mime = _info.json().get("mime_type", audio_mime_type)
                             if _down_url:
-                                _curr_url = _down_url
-                                for _hop in range(6):
-                                    _bin = await _client.get(_curr_url, headers=_dl_headers)
-                                    logger.info(f"🎙️ Meta audio hop {_hop}: HTTP {_bin.status_code} from {_curr_url[:60]}")
-                                    if _bin.status_code in (301, 302, 303, 307, 308):
-                                        _curr_url = _bin.headers.get("Location")
-                                        if not _curr_url:
-                                            break
-                                        continue
-                                    elif _bin.status_code == 200 and _bin.content:
-                                        _audio_content = _bin.content
-                                        break
-                                    elif _bin.status_code in (401, 403):
-                                        # Retry without auth header for pre-signed CDN URLs
-                                        _bin_noauth = await _client.get(_curr_url, headers={"User-Agent": "curl/7.64.1"})
-                                        if _bin_noauth.status_code == 200 and _bin_noauth.content:
-                                            _audio_content = _bin_noauth.content
-                                            break
-                                        else:
-                                            logger.warning(f"Meta audio download non-200: {_bin.status_code}")
-                                            break
-                                    else:
-                                        break
+                                # Fetch audio directly through automatic redirects
+                                _bin = await _client.get(_down_url, headers=_dl_headers)
+                                if _bin.status_code == 200 and _bin.content:
+                                    _audio_content = _bin.content
+                                elif _bin.status_code in (401, 403):
+                                    # Retry without auth header for pre-signed CDN links
+                                    _bin_noauth = await _client.get(_down_url, headers={"User-Agent": "curl/7.64.1"})
+                                    if _bin_noauth.status_code == 200 and _bin_noauth.content:
+                                        _audio_content = _bin_noauth.content
 
                     if _audio_content and len(_audio_content) > 100:
                         logger.info(f"🎙️ Meta audio downloaded successfully: {len(_audio_content)} bytes (mime={_mime})")
@@ -1662,7 +1648,7 @@ async def trigger_ai_agent_reply(
                             "delivery_result": send_result
                         }
                     # If recommended items exist, pause briefly and continue down to deliver product details and photos
-                    await asyncio.sleep(1.0)
+                    await asyncio.sleep(0.3)
             except Exception as voice_err:
                 logger.warning(f"Voice synthesis/sending failed, falling back to text: {voice_err}")
 
@@ -1715,8 +1701,8 @@ async def trigger_ai_agent_reply(
                 contact.updated_at = now
                 db.commit()
 
-                # Pause before sending individual image cards to prevent Meta rate limiting
-                await asyncio.sleep(1.0)
+                # Pause briefly before sending individual image cards to prevent Meta rate limiting
+                await asyncio.sleep(0.3)
 
                 # 2. Deliver visual product photos for each item if available
                 for card_idx, item in enumerate(recommended_items[:3]):
@@ -1754,7 +1740,7 @@ async def trigger_ai_agent_reply(
                             db.add(card_msg)
                             contact.updated_at = now
                             db.commit()
-                            await asyncio.sleep(1.2)
+                            await asyncio.sleep(0.3)
                     except Exception as media_err:
                         logger.warning(f"Could not deliver photo for {clean_title}: {media_err}")
 
