@@ -47,9 +47,9 @@ async def call_ai_provider(
     if provider == "gemini":
         # Verified active Google Gemini production models from API catalog
         FAST_GEMINI_MODELS = [
-            "gemini-flash-latest",
-            "gemini-3.5-flash",
-            "gemini-3.5-flash-lite"
+            "gemini-2.0-flash",
+            "gemini-1.5-flash",
+            "gemini-flash-latest"
         ]
 
         EXCLUDE_KEYWORDS = (
@@ -57,8 +57,7 @@ async def call_ai_provider(
             "aqa", "robotics", "computer-use", "clip", "banana", "lyria"
         )
         OBSOLETE_MODELS = (
-            "gemini-pro", "gemini-1.0-pro", "gemini-1.5-flash", "gemini-2.0-flash",
-            "gemini-2.5-flash", "gemini-2.5-flash-lite"
+            "gemini-pro", "gemini-1.0-pro"
         )
 
         candidates = []
@@ -76,7 +75,7 @@ async def call_ai_provider(
 
         # 1. Primary: Direct Async REST API (Ultra-low latency, non-blocking)
         import httpx
-        async with httpx.AsyncClient(timeout=25.0) as client:
+        async with httpx.AsyncClient(timeout=15.0) as client:
             for cand in candidates:
                 try:
                     logger.info(f"🤖 Fast REST call to Gemini '{cand}'...")
@@ -112,12 +111,12 @@ async def call_ai_provider(
             import google.generativeai as genai
             import asyncio
             genai.configure(api_key=api_key)
-            fallback_model_name = candidates[0] if candidates else "gemini-flash-latest"
+            fallback_model_name = candidates[0] if candidates else "gemini-2.0-flash"
             logger.info(f"🔄 Trying SDK fallback with '{fallback_model_name}'...")
             sdk_model = genai.GenerativeModel(fallback_model_name)
             response = await asyncio.wait_for(
                 asyncio.to_thread(sdk_model.generate_content, full_text_turn, generation_config={"temperature": 0.7}),
-                timeout=25.0
+                timeout=15.0
             )
             if response and response.text:
                 return response.text.strip()
@@ -141,7 +140,13 @@ async def call_ai_provider(
 
     url = url.rstrip('/')
 
-    async with httpx.AsyncClient(timeout=45.0) as client:
+    # For Groq, default to latest high-speed Llama 3.3 70B model
+    selected_model = model
+    if provider == "groq":
+        if not selected_model or selected_model in ("gemini-flash-latest", "gemini-2.0-flash", "gemini-1.5-flash", "llama3-70b-8192"):
+            selected_model = "llama-3.3-70b-versatile"
+
+    async with httpx.AsyncClient(timeout=18.0) as client:
         response = await client.post(
             f"{url}/chat/completions",
             headers={
@@ -149,7 +154,7 @@ async def call_ai_provider(
                 "Authorization": f"Bearer {api_key}"
             },
             json={
-                "model": model or "gpt-4o",
+                "model": selected_model or "llama-3.3-70b-versatile",
                 "messages": [
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_turn}
@@ -159,7 +164,7 @@ async def call_ai_provider(
             }
         )
         if not response.is_success:
-            raise Exception(f"AI Provider HTTP {response.status_code}: {response.text}")
+            raise Exception(f"AI Provider ({provider}/{selected_model}) HTTP {response.status_code}: {response.text[:200]}")
         data = response.json()
         return data["choices"][0]["message"]["content"].strip()
 
@@ -873,7 +878,8 @@ async def execute_catalog_search(
 
 
 async def _execute_generative_ai_pipeline(
-    org, contact, incoming_text: str, now: datetime, ai_api_key: str, db: Session
+    org, contact, incoming_text: str, now: datetime, ai_api_key: str, db: Session,
+    groq_api_key: Optional[str] = None
 ) -> tuple:
     """
     Executes the multi-stage LLM generation pipeline:
@@ -987,14 +993,14 @@ Your task: Continue this flow naturally. Ask for whatever is still missing.
 
         sorted_items = sorted(all_catalog_items, key=score_for_prompt, reverse=True)
 
-        # Include up to 1000 items (covers 100% of store inventory without discarding products)
-        for ci in sorted_items[:1000]:
+        # Include top 25 most relevant scored items (keeps prompt fast, lightweight, and prevents TPM rate limits)
+        for ci in sorted_items[:25]:
             c_title = html.unescape(ci.title or "").replace("\u2033", '"').replace("\u201d", '"').replace("\u201c", '"').replace("\u2018", "'").replace("\u2019", "'").strip()
             c_cat = html.unescape(ci.category or "").strip()
             c_price = f"{ci.price_currency or 'NGN'} {ci.price_amount:,.0f} {ci.price_unit or ''}".strip() if ci.price_amount else "Contact for price"
             line = f"- {c_title} (Category: {c_cat}, Price: {c_price})"
             catalog_inventory_lines.append(line)
-        logger.info(f"📦 Injected {len(catalog_inventory_lines)} active catalog items into AI prompt (total in DB: {len(all_catalog_items)})")
+        logger.info(f"📦 Injected top {len(catalog_inventory_lines)} relevant catalog items into AI prompt (total in DB: {len(all_catalog_items)})")
     except Exception as cat_inv_err:
         logger.warning(f"Error fetching catalog inventory: {cat_inv_err}")
 
@@ -1125,21 +1131,56 @@ ACTION TYPE GUIDE:
 
     user_turn = f"New message from {contact.name}:\n\"{incoming_text}\"\n\nGenerate your JSON response."
 
-    # 6. Call AI Provider
-    model_to_use = org.ai_model
-    if not model_to_use or "2.5" in model_to_use or "1.5" in model_to_use or "flash-lite" in model_to_use:
-        model_to_use = "gemini-flash-latest"
-    elif model_to_use.startswith("models/"):
-        model_to_use = model_to_use.replace("models/", "").strip()
+    # 6. Call AI Provider — Groq Primary (~0.4s response time) with Gemini Fallback
+    raw_reply = None
+    import time
+    start_llm = time.time()
 
-    raw_reply = await call_ai_provider(
-        provider=org.ai_provider or "gemini",
-        api_key=ai_api_key,
-        model=model_to_use,
-        system_prompt=system_prompt,
-        user_turn=user_turn,
-        base_url=org.ai_base_url
-    )
+    effective_groq_key = groq_api_key or getattr(org, "groq_api_key", None) or os.getenv("GROQ_API_KEY")
+
+    # Tier 1: Groq Cloud Llama 3.3 70B / 8B (Ultra-fast text generation)
+    if effective_groq_key:
+        groq_candidates = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
+        for g_model in groq_candidates:
+            try:
+                logger.info(f"⚡ [Tier 1: Groq LLM] Generating reply via {g_model}...")
+                raw_reply = await call_ai_provider(
+                    provider="groq",
+                    api_key=effective_groq_key,
+                    model=g_model,
+                    system_prompt=system_prompt,
+                    user_turn=user_turn
+                )
+                if raw_reply and len(raw_reply.strip()) > 2:
+                    elapsed_g = time.time() - start_llm
+                    logger.info(f"⚡ ✅ Groq LLM ({g_model}) SUCCESS in {elapsed_g:.2f}s!")
+                    break
+            except Exception as g_err:
+                logger.warning(f"Groq LLM attempt with {g_model} failed: {g_err}")
+
+    # Tier 2: Google Gemini (Fallback if Groq unavailable or unconfigured)
+    if not raw_reply and ai_api_key:
+        logger.info("🔄 [Tier 2: Gemini LLM Fallback] Generating reply via Google Gemini...")
+        model_to_use = org.ai_model or "gemini-2.0-flash"
+        if not model_to_use or "3.5" in model_to_use or "flash-lite" in model_to_use:
+            model_to_use = "gemini-2.0-flash"
+        elif model_to_use.startswith("models/"):
+            model_to_use = model_to_use.replace("models/", "").strip()
+
+        try:
+            raw_reply = await call_ai_provider(
+                provider=org.ai_provider or "gemini",
+                api_key=ai_api_key,
+                model=model_to_use,
+                system_prompt=system_prompt,
+                user_turn=user_turn,
+                base_url=org.ai_base_url
+            )
+            if raw_reply:
+                elapsed_gem = time.time() - start_llm
+                logger.info(f"✅ Gemini LLM completed in {elapsed_gem:.2f}s")
+        except Exception as gem_err:
+            logger.error(f"Gemini LLM call failed: {gem_err}")
 
     parsed = parse_agent_response(raw_reply)
     reply_text = parsed.get("reply", "")
@@ -1351,7 +1392,8 @@ async def trigger_ai_agent_reply(
                 incoming_text=incoming_text,
                 now=now,
                 ai_api_key=ai_api_key,
-                db=db
+                db=db,
+                groq_api_key=getattr(org, "groq_api_key", None)
             )
 
         # 9. Process Intent Actions

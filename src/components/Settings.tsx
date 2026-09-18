@@ -18,11 +18,11 @@ interface SettingsProps {
 }
 
 const DEFAULT_MODELS = {
-    gemini: 'gemini-flash-latest',
+    gemini: 'gemini-2.0-flash',
     openai: 'gpt-4o',
     deepseek: 'deepseek-chat',
-    groq: 'llama3-70b-8192',
-    custom: 'llama3-70b-8192'
+    groq: 'llama-3.3-70b-versatile',
+    custom: 'llama-3.3-70b-versatile'
 };
 
 const Settings: React.FC<SettingsProps> = ({
