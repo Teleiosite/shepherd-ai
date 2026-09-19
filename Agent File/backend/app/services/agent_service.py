@@ -1532,6 +1532,9 @@ async def trigger_ai_agent_reply(
         # If the customer is simply greeting (in English, Yoruba, Pidgin, Hausa, Igbo) or asking general questions (hours, location, support),
         # NEVER show product cards!
         user_wants_products = _has_explicit_product_intent(incoming_text)
+        is_greeting_intent = bool(is_rule_handled and rule_res.get("intent") in [
+            "GREETING", "EMPTY", "LOCATION", "HOURS", "PAYMENT_METHOD", "ABOUT", "DELIVERY", "POLICY"
+        ])
         is_greeting = is_greeting_intent or _is_pure_greeting(incoming_text)
 
         if is_greeting or (not user_wants_products and action_type != "SEARCH_CATALOG"):
