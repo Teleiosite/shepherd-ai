@@ -14,9 +14,19 @@ router = APIRouter()
 
 
 @router.post("/register", response_model=Token, status_code=status.HTTP_201_CREATED)
-async def register(user_data: UserCreate, db: Session = Depends(get_db)):
-    """Register a new user."""
-    
+async def register(user_data: UserCreate, request: Request, db: Session = Depends(get_db)):
+    """Register a new user with tenant isolation and rate limiting."""
+    # SEC-11: Rate limiting on registration (5 attempts per minute per IP)
+    client_ip = request.client.host if request.client else "unknown"
+    from app.utils.security_utils import auth_rate_limiter
+    allowed, retry_after = auth_rate_limiter.is_allowed(f"reg_{client_ip}", max_requests=5, window_seconds=60)
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Too many registration attempts. Please try again in {retry_after} seconds.",
+            headers={"Retry-After": str(retry_after)}
+        )
+
     # Check if user already exists
     existing_user = db.query(User).filter(User.email == user_data.email).first()
     if existing_user:
@@ -25,31 +35,20 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
             detail="Email already registered"
         )
     
-    # If organization_id provided, verify it exists
-    if user_data.organization_id:
-        org = db.query(Organization).filter(Organization.id == user_data.organization_id).first()
-        if not org:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Organization not found"
-            )
-    else:
-        # Create a new organization for the user
-        new_org = Organization(
-            name=f"{user_data.full_name or user_data.email}'s Organization"
-        )
-        db.add(new_org)
-        db.flush()  # Get the ID without committing
-        user_data.organization_id = new_org.id
+    # Secure tenant creation: Always generate a new isolated organization for self-serve signups
+    org_name = (user_data.organization_name or "").strip() or f"{user_data.full_name or user_data.email}'s Organization"
+    new_org = Organization(name=org_name)
+    db.add(new_org)
+    db.flush()
     
-    # Create new user
+    # Create new user as administrator of their isolated organization
     hashed_password = get_password_hash(user_data.password)
     new_user = User(
         email=user_data.email,
         hashed_password=hashed_password,
         full_name=user_data.full_name,
-        organization_id=user_data.organization_id,
-        role="admin" if not user_data.organization_id else "worker"  # First user is admin
+        organization_id=new_org.id,
+        role="admin"
     )
     
     db.add(new_user)

@@ -756,11 +756,11 @@ async def test_gemini_generate_endpoint(db: Session = Depends(get_db)):
     }
 
 
-def verify_admin_access(request: Request, admin_key: Optional[str] = None):
+def verify_admin_access(request: Request, admin_key: Optional[str] = None, db: Optional[Session] = None):
     """
     Verify that caller has administrative access via either:
     1. Admin secret key matching settings.secret_key (passed via X-Admin-Key header, form data, or admin_key query param)
-    2. Valid Authorization Bearer token belonging to an authenticated user
+    2. Valid Authorization Bearer token belonging to an authenticated user with role 'admin' or 'superadmin'
     """
     from app.config import settings as app_settings
 
@@ -770,24 +770,35 @@ def verify_admin_access(request: Request, admin_key: Optional[str] = None):
         or request.query_params.get("admin_key")
         or admin_key
     )
-    if provided_key and app_settings.secret_key and provided_key == app_settings.secret_key:
+    if provided_key and app_settings.secret_key and provided_key.strip() == app_settings.secret_key.strip():
         return True
 
-    # 2. Authorization Bearer JWT check
+    # 2. Authorization Bearer JWT check with role validation
     auth_header = request.headers.get("Authorization")
     if auth_header and auth_header.startswith("Bearer "):
         token = auth_header.split("Bearer ")[1].strip()
         try:
             from jose import jwt
+            from app.database import SessionLocal
+            from app.models.user import User
+
             payload = jwt.decode(token, app_settings.secret_key, algorithms=[app_settings.algorithm])
-            if payload.get("sub"):
-                return True
+            user_id = payload.get("sub")
+            if user_id:
+                local_db = db or SessionLocal()
+                try:
+                    user = local_db.query(User).filter(User.id == user_id).first()
+                    if user and user.role in ("admin", "superadmin"):
+                        return True
+                finally:
+                    if not db:
+                        local_db.close()
         except Exception:
             pass
 
     raise HTTPException(
         status_code=403,
-        detail="Administrative access required. Provide a valid Authorization Bearer token or ?admin_key= parameter."
+        detail="Administrative access required. Provide a valid admin token or X-Admin-Key header."
     )
 
 
@@ -1128,14 +1139,15 @@ async def quick_activate_get(
     api_key: str,
     phone_id: str = "1122719754267706",
     token: str = "",
+    org_id: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
     """
     Emergency URL activator via GET.
     Protected: requires admin authentication or admin_key.
-    /api/settings/quick-activate?api_key=AIza...&token=EAAXt...&phone_id=1122719754267706&admin_key=SECRET
+    /api/settings/quick-activate?api_key=AIza...&token=EAAXt...&phone_id=1122719754267706&admin_key=SECRET&org_id=UUID
     """
-    verify_admin_access(request)
+    verify_admin_access(request, db=db)
     if not api_key:
         raise HTTPException(status_code=400, detail="api_key is required")
 
@@ -1143,7 +1155,7 @@ async def quick_activate_get(
         set_clauses = [
             "ai_provider = 'gemini'",
             "ai_api_key = :api_key",
-            "ai_model = 'gemini-3.5-flash'",
+            "ai_model = 'gemini-flash-latest'",
             "ai_auto_reply_enabled = 'true'",
             "ai_reply_mode = 'auto-send'",
             "whatsapp_phone_id = :phone_id"
@@ -1153,13 +1165,18 @@ async def quick_activate_get(
             set_clauses.append("whatsapp_access_token = :wa_token")
             params["wa_token"] = token
 
-        db.execute(text(f"UPDATE organizations SET {', '.join(set_clauses)}"), params)
+        where_clause = ""
+        if org_id:
+            where_clause = " WHERE id = :org_id"
+            params["org_id"] = org_id
+
+        db.execute(text(f"UPDATE organizations SET {', '.join(set_clauses)}{where_clause}"), params)
         db.commit()
         return {
             "success": True,
-            "message": "AI Auto-reply successfully activated across all organizations!",
+            "message": f"AI Auto-reply successfully activated{' for org ' + org_id if org_id else ' globally'}!",
             "phone_id": phone_id,
-            "model": "gemini-3.5-flash",
+            "model": "gemini-flash-latest",
             "mode": "auto-send"
         }
     except Exception as e:

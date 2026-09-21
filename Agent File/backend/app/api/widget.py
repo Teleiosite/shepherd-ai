@@ -4,14 +4,17 @@ Allows website visitors to chat directly with Shepherd AI.
 Runs through the exact same 24/7 AI Agent, RAG, and Intent engine.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import text
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
 from datetime import datetime
 from uuid import UUID
+import hashlib
+import hmac
 
+from app.config import settings
 from app.database import get_db
 from app.models.contact import Contact
 from app.models.message import Message
@@ -24,17 +27,32 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/widget", tags=["Website Widget"])
 
 
+def generate_visitor_session_token(org_id: str, visitor_id: str) -> str:
+    """Generate a cryptographically signed session token for a visitor polling session."""
+    secret = (settings.secret_key or "shepherd_visitor_fallback_secret").encode("utf-8")
+    message = f"{str(org_id).lower()}:{str(visitor_id).lower()}".encode("utf-8")
+    return hmac.new(secret, message, hashlib.sha256).hexdigest()[:32]
+
+
+def verify_visitor_session_token(org_id: str, visitor_id: str, token: Optional[str]) -> bool:
+    """Verify that the provided token matches the expected HMAC for org_id and visitor_id."""
+    if not token:
+        return False
+    expected = generate_visitor_session_token(org_id, visitor_id)
+    return hmac.compare_digest(expected, token.strip())
+
+
 class WidgetMessageRequest(BaseModel):
     org_id: str
-    visitor_name: str
-    visitor_phone_or_email: Optional[str] = None
-    message: str
+    visitor_name: str = Field(..., max_length=150)
+    visitor_phone_or_email: Optional[str] = Field(None, max_length=150)
+    message: str = Field(..., max_length=5000)
 
 
 class WidgetVoiceMessageRequest(BaseModel):
     org_id: str
-    visitor_name: str
-    visitor_phone_or_email: Optional[str] = None
+    visitor_name: str = Field(..., max_length=150)
+    visitor_phone_or_email: Optional[str] = Field(None, max_length=150)
     audio_base64: Optional[str] = ""
     audio_mime_type: Optional[str] = "audio/webm"
     speech_transcript: Optional[str] = None
@@ -43,11 +61,12 @@ class WidgetVoiceMessageRequest(BaseModel):
 @router.get("/config/{org_id}")
 async def get_widget_config(
     org_id: str,
+    visitor_id: Optional[str] = Query(None, description="Visitor identifier for session token generation"),
     db: Session = Depends(get_db)
 ):
     """
     Public config endpoint for website embed widget.
-    Returns brand styling, colors, and welcome greeting.
+    Returns brand styling, colors, and welcome greeting with signed session token.
     """
     try:
         org_uuid = UUID(org_id)
@@ -58,6 +77,8 @@ async def get_widget_config(
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
 
+    session_token = generate_visitor_session_token(str(org.id), visitor_id) if visitor_id else None
+
     return {
         "org_id": str(org.id),
         "name": org.name,
@@ -66,7 +87,8 @@ async def get_widget_config(
         "welcome_message": getattr(org, "widget_welcome_message", "Welcome! How can we help you today?") or "Welcome! How can we help you today?",
         "position": getattr(org, "widget_position", "bottom-right") or "bottom-right",
         "placeholder": getattr(org, "widget_placeholder", "Ask a question or inquire about products...") or "Ask a question or inquire about products...",
-        "avatar_url": getattr(org, "widget_avatar_url", None)
+        "avatar_url": getattr(org, "widget_avatar_url", None),
+        "session_token": session_token
     }
 
 
@@ -231,6 +253,7 @@ async def handle_widget_message(
             "outbound_message_id": outbound_msg_id,
             "inbound_message_id": str(in_msg.id),
             "ai_name": org.ai_name or "DeceHub Assistant",
+            "session_token": generate_visitor_session_token(str(org_id), contact_identifier),
             "debug_error": agent_result.get("error") if agent_result else None,
             "debug_tb": agent_result.get("traceback") if agent_result else None
         }
@@ -341,15 +364,30 @@ async def handle_widget_voice_message(
 async def poll_widget_messages(
     org_id: str,
     visitor_id: str,
+    request: Request,
+    token: Optional[str] = Query(None, description="Signed visitor session token"),
     db: Session = Depends(get_db)
 ):
     """
     Allows the website chat widget to receive replies sent by human agents from the dashboard.
+    SEC-06: Validates HMAC session token to prevent unauthenticated message eavesdropping.
     """
     try:
         org_uuid = UUID(org_id)
     except:
         return {"messages": []}
+
+    provided_token = token or request.headers.get("X-Visitor-Token") or request.query_params.get("token")
+    is_valid_token = verify_visitor_session_token(org_id, visitor_id, provided_token)
+
+    # SEC-06: Sensitive targets (phone number or email address) strictly require a valid signed token
+    is_sensitive_identifier = ("@" in visitor_id or visitor_id.replace("+", "").replace("-", "").isdigit()) and not visitor_id.startswith("web_")
+    if is_sensitive_identifier and not is_valid_token:
+        logger.warning(f"Blocked unauthorized chat eavesdropping attempt for {visitor_id} on org {org_id}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Session token required to access conversation history."
+        )
 
     contact = db.query(Contact).filter(
         Contact.organization_id == org_uuid,
@@ -357,7 +395,7 @@ async def poll_widget_messages(
     ).first()
 
     if not contact:
-        return {"messages": []}
+        return {"messages": [], "session_token": generate_visitor_session_token(org_id, visitor_id)}
 
     outbound_msgs = db.query(Message).filter(
         Message.organization_id == org_uuid,
@@ -376,6 +414,7 @@ async def poll_widget_messages(
                 "created_at": m.created_at.isoformat() if m.created_at else None
             }
             for m in outbound_msgs
-        ]
+        ],
+        "session_token": generate_visitor_session_token(org_id, visitor_id)
     }
 

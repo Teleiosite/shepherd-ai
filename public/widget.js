@@ -359,11 +359,26 @@
     input.style.height = Math.min(input.scrollHeight, 120) + 'px';
   });
 
+  // Session persistence
+  const storageKey = `shepherd_chat_${orgId || 'default'}`;
+  let visitorName = localStorage.getItem('shepherd_visitor_name') || 'Web Visitor';
+  let visitorId = localStorage.getItem('shepherd_visitor_id');
+  if (!visitorId) {
+    visitorId = 'web_' + Math.random().toString(36).substring(2, 9);
+    try { localStorage.setItem('shepherd_visitor_id', visitorId); } catch (e) {}
+  }
+  let sessionToken = localStorage.getItem('shepherd_session_token_' + (orgId || 'default')) || '';
+
   // Load Dynamic Configuration
   if (orgId) {
-    fetch(`${apiUrl}/api/widget/config/${orgId}`)
+    const configUrl = `${apiUrl}/api/widget/config/${orgId}?visitor_id=${encodeURIComponent(visitorId)}`;
+    fetch(configUrl)
       .then(res => res.json())
       .then(cfg => {
+        if (cfg.session_token) {
+          sessionToken = cfg.session_token;
+          try { localStorage.setItem('shepherd_session_token_' + orgId, sessionToken); } catch (e) {}
+        }
         if (cfg.ai_name) {
           aiName = cfg.ai_name;
           headerTitle.textContent = aiName;
@@ -385,15 +400,6 @@
       .catch(e => console.warn('[Shepherd Widget] Config load error:', e));
   }
 
-  // Session persistence
-  const storageKey = `shepherd_chat_${orgId || 'default'}`;
-  let visitorName = localStorage.getItem('shepherd_visitor_name') || 'Web Visitor';
-  let visitorId = localStorage.getItem('shepherd_visitor_id');
-  if (!visitorId) {
-    visitorId = 'web_' + Math.random().toString(36).substring(2, 9);
-    try { localStorage.setItem('shepherd_visitor_id', visitorId); } catch (e) {}
-  }
-
   // Track seen messages to avoid duplicates
   const seenMessageIds = new Set();
   const seenMessageTexts = new Set();
@@ -403,9 +409,16 @@
   const pollAgentMessages = async () => {
     if (!orgId || !visitorId || box.style.display !== 'flex' || isWaitingReply) return;
     try {
-      const pRes = await fetch(`${apiUrl}/api/widget/poll/${orgId}/${visitorId}`);
+      const tokenParam = sessionToken ? `?token=${encodeURIComponent(sessionToken)}` : '';
+      const pRes = await fetch(`${apiUrl}/api/widget/poll/${orgId}/${visitorId}${tokenParam}`, {
+        headers: sessionToken ? { 'X-Visitor-Token': sessionToken } : {}
+      });
       if (pRes.ok) {
         const pData = await pRes.json();
+        if (pData.session_token) {
+          sessionToken = pData.session_token;
+          try { localStorage.setItem('shepherd_session_token_' + orgId, sessionToken); } catch (e) {}
+        }
         if (pData.messages && pData.messages.length > 0) {
           let hasNew = false;
           pData.messages.forEach(m => {
@@ -583,6 +596,10 @@
 
       if (res && res.ok) {
         const data = await res.json();
+        if (data.session_token) {
+          sessionToken = data.session_token;
+          try { localStorage.setItem('shepherd_session_token_' + orgId, sessionToken); } catch (e) {}
+        }
         
         // Track message IDs so poller will never duplicate this reply
         if (data.message_id) seenMessageIds.add(data.message_id);

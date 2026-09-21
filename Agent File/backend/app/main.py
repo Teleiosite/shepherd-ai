@@ -63,42 +63,29 @@ async def startup_event():
     from app.services.scheduler_service import start_scheduler
     start_scheduler()
 
-    # Automatically ensure organizations use the active, non-rate-limited Gemini key
+    # Safely initialize default settings for unconfigured organizations using environment variables
     try:
         from app.database import SessionLocal
         from sqlalchemy import text
         from uuid import UUID
         from app.models.catalog_item import CatalogItem
-        import base64
+        import os
 
-        new_key = base64.b64decode(b"QVEuQWI4Uk42TFdxcHR1R0VocTZKRm81YU5JNVI0Y1VVVnpPN2xza2FGR1ROWjZ4M1ZEWHc=").decode("utf-8")
         db_start = SessionLocal()
-        db_start.execute(text("""
-            UPDATE organizations 
-            SET ai_api_key = :k,
-                ai_provider = 'gemini',
-                ai_model = 'gemini-flash-latest',
-                ai_auto_reply_enabled = 'true',
-                ai_reply_mode = 'auto-send';
 
-            UPDATE contacts
-            SET ai_paused_until = NULL
-            WHERE ai_paused_until IS NOT NULL;
-
-            -- Reassign any orphaned contacts or messages for Seye's phone to DeceHub
-            UPDATE contacts
-            SET organization_id = '37423e5c-e2d0-44d3-ab5b-48c7fcf2d9c2'
-            WHERE (phone LIKE '%9035523402%' OR whatsapp_id LIKE '%9035523402%')
-              AND organization_id != '37423e5c-e2d0-44d3-ab5b-48c7fcf2d9c2';
-
-            UPDATE messages
-            SET organization_id = '37423e5c-e2d0-44d3-ab5b-48c7fcf2d9c2'
-            WHERE (
-                contact_id IN (SELECT id FROM contacts WHERE phone LIKE '%9035523402%' OR whatsapp_id LIKE '%9035523402%')
-                OR content LIKE '%9035523402%'
-            ) AND organization_id != '37423e5c-e2d0-44d3-ab5b-48c7fcf2d9c2';
-        """), {"k": new_key})
-        db_start.commit()
+        # If system environment has a default Gemini key, set it ONLY for organizations that have no key configured yet
+        default_gemini_key = getattr(settings, "gemini_api_key", None) or os.getenv("GEMINI_API_KEY")
+        if default_gemini_key and default_gemini_key.strip():
+            db_start.execute(text("""
+                UPDATE organizations 
+                SET ai_api_key = :k,
+                    ai_provider = 'gemini',
+                    ai_model = 'gemini-flash-latest',
+                    ai_auto_reply_enabled = 'true',
+                    ai_reply_mode = 'auto-send'
+                WHERE ai_api_key IS NULL OR ai_api_key = '';
+            """), {"k": default_gemini_key.strip()})
+            db_start.commit()
 
         # Deduplicate catalog items in database (eliminate duplicate rows with identical normalized titles)
         try:

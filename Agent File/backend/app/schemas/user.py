@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, UUID4
+from pydantic import BaseModel, EmailStr, Field, UUID4
 from typing import Optional
 from datetime import datetime
 
@@ -6,8 +6,9 @@ from datetime import datetime
 class UserCreate(BaseModel):
     """Schema for creating a new user."""
     email: EmailStr
-    password: str
+    password: str = Field(..., min_length=8, description="Password must be at least 8 characters")
     full_name: Optional[str] = None
+    organization_name: Optional[str] = None
     organization_id: Optional[UUID4] = None
 
 

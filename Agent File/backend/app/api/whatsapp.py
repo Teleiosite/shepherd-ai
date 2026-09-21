@@ -769,6 +769,33 @@ async def whatsapp_incoming_webhook(
                 "message_id": message_id_str
             }
 
+        # SEC-05: Bridge / WPPConnect Authentication Verification
+        bridge_secret = (
+            request.headers.get("X-Bridge-Secret")
+            or request.headers.get("X-Admin-Key")
+            or request.query_params.get("secret")
+            or body.get("bridge_secret")
+            or body.get("connection_code")
+        )
+        is_authenticated_bridge = False
+        from app.config import settings
+        from app.utils.security_utils import find_user_by_connection_code
+
+        if bridge_secret:
+            clean_secret = str(bridge_secret).strip()
+            if settings.secret_key and clean_secret == settings.secret_key.strip():
+                is_authenticated_bridge = True
+            elif settings.whatsapp_verify_token and clean_secret == settings.whatsapp_verify_token.strip():
+                is_authenticated_bridge = True
+            else:
+                b_user = find_user_by_connection_code(clean_secret, db)
+                if b_user:
+                    is_authenticated_bridge = True
+
+        if bridge_secret and not is_authenticated_bridge:
+            logger.warning("Rejected bridge webhook: invalid bridge secret or connection code")
+            raise HTTPException(status_code=401, detail="Invalid bridge authentication credentials")
+
         final_phone = phone or body.get("phone")
         final_whatsapp_id = whatsapp_id or body.get("whatsapp_id")
         final_content = content or body.get("content")
