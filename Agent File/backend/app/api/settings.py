@@ -43,7 +43,8 @@ async def get_ai_config(
     # Query organization for AI config
     result = db.execute(
         text("""
-            SELECT ai_provider, ai_api_key, ai_model, ai_base_url, groq_api_key
+            SELECT ai_provider, ai_api_key, ai_model, ai_base_url, groq_api_key,
+                   monthly_message_limit, messages_used_this_month, subscription_plan
             FROM organizations
             WHERE id = :org_id
         """),
@@ -57,7 +58,10 @@ async def get_ai_config(
             "groq_api_key_masked": "",
             "model": "gemini-1.5-flash",
             "base_url": None,
-            "configured": False
+            "configured": False,
+            "monthly_message_limit": 1000,
+            "messages_used_this_month": 0,
+            "subscription_plan": "starter"
         }
     
     groq_masked = mask_api_key(result[4]) if len(result) > 4 and result[4] else ""
@@ -67,7 +71,10 @@ async def get_ai_config(
         "groq_api_key_masked": groq_masked,
         "model": result[2] or "gemini-1.5-flash",
         "base_url": result[3],
-        "configured": bool(result[1])
+        "configured": bool(result[1]),
+        "monthly_message_limit": result[5] if len(result) > 5 and result[5] is not None else 1000,
+        "messages_used_this_month": result[6] if len(result) > 6 and result[6] is not None else 0,
+        "subscription_plan": result[7] if len(result) > 7 and result[7] else "starter"
     }
 
 
