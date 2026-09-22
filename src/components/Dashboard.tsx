@@ -131,7 +131,7 @@ const Dashboard: React.FC<DashboardProps> = ({ contacts, logs, resources, organi
       </div>
 
       {/* Stats Grid - 8 Real-time Clickable Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-6">
         {stats.map((stat, index) => (
           <div
             key={index}
@@ -139,31 +139,31 @@ const Dashboard: React.FC<DashboardProps> = ({ contacts, logs, resources, organi
             role="button"
             tabIndex={0}
             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate(stat.path); }}
-            className="bg-white p-4 sm:p-5 rounded-xl shadow-xs hover:shadow-md border border-slate-100 hover:border-slate-300 flex flex-col justify-between cursor-pointer transition-all duration-200 group text-left select-none"
+            className="bg-white p-3.5 sm:p-5 rounded-xl shadow-xs hover:shadow-md border border-slate-100 hover:border-slate-300 flex flex-col justify-between cursor-pointer transition-all duration-200 group text-left select-none"
             title={`Click to view ${stat.label}`}
           >
-            <div className="flex items-start justify-between gap-2">
+            <div className="flex items-start justify-between gap-1.5 sm:gap-2">
               <div className="min-w-0 flex-1">
-                <p className="text-xs sm:text-sm font-medium text-slate-500 mb-1 truncate">{stat.label}</p>
-                <p className={`font-bold text-slate-800 tracking-tight truncate ${stat.isQuota ? 'text-base sm:text-xl text-emerald-800' : 'text-xl sm:text-2xl'}`}>
+                <p className="text-xs sm:text-sm font-medium text-slate-500 mb-0.5 sm:mb-1 truncate">{stat.label}</p>
+                <p className={`font-bold text-slate-800 tracking-tight truncate ${stat.isQuota ? 'text-sm sm:text-xl text-emerald-800' : 'text-lg sm:text-2xl'}`}>
                   {stat.value}
                 </p>
               </div>
-              <div className={`p-2.5 sm:p-3 rounded-full ${stat.color} text-white shrink-0 group-hover:scale-110 transition-transform shadow-xs`}>
-                <stat.icon size={22} />
+              <div className={`p-2 sm:p-3 rounded-full ${stat.color} text-white shrink-0 group-hover:scale-110 transition-transform shadow-xs`}>
+                <stat.icon className="w-4 h-4 sm:w-5 sm:h-5 md:w-[22px] md:h-[22px]" />
               </div>
             </div>
-            <div className="text-[11px] sm:text-xs text-slate-400 mt-3 pt-2 border-t border-slate-50 flex items-center justify-between">
+            <div className="text-[10px] sm:text-xs text-slate-400 mt-2.5 sm:mt-3 pt-2 border-t border-slate-50 flex items-center justify-between">
               <span className="truncate">{stat.subtext}</span>
-              <ArrowUpRight size={14} className="opacity-0 group-hover:opacity-100 transition-opacity text-slate-500 shrink-0 ml-1" />
+              <ArrowUpRight size={13} className="opacity-0 group-hover:opacity-100 transition-opacity text-slate-500 shrink-0 ml-1 hidden sm:inline" />
             </div>
           </div>
         ))}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <div className="bg-white p-8 rounded-xl shadow-xs border border-slate-100 h-96">
-          <h3 className="text-xl font-bold mb-6 text-slate-800">Contact Distribution</h3>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-8">
+        <div className="bg-white p-4 sm:p-6 md:p-8 rounded-xl shadow-xs border border-slate-100 h-80 sm:h-96">
+          <h3 className="text-base sm:text-xl font-bold mb-4 sm:mb-6 text-slate-800">Contact Distribution</h3>
           {categoryData.length > 0 ? (
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
@@ -171,8 +171,8 @@ const Dashboard: React.FC<DashboardProps> = ({ contacts, logs, resources, organi
                   data={categoryData}
                   cx="50%"
                   cy="50%"
-                  innerRadius={80}
-                  outerRadius={100}
+                  innerRadius={60}
+                  outerRadius={85}
                   fill="#8884d8"
                   paddingAngle={5}
                   dataKey="value"
@@ -189,13 +189,13 @@ const Dashboard: React.FC<DashboardProps> = ({ contacts, logs, resources, organi
           )}
         </div>
 
-        <div className="bg-white p-8 rounded-xl shadow-xs border border-slate-100 h-96">
-          <h3 className="text-xl font-bold mb-6 text-slate-800">Weekly Message Activity</h3>
+        <div className="bg-white p-4 sm:p-6 md:p-8 rounded-xl shadow-xs border border-slate-100 h-80 sm:h-96">
+          <h3 className="text-base sm:text-xl font-bold mb-4 sm:mb-6 text-slate-800">Weekly Message Activity</h3>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={activityData}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} />
-              <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 14 }} />
-              <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 14 }} />
+              <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12 }} />
+              <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12 }} />
               <Tooltip cursor={{ fill: '#f3f4f6' }} />
               <Bar dataKey="sent" fill="#3b82f6" radius={[4, 4, 0, 0]} />
             </BarChart>
