@@ -97,12 +97,19 @@ const Bookings: React.FC = () => {
                         </div>
                       </div>
                     </td>
-                    <td className="p-4">
-                      <div className="flex items-center gap-2">
-                        <Tag size={14} className="text-slate-400 shrink-0" />
-                        <span className="font-medium text-slate-700 text-xs sm:text-sm truncate max-w-[200px]" title={booking.purpose}>
-                          {booking.purpose}
-                        </span>
+                    <td className="p-4 min-w-[200px] max-w-sm sm:max-w-md">
+                      <div className="flex items-start gap-2">
+                        <Tag size={14} className="text-slate-400 shrink-0 mt-0.5" />
+                        <div className="space-y-0.5 min-w-0">
+                          <p className="font-medium text-slate-800 text-xs sm:text-sm break-words whitespace-normal leading-snug">
+                            {booking.purpose}
+                          </p>
+                          {booking.notes && booking.notes.trim() !== booking.purpose.trim() && (
+                            <p className="text-xs text-slate-500 break-words whitespace-normal mt-0.5 leading-snug">
+                              {booking.notes}
+                            </p>
+                          )}
+                        </div>
                       </div>
                     </td>
                     <td className="p-4">
