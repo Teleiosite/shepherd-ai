@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     groq_api_key: Optional[str] = None
     
     # WhatsApp
-    whatsapp_api_url: str = "https://graph.facebook.com/v18.0"
+    whatsapp_api_url: str = "https://graph.facebook.com/v21.0"
     whatsapp_phone_id: str = ""
     whatsapp_access_token: str = ""
     whatsapp_verify_token: str = "shepherd_ai_verify_token"

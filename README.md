@@ -5,8 +5,8 @@
 [![Live Web App](https://img.shields.io/badge/Web%20App-Vercel-black?style=for-the-badge&logo=vercel)](https://shepherd-ai.vercel.app)
 [![API Backend](https://img.shields.io/badge/FastAPI-Render-46E3B7?style=for-the-badge&logo=render)](https://shepherd-ai-backend.onrender.com)
 [![Database](https://img.shields.io/badge/PostgreSQL-Supabase-3ECF8E?style=for-the-badge&logo=supabase)](https://supabase.com)
-[![AI Engine](https://img.shields.io/badge/Google%20Gemini-3.7%20Flash-4285F4?style=for-the-badge&logo=google)](https://ai.google.dev/)
-[![WhatsApp](https://img.shields.io/badge/Meta%20Cloud%20API-v18.0-25D366?style=for-the-badge&logo=whatsapp)](https://developers.facebook.com/docs/whatsapp/cloud-api)
+[![AI Engine](https://img.shields.io/badge/Google%20Gemini-2.0%20Flash-4285F4?style=for-the-badge&logo=google)](https://ai.google.dev/)
+[![WhatsApp](https://img.shields.io/badge/Meta%20Cloud%20API-v21.0-25D366?style=for-the-badge&logo=whatsapp)](https://developers.facebook.com/docs/whatsapp/cloud-api)
 
 ---
 
@@ -22,7 +22,7 @@ Shepherd AI operates as an intelligent 24/7 digital representative for your orga
                ┌───────────────────────────────┼───────────────────────────────┐
                ▼                               ▼                               ▼
        💬 WhatsApp Cloud API           🌐 Website Widget               👥 Team Dashboard
-    • Official Meta Graph API       • Zero-dependency script        • Real-time Live Chats
+    • Official Meta Graph API (v21.0)• Zero-dependency script        • Real-time Live Chats
     • Multi-Product Visual Cards    • Client Speech Recognition     • Booking & Lead Manager
     • Inbound Voice Audio (OGG)     • Responsive Catalog Cards      • Media Library & RAG Docs
     • Audio Voice Notes (Opus)      • Customizable Brand Theme      • Workflows & Group Broadcasts
@@ -53,8 +53,10 @@ Shepherd AI operates as an intelligent 24/7 digital representative for your orga
   - External inventory webhook support to integrate with existing WooCommerce, Shopify, or custom ERP inventory systems.
 
 ### 3. 🎙️ Voice Note Intelligence (Two-Way Audio)
-- **Inbound WhatsApp Voice Notes:**
-  - Automatically downloads binary voice notes (`audio/ogg; codecs=opus`) from Meta Cloud Graph API, inspects CDN redirects, and transcribes audio via Gemini Multimodal Audio / Whisper.
+- **Multi-Tier Audio Transcription:**
+  - **Tier 1 (Primary - Groq Whisper):** Ultra-fast ~0.3s neural transcription via Groq Cloud Whisper (`whisper-large-v3-turbo`) handling raw inbound WhatsApp audio (`audio/ogg; codecs=opus`) and browser WebM recordings.
+  - **Tier 2 (Fallback - Google Gemini Multimodal Audio):** Seamless secondary fallback using Google Gemini Audio API (`gemini-2.0-flash` / `gemini-1.5-flash`).
+  - **Tier 3 & 4 (Self-Hosted & OpenAI):** Resilient fallback to self-hosted `faster-whisper` containers or OpenAI Whisper (`whisper-1`).
 - **Web Chat Widget Voice Notes:**
   - Browser Web Speech API integration capturing instant text transcripts with audio blob fallback.
   - Resilient network delivery with automatic 2-attempt backoff retry and payload optimization.
@@ -72,9 +74,12 @@ Shepherd AI operates as an intelligent 24/7 digital representative for your orga
 - Interactive workflow: Confirm, Complete, or Cancel appointments.
 - Strict anti-hallucination validation ensuring phone number or email verification before confirming appointments.
 
-### 6. 👥 WhatsApp Groups & Broadcast Scheduling
-- Automated group member synchronization.
-- **Auto-Welcome:** Sends personalized private direct messages to new members who join synced WhatsApp groups.
+### 6. 👥 WhatsApp Groups, Broadcasts & 24-Hour Messaging Policy
+- **Automated Group Sync:** Synchronizes group participants and metadata across connected WhatsApp business groups.
+- **24-Hour Customer Service Window:**
+  - Inbound messages from customers open a standard 24-hour Meta messaging session. Within this window, the AI agent and human operators can exchange conversational messages, rich multi-product media cards, voice notes, and documents freely.
+- **Meta-Approved Template Messages:**
+  - Outbound group broadcasts and auto-welcome direct messages sent outside the active 24-hour window automatically utilize pre-approved Meta WhatsApp Message Templates to ensure 100% compliance with Meta Cloud API policies.
 - **Broadcast Queue:** Schedule targeted group broadcasts immediately or at future timestamps with rescheduling and cancellation controls.
 
 ### 7. 🧠 Context-Aware Knowledge Base (RAG)
@@ -94,7 +99,7 @@ flowchart TD
     end
 
     subgraph Ingestion ["Ingestion & Edge Gateways"]
-        MetaAPI["Meta Cloud API (Webhook)"]
+        MetaAPI["Meta Cloud API v21.0 (Webhook)"]
         WidgetAPI["Web Widget API (/api/widget)"]
         DashboardUI["React 19 Frontend (Vercel)"]
     end
@@ -111,7 +116,8 @@ flowchart TD
 
     subgraph DataLayer ["Data & AI Services"]
         Postgres[(Supabase PostgreSQL)]
-        GeminiAI["Google Gemini API (3.7 Flash)"]
+        GeminiAI["Google Gemini API (2.0 / 1.5 Flash)"]
+        WhisperAI["Groq Cloud Whisper (v3 Turbo)"]
         MediaStorage["Supabase Storage / CDN"]
     end
 
@@ -124,9 +130,10 @@ flowchart TD
 
     Router --> Auth --> QuotaGuard
     QuotaGuard --> RuleEngine
-    RuleEngine -->|Rule Matched (0 Tokens)| MediaDispatcher
-    RuleEngine -->|Unmatched / Complex| GenerativePipeline
+    RuleEngine -->|"Rule Matched (0 Tokens)"| MediaDispatcher
+    RuleEngine -->|"Unmatched / Complex"| GenerativePipeline
     GenerativePipeline <--> GeminiAI
+    GenerativePipeline <--> WhisperAI
     GenerativePipeline <--> Postgres
     GenerativePipeline --> CatalogEngine
     CatalogEngine <--> Postgres
@@ -192,13 +199,25 @@ shepherd-ai/
 
 | Domain | Technology | Description |
 | --- | --- | --- |
-| **Frontend** | React 19, TypeScript, Vite 6, Vanilla CSS | Fast, responsive dashboard with zero UI bloat |
+| **Frontend** | React 19, TypeScript, Vite 6, Tailwind CSS | Fast, responsive dashboard with zero UI bloat |
 | **Backend** | Python 3.11+, FastAPI, Uvicorn, Pydantic v2 | High-performance asynchronous API framework |
 | **Database** | PostgreSQL 15+ via Supabase / SQLAlchemy | Relational storage with JSONB attribute indexing |
-| **AI Models** | Google Gemini 3.7 Flash, Groq Whisper | High-speed, multimodal LLM reasoning & transcription |
-| **Messaging** | Meta WhatsApp Business Cloud API (v18.0) | Official, scalable messaging delivery |
-| **Voice & Media** | Web Speech API, Azure Speech / Edge TTS | Voice transcription and neural audio synthesis |
+| **AI Models** | Google Gemini (2.0 Flash / 1.5 Flash), Groq Whisper | High-speed, multimodal LLM reasoning & ~0.3s voice transcription |
+| **Messaging** | Meta WhatsApp Business Cloud API (v21.0) | Official, scalable messaging delivery |
+| **Voice & Media** | Web Speech API, Azure Speech / Edge TTS | In-browser speech capture and neural audio synthesis |
 | **Hosting** | Vercel (Frontend), Render (Backend), Supabase (DB) | Fully managed modern cloud architecture |
+
+---
+
+## 💳 SaaS Subscription Plans & Quotas
+
+Shepherd AI includes built-in multi-tenant subscription quota enforcement. Each organization's message usage is tracked in real-time, backed by Paystack recurring billing integration:
+
+| Plan | Price (NGN) | Monthly AI Quota | Key Features | Target Business |
+| --- | --- | --- | --- | --- |
+| **Starter Concierge** | ₦100,000 / mo | 3,000 AI msgs | Embeddable Web Chat Widget, 100 catalog items, standard booking scheduler | Single-location boutique stores, salons, local consultancies |
+| **Growth & Omnichannel** | ₦250,000 / mo | 10,000 AI msgs | WhatsApp Cloud API + Web Widget, Groq Whisper voice notes, live chat takeover, unlimited catalog | Growing clinics, e-commerce stores, auto dealerships |
+| **Enterprise & Marketplace** | ₦500,000 / mo | Custom / Unlimited | External ERP/webhook live inventory sync, WhatsApp group broadcasts, dedicated account manager, 99.9% uptime SLA | Multi-location fleets, platforms (e.g. Rentigram), real estate firms |
 
 ---
 
@@ -238,7 +257,7 @@ shepherd-ai/
 
 ### Prerequisites
 - **Node.js**: v18.0 or higher
-- **Python**: v3.10 or higher
+- **Python**: v3.11 or higher
 - **PostgreSQL Database** or Supabase project URL
 - **Git**
 
@@ -290,18 +309,34 @@ Replace `YOUR_ORGANIZATION_UUID` with your organization ID from **Settings → O
 
 ---
 
-## 🔒 Security & Best Practices
+## 🚀 Production Deployment & Hosting
 
-- **Zero-Token Guard:** Common customer inquiries are resolved instantly by `rule_engine.py` without consuming LLM API token quotas.
-- **Quota Management:** Monthly message limit thresholds protect organizations from automated billing spikes.
-- **Human Handover Safety:** When a customer asks for a human or indicates frustration, the AI automatically enters an escalated pause state to ensure respectful communication.
-- **Production Audit Guidelines:** Refer to [SECURITY_AUDIT.md](./SECURITY_AUDIT.md) for enterprise security hardening, authentication guidelines, and SSRF prevention.
+Shepherd AI is designed to run smoothly on modern cloud platforms:
+- **Frontend:** Hosted on Vercel with automatic edge deployments.
+- **Backend:** Hosted on Render as a Python Web Service.
+- **Database:** Supabase PostgreSQL with pooled connections.
+
+> **Production Note (Render Webhook Responsiveness):**  
+> For production deployments connected to Meta WhatsApp Cloud API, run the FastAPI backend on a paid Render web service (Starter or higher). Free-tier instances spin down after 15 minutes of inactivity, introducing a 30–50 second cold-start delay on the next incoming message that may exceed Meta's 15-second webhook timeout.
 
 ---
 
-## 📄 License
+## 🔒 Security Architecture & Enterprise Governance
 
-This project is proprietary software developed by Teleiosite. All rights reserved.
+Shepherd AI adheres to strict data privacy and isolation principles:
+
+- **Multi-Tenant Row-Level Isolation:** Every database query, contact record, message history, and catalog search is strictly scoped by `organization_id` extracted from cryptographically verified JWT claims or HMAC session tokens. Organizations cannot view or modify another tenant's records.
+- **Cryptographic Webhook Verification:** Inbound Meta WhatsApp webhook payloads are validated against the `X-Hub-Signature-256` header using HMAC SHA-256 and your configured `META_APP_SECRET`. Unsigned or tampered requests are immediately dropped with `HTTP 403 Forbidden`.
+- **HMAC Session Tokens for Web Widget:** Anonymous web chat visitors receive cryptographically signed session tokens (`hmac-sha256(visitor_id + org_id, SECRET)`), preventing cross-session polling or message snooping.
+- **12-Hour Automated Human Triage Pause:** When a customer requests human intervention or sentiment analysis detects high frustration, the agent triggers `FLAG_FOR_HUMAN`. This transitions the session to `escalated` and sets `ai_paused_until = now() + 12 hours`, ensuring automated responses are suppressed until a human representative steps in or the timer expires.
+- **Prompt Injection Defense & Boundary Guardrails:** User inputs are sanitized and wrapped within explicit XML boundary delimiters before injection into the LLM context, preventing prompt hijacking, system instruction overrides, or data exfiltration.
+- **Zero-Token Rule Engine Guard:** High-volume repetitive queries (pricing rules, greetings, addresses, store hours) are handled in memory (<10ms) without invoking external LLMs, protecting against denial-of-wallet (DoW) attacks.
+
+---
+
+## 📄 License & Attribution
+
+This project is proprietary software developed by **Telekraft Solutions Limited** (Repository: [Teleiosite/shepherd-ai](https://github.com/Teleiosite/shepherd-ai)). All rights reserved.
 
 ---
 
@@ -316,6 +351,6 @@ For issues related to deployment, backend sleeping, or webhook integration (such
 
 <div align="center">
 
-**Built with ❤️ for businesses, organizations, and service providers worldwide**
+**Built with pride by Telekraft Solutions Limited for businesses, organizations, and service providers worldwide**
 
 </div>

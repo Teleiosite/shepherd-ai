@@ -18,7 +18,7 @@ class MetaWhatsAppService:
         self, 
         phone_number_id: str,
         access_token: str,
-        api_version: str = "v18.0"
+        api_version: str = "v21.0"
     ):
         self.phone_number_id = phone_number_id
         self.access_token = access_token
