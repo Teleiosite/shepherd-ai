@@ -114,6 +114,7 @@ async def initialize_flutterwave_payment(
             "email": current_user.email,
             "name": getattr(current_user, "full_name", None) or getattr(current_user, "name", None) or org.name
         },
+        "payment_options": "card,banktransfer,ussd,account,mobilemoney,opay",
         "customizations": {
             "title": f"Shepherd AI — {plan['name']}",
             "description": f"Monthly subscription ({plan['monthly_limit']:,} AI messages / month)",
