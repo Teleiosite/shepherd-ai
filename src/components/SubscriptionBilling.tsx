@@ -82,7 +82,7 @@ export default function SubscriptionBilling() {
       price: '₦100,000',
       period: '/ month',
       description: 'Ideal for single-location businesses, boutique stores, and salons.',
-      quota: '3,000 AI messages / mo',
+      quota: '1,000 AI messages / mo',
       features: [
         'Embeddable Web Chat Widget',
         'Zero Meta setup needed',

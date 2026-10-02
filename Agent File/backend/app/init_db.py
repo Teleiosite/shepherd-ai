@@ -205,16 +205,12 @@ def init_catalog_and_saas_tables():
     -- Add SaaS subscription & quota fields to organizations
     ALTER TABLE organizations ADD COLUMN IF NOT EXISTS subscription_plan VARCHAR(50) DEFAULT 'starter';
     ALTER TABLE organizations ADD COLUMN IF NOT EXISTS subscription_status VARCHAR(50) DEFAULT 'active';
-    ALTER TABLE organizations ADD COLUMN IF NOT EXISTS monthly_message_limit INTEGER DEFAULT 3000;
+    ALTER TABLE organizations ADD COLUMN IF NOT EXISTS monthly_message_limit INTEGER DEFAULT 1000;
     ALTER TABLE organizations ADD COLUMN IF NOT EXISTS messages_used_this_month INTEGER DEFAULT 0;
     ALTER TABLE organizations ADD COLUMN IF NOT EXISTS paystack_subscription_code VARCHAR(100);
     ALTER TABLE organizations ADD COLUMN IF NOT EXISTS flutterwave_tx_ref VARCHAR(100);
     ALTER TABLE organizations ADD COLUMN IF NOT EXISTS flutterwave_subscription_id VARCHAR(100);
     ALTER TABLE organizations ADD COLUMN IF NOT EXISTS groq_api_key VARCHAR(255);
-
-    -- Fix any existing orgs stuck at the old 1000 default — starter plan should be 3000
-    UPDATE organizations SET monthly_message_limit = 3000
-        WHERE subscription_plan = 'starter' AND monthly_message_limit = 1000;
 
     -- Add Universal Catalog & Webhook fields to organizations
     ALTER TABLE organizations ADD COLUMN IF NOT EXISTS catalog_mode VARCHAR(50) DEFAULT 'internal';

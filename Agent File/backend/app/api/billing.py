@@ -18,16 +18,17 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# Authoritative Plan Definitions
+# Authoritative Plan Definitions — quotas enforced server-side
 SUBSCRIPTION_PLANS: Dict[str, Dict[str, Any]] = {
     "starter": {
         "id": "starter",
         "name": "Starter Concierge",
         "price": 100000.0,
         "currency": "NGN",
-        "monthly_limit": 3000,
+        "monthly_limit": 1000,
         "period": "month",
-        "description": "Ideal for single-location businesses, boutique stores, and salons."
+        "description": "Ideal for single-location businesses, boutique stores, and salons.",
+        "features": ["web_chat", "catalog", "bookings", "knowledge_base"]
     },
     "growth": {
         "id": "growth",
@@ -36,7 +37,8 @@ SUBSCRIPTION_PLANS: Dict[str, Dict[str, Any]] = {
         "currency": "NGN",
         "monthly_limit": 10000,
         "period": "month",
-        "description": "For growing businesses, clinics, and churches needing WhatsApp + Web."
+        "description": "For growing businesses, clinics, and churches needing WhatsApp + Web.",
+        "features": ["web_chat", "catalog", "bookings", "knowledge_base", "whatsapp", "whatsapp_bridge", "voice_notes", "live_chats"]
     },
     "enterprise": {
         "id": "enterprise",
@@ -45,9 +47,27 @@ SUBSCRIPTION_PLANS: Dict[str, Dict[str, Any]] = {
         "currency": "NGN",
         "monthly_limit": 50000,
         "period": "month",
-        "description": "For platforms like Rentigram, real estate firms, and multi-location fleets."
+        "description": "For platforms like Rentigram, real estate firms, and multi-location fleets.",
+        "features": ["web_chat", "catalog", "bookings", "knowledge_base", "whatsapp", "whatsapp_bridge", "voice_notes", "live_chats", "groups", "external_webhook", "white_label"]
     }
 }
+
+# Features allowed per plan (for gating checks)
+PLAN_FEATURES = {f: plan["features"] for f, plan in SUBSCRIPTION_PLANS.items()}
+
+
+def require_plan_feature(feature: str, org: Organization):
+    """Raise 403 if the organization's plan does not include the requested feature."""
+    plan = (org.subscription_plan or "starter").lower()
+    allowed = PLAN_FEATURES.get(plan, PLAN_FEATURES["starter"])
+    if feature not in allowed:
+        plan_names = {"starter": "Starter Concierge", "growth": "Growth & Omnichannel", "enterprise": "Enterprise & Marketplace"}
+        upgrade_to = "Growth & Omnichannel" if plan == "starter" else "Enterprise & Marketplace"
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"The '{feature}' feature is not available on your {plan_names.get(plan, plan)} plan. Please upgrade to {upgrade_to}."
+        )
+
 
 
 class InitializePaymentRequest(BaseModel):

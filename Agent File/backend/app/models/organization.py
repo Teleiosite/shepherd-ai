@@ -37,7 +37,7 @@ class Organization(Base):
     # SaaS Subscription & Quotas
     subscription_plan = Column(String(50), nullable=True, default="starter")  # "starter", "growth", "enterprise"
     subscription_status = Column(String(50), nullable=True, default="active")  # "active", "trialing", "past_due"
-    monthly_message_limit = Column(Integer, nullable=True, default=3000)
+    monthly_message_limit = Column(Integer, nullable=True, default=1000)
     messages_used_this_month = Column(Integer, nullable=True, default=0)
     paystack_subscription_code = Column(String(100), nullable=True)
     flutterwave_tx_ref = Column(String(100), nullable=True)
