@@ -14,7 +14,10 @@
  */
 
 require('dotenv').config();
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, downloadMediaMessage, makeInMemoryStore, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
+const Baileys = require('@whiskeysockets/baileys');
+const makeWASocket = Baileys.default || Baileys;
+const { useMultiFileAuthState, DisconnectReason, downloadMediaMessage, fetchLatestBaileysVersion } = Baileys;
+const makeInMemoryStore = Baileys.makeInMemoryStore || (Baileys.default && Baileys.default.makeInMemoryStore);
 const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
@@ -47,8 +50,15 @@ let latestQRString = null; // Raw QR string
 const sentMessageIds = new Set();
 const SENT_MESSAGE_TTL = 60000;
 
-// In-memory store for message retry
-const store = makeInMemoryStore({ logger });
+// In-memory store for message retry (optional, safely initialized)
+let store = null;
+if (typeof makeInMemoryStore === 'function') {
+    try {
+        store = makeInMemoryStore({ logger });
+    } catch (e) {
+        console.warn('⚠️ Could not initialize in-memory store:', e.message);
+    }
+}
 
 // =================== EXPRESS SETUP ===================
 
@@ -371,8 +381,10 @@ async function initializeWhatsApp() {
             generateHighQualityLinkPreview: false,
         });
 
-        // Bind store to socket
-        store.bind(sock.ev);
+        // Bind store to socket if available
+        if (store && typeof store.bind === 'function') {
+            store.bind(sock.ev);
+        }
 
         // Handle connection updates
         sock.ev.on('connection.update', async (update) => {
