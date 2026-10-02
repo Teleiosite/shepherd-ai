@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { CreditCard, Check, Zap, Shield, Star, ArrowUpRight, Clock, MessageSquare, AlertCircle } from 'lucide-react';
+import { CreditCard, Check, Zap, Shield, Star, ArrowUpRight, Clock, MessageSquare, AlertCircle, Loader2 } from 'lucide-react';
 import { BACKEND_URL } from '../services/env';
 
 export default function SubscriptionBilling() {
@@ -8,27 +8,69 @@ export default function SubscriptionBilling() {
   const [monthlyLimit, setMonthlyLimit] = useState(1000);
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    // Read from DB or organization
-    const fetchUsage = async () => {
-      try {
-        const token = localStorage.getItem('authToken');
-        if (token) {
-          const res = await fetch(`${BACKEND_URL}/api/settings/ai-config`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-          });
-          if (res.ok) {
-            const data = await res.json();
-            if (data.subscription_plan) setCurrentPlan(data.subscription_plan);
-            if (data.messages_used_this_month !== undefined) setMessagesUsed(data.messages_used_this_month);
-            if (data.monthly_message_limit !== undefined) setMonthlyLimit(data.monthly_message_limit);
-          }
+  const [loadingPlanId, setLoadingPlanId] = useState<string | null>(null);
+  const [notification, setNotification] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
+
+  const fetchUsage = async () => {
+    try {
+      const token = localStorage.getItem('authToken');
+      if (token) {
+        const res = await fetch(`${BACKEND_URL}/api/settings/ai-config`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.subscription_plan) setCurrentPlan(data.subscription_plan);
+          if (data.messages_used_this_month !== undefined) setMessagesUsed(data.messages_used_this_month);
+          if (data.monthly_message_limit !== undefined) setMonthlyLimit(data.monthly_message_limit);
         }
-      } catch (err) {
-        console.error('Failed to fetch subscription usage:', err);
+      }
+    } catch (err) {
+      console.error('Failed to fetch subscription usage:', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchUsage();
+
+    // Check for Flutterwave redirect callback
+    const checkVerification = async () => {
+      const hash = window.location.hash || '';
+      const search = window.location.search || '';
+      const combined = `${search}&${hash.split('?')[1] || ''}`;
+      const params = new URLSearchParams(combined);
+      
+      const txRef = params.get('tx_ref');
+      const statusParam = params.get('status');
+      const isFlw = params.get('verify') === 'flutterwave' || !!txRef;
+
+      if (isFlw && txRef) {
+        setNotification({ type: 'info', message: 'Verifying payment with Flutterwave...' });
+        try {
+          const res = await fetch(`${BACKEND_URL}/api/billing/flutterwave/verify/${txRef}`);
+          const data = await res.json();
+          if (res.ok && data.status === 'success') {
+            setNotification({
+              type: 'success',
+              message: `Payment confirmed! Upgraded to ${data.plan_name} with ${data.monthly_limit?.toLocaleString()} AI messages/month.`
+            });
+            await fetchUsage();
+          } else {
+            setNotification({
+              type: statusParam === 'cancelled' ? 'info' : 'error',
+              message: data.message || (statusParam === 'cancelled' ? 'Payment was cancelled.' : 'Payment verification failed.')
+            });
+          }
+        } catch (err) {
+          setNotification({ type: 'error', message: 'Unable to verify payment with server.' });
+        }
+
+        // Clean up URL parameters without full page reload
+        window.history.replaceState({}, document.title, window.location.pathname + '#/billing');
       }
     };
-    fetchUsage();
+
+    checkVerification();
   }, []);
 
   const usagePercent = Math.min(100, Math.round((messagesUsed / monthlyLimit) * 100));
@@ -87,17 +129,47 @@ export default function SubscriptionBilling() {
     }
   ];
 
-  const handleUpgrade = (planId: string) => {
-    const plan = plans.find(p => p.id === planId);
-    const planName = plan ? plan.name : planId.toUpperCase();
-    const planPrice = plan ? plan.price : '';
-    alert(
-      `Paystack Subscription — ${planName} (${planPrice}/month)\n\n` +
-      `To connect live Paystack payments in your deployment:\n` +
-      `1. Log into your Paystack Dashboard (dashboard.paystack.com -> Payment Pages or Plans)\n` +
-      `2. Create a monthly recurring plan for ${planPrice}\n` +
-      `3. Once connected, clicking this button securely charges subscribers via Debit Card, Bank Transfer, or USSD and automatically upgrades their monthly quota!`
-    );
+  const handleUpgrade = async (planId: string) => {
+    const token = localStorage.getItem('authToken');
+    if (!token) {
+      setNotification({ type: 'error', message: 'Please log in to upgrade your subscription plan.' });
+      return;
+    }
+
+    setLoadingPlanId(planId);
+    setNotification(null);
+
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/billing/flutterwave/initialize`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          plan_id: planId,
+          redirect_url: `${window.location.origin}/#/billing`
+        })
+      });
+
+      const data = await res.json();
+      if (res.ok && data.payment_url) {
+        // Redirect customer to Flutterwave secure hosted checkout
+        window.location.href = data.payment_url;
+      } else {
+        setNotification({
+          type: 'error',
+          message: data.detail || 'Could not initiate Flutterwave checkout. Please check server keys.'
+        });
+      }
+    } catch (err) {
+      setNotification({
+        type: 'error',
+        message: 'Network error connecting to payment gateway.'
+      });
+    } finally {
+      setLoadingPlanId(null);
+    }
   };
 
   return (
@@ -112,6 +184,28 @@ export default function SubscriptionBilling() {
           Manage your organization plan, monthly message quotas, and recurring billing.
         </p>
       </div>
+
+      {/* Notification Banner */}
+      {notification && (
+        <div
+          className={`p-4 rounded-xl text-sm font-medium flex items-center justify-between border ${
+            notification.type === 'success'
+              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+              : notification.type === 'error'
+              ? 'bg-rose-50 text-rose-800 border-rose-200'
+              : 'bg-blue-50 text-blue-800 border-blue-200'
+          }`}
+        >
+          <span>{notification.message}</span>
+          <button
+            type="button"
+            onClick={() => setNotification(null)}
+            className="text-xs font-bold underline ml-4 hover:opacity-75 cursor-pointer"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* Quota Exceeded Warning Banner */}
       {messagesUsed >= monthlyLimit && (
@@ -162,6 +256,7 @@ export default function SubscriptionBilling() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-2">
         {plans.map((p) => {
           const isCurrent = currentPlan === p.id;
+          const isLoading = loadingPlanId === p.id;
           return (
             <div
               key={p.id}
@@ -207,8 +302,8 @@ export default function SubscriptionBilling() {
                 <button
                   type="button"
                   onClick={() => handleUpgrade(p.id)}
-                  disabled={isCurrent}
-                  className={`w-full py-2.5 rounded-xl text-xs font-bold transition-all ${
+                  disabled={isCurrent || loadingPlanId !== null}
+                  className={`w-full py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
                     isCurrent
                       ? 'bg-slate-100 text-slate-400 cursor-default'
                       : p.popular
@@ -216,7 +311,16 @@ export default function SubscriptionBilling() {
                       : 'bg-slate-900 hover:bg-slate-800 text-white active:scale-98'
                   }`}
                 >
-                  {isCurrent ? 'Current Plan' : 'Select Plan'}
+                  {isLoading ? (
+                    <>
+                      <Loader2 size={14} className="animate-spin" />
+                      <span>Opening Flutterwave...</span>
+                    </>
+                  ) : isCurrent ? (
+                    'Current Plan'
+                  ) : (
+                    'Select Plan'
+                  )}
                 </button>
               </div>
             </div>

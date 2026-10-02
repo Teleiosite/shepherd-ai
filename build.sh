@@ -1,18 +1,14 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Render build script for Shepherd AI Backend
+set -o errexit
 
-set -o errexit  # Exit on error
+echo "Starting Shepherd AI Backend build..."
 
-echo "🚀 Starting Shepherd AI Backend build..."
+# Upgrade build tools
+python -m pip install --upgrade pip setuptools wheel
 
-# Upgrade pip, setuptools, and wheel first
-echo "⬆️ Upgrading build tools..."
-pip install --upgrade pip setuptools wheel
-
-# Navigate to backend directory
+# Install dependencies in backend directory
 cd "Agent File/backend"
+python -m pip install -r requirements.txt
 
-echo "📦 Installing Python dependencies..."
-pip install -r requirements.txt
-
-echo "✅ Build complete!"
+echo "Build complete!"

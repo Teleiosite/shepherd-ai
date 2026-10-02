@@ -27,6 +27,11 @@ class Settings(BaseSettings):
     whatsapp_verify_token: str = "shepherd_ai_verify_token"
     meta_app_secret: str = ""
     
+    # Payments - Flutterwave
+    flutterwave_public_key: Optional[str] = None
+    flutterwave_secret_key: Optional[str] = None
+    flutterwave_secret_hash: Optional[str] = "shepherd_flutterwave_secret_hash"
+    
     # App
     environment: str = "development"
     frontend_url: str = "http://localhost:3000"

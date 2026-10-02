@@ -40,6 +40,8 @@ class Organization(Base):
     monthly_message_limit = Column(Integer, nullable=True, default=1000)
     messages_used_this_month = Column(Integer, nullable=True, default=0)
     paystack_subscription_code = Column(String(100), nullable=True)
+    flutterwave_tx_ref = Column(String(100), nullable=True)
+    flutterwave_subscription_id = Column(String(100), nullable=True)
 
     # Universal Catalog & External Webhook
     catalog_mode = Column(String(50), nullable=True, default="internal")  # "internal", "external_webhook"

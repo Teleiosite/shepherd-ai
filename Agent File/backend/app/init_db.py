@@ -208,6 +208,8 @@ def init_catalog_and_saas_tables():
     ALTER TABLE organizations ADD COLUMN IF NOT EXISTS monthly_message_limit INTEGER DEFAULT 1000;
     ALTER TABLE organizations ADD COLUMN IF NOT EXISTS messages_used_this_month INTEGER DEFAULT 0;
     ALTER TABLE organizations ADD COLUMN IF NOT EXISTS paystack_subscription_code VARCHAR(100);
+    ALTER TABLE organizations ADD COLUMN IF NOT EXISTS flutterwave_tx_ref VARCHAR(100);
+    ALTER TABLE organizations ADD COLUMN IF NOT EXISTS flutterwave_subscription_id VARCHAR(100);
     ALTER TABLE organizations ADD COLUMN IF NOT EXISTS groq_api_key VARCHAR(255);
 
     -- Add Universal Catalog & Webhook fields to organizations
