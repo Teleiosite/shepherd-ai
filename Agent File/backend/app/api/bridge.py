@@ -47,6 +47,12 @@ async def get_connection_code(
     Returns:
         Connection code and instructions
     """
+    from app.models.organization import Organization
+    from app.api.billing import require_plan_feature
+    org = db.query(Organization).filter(Organization.id == current_user.organization_id).first()
+    if org:
+        require_plan_feature("whatsapp_bridge", org)
+
     # Generate simple code from user ID (first 8 chars uppercase)
     code = str(current_user.id)[:8].upper()
     

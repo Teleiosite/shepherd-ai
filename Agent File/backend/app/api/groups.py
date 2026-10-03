@@ -35,6 +35,15 @@ def get_user_by_connection_code(code: str, db: Session) -> User:
     return user
 
 
+def verify_group_access(user: User, db: Session):
+    """Verify user organization has Enterprise plan for WhatsApp Groups."""
+    from app.models.organization import Organization
+    from app.api.billing import require_plan_feature
+    org = db.query(Organization).filter(Organization.id == user.organization_id).first()
+    if org:
+        require_plan_feature("groups", org)
+
+
 # ==================== GROUPS ====================
 
 @router.get("/", response_model=List[GroupResponse])
@@ -49,6 +58,7 @@ async def list_groups(
         user = get_user_by_connection_code(code, db)
     elif current_user:
         user = current_user
+        verify_group_access(user, db)
     else:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -350,6 +360,8 @@ async def create_group_message(
     db: Session = Depends(get_db)
 ):
     """Create a new group message (broadcast or scheduled)."""
+    verify_group_access(current_user, db)
+
     group = db.query(Group).filter(
         Group.id == group_id,
         Group.organization_id == current_user.organization_id

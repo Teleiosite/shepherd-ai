@@ -1,7 +1,26 @@
 
 import React, { useState, useEffect, useRef as _useRef } from 'react';
 import { HashRouter, Routes, Route, Link, useLocation, useNavigate, Navigate } from 'react-router-dom';
-import { LayoutDashboard, Users, BookOpen, Send, Menu, Settings as SettingsIcon, MessageCircle, Zap, Loader2, LogOut, Calendar, Bot, Package, Globe, CreditCard } from 'lucide-react';
+import {
+  LayoutDashboard, Users, BookOpen, Send, Menu, Settings as SettingsIcon,
+  MessageCircle, Zap, Loader2, LogOut, Calendar, Bot, Package, Globe,
+  CreditCard, Lock, Sparkles, ArrowRight, X
+} from 'lucide-react';
+import { BACKEND_URL } from './services/env';
+
+export type PlanTier = 'starter' | 'growth' | 'enterprise';
+
+export const PLAN_LEVELS: Record<PlanTier, number> = {
+  starter: 1,
+  growth: 2,
+  enterprise: 3
+};
+
+export const PLAN_DETAILS: Record<PlanTier, { name: string; price: string }> = {
+  starter: { name: 'Starter Concierge', price: '₦100,000/mo' },
+  growth: { name: 'Growth & Omnichannel', price: '₦250,000/mo' },
+  enterprise: { name: 'Enterprise & Marketplace', price: '₦500,000/mo' }
+};
 import Dashboard from './components/Dashboard';
 import ContactsManager from './components/ContactsManager';
 import KnowledgeBase from './components/KnowledgeBase-enhanced';
@@ -207,6 +226,43 @@ function App() {
     };
     checkAuth();
   }, []);
+
+  // Organization Plan State & Locked Feature Modal
+  const [userPlan, setUserPlan] = useState<PlanTier>('starter');
+  const [lockedFeatureModal, setLockedFeatureModal] = useState<{
+    isOpen: boolean;
+    featureName: string;
+    requiredPlan: 'growth' | 'enterprise';
+    description: string;
+  } | null>(null);
+
+  useEffect(() => {
+    const fetchUserPlan = async () => {
+      try {
+        const token = localStorage.getItem('authToken');
+        if (token) {
+          const res = await fetch(`${BACKEND_URL}/api/settings/ai-config`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.subscription_plan) {
+              const p = data.subscription_plan.toLowerCase() as PlanTier;
+              if (['starter', 'growth', 'enterprise'].includes(p)) {
+                setUserPlan(p);
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load organization plan:', err);
+      }
+    };
+
+    if (user) {
+      fetchUserPlan();
+    }
+  }, [user]);
 
   // Data State - Initialize as empty and load from backend
   const [contacts, setContacts] = useState<Contact[]>([]);
@@ -1005,36 +1061,162 @@ function App() {
     setAuthModalView(null);
   };
 
-  const NavItem = ({ to, icon: Icon, label, badge }: { to: string, icon: any, label: string, badge?: number }) => {
+  const NavItem = ({
+    to,
+    icon: Icon,
+    label,
+    badge,
+    requiredPlan,
+    featureName,
+    description
+  }: {
+    to: string;
+    icon: any;
+    label: string;
+    badge?: number;
+    requiredPlan?: PlanTier;
+    featureName?: string;
+    description?: string;
+  }) => {
     const location = useLocation();
     const isActive = location.pathname === to;
+    const isLocked = requiredPlan ? (PLAN_LEVELS[userPlan] < PLAN_LEVELS[requiredPlan]) : false;
+
+    const handleClick = (e: React.MouseEvent) => {
+      if (isLocked) {
+        e.preventDefault();
+        setLockedFeatureModal({
+          isOpen: true,
+          featureName: featureName || label,
+          requiredPlan: requiredPlan!,
+          description: description || `Upgrade to ${PLAN_DETAILS[requiredPlan!].name} to unlock full access to this feature.`
+        });
+        return;
+      }
+      if (window.innerWidth < 768) {
+        setSidebarOpen(false);
+      }
+    };
+
     return (
       <Link
-        to={to}
-        onClick={() => {
-          if (window.innerWidth < 768) {
-            setSidebarOpen(false);
-          }
-        }}
-        className={`flex items-center justify-between px-4 py-3 rounded-xl transition-all duration-200 text-base ${isActive
-          ? 'font-medium'
-          : 'hover:bg-white/10'
-          }`}
+        to={isLocked ? '#' : to}
+        onClick={handleClick}
+        className={`flex items-center justify-between px-4 py-3 rounded-xl transition-all duration-200 text-base ${
+          isActive && !isLocked
+            ? 'font-medium'
+            : isLocked
+            ? 'opacity-85 hover:opacity-100 hover:bg-white/5 cursor-pointer'
+            : 'hover:bg-white/10 cursor-pointer'
+        }`}
         style={{
-          backgroundColor: isActive ? 'var(--teal-500)' : 'transparent',
-          color: isActive ? 'white' : 'var(--teal-100)'
+          backgroundColor: isActive && !isLocked ? 'var(--teal-500)' : 'transparent',
+          color: isActive && !isLocked ? 'white' : 'var(--teal-100)'
         }}
       >
-        <div className="flex items-center gap-3">
-          <Icon size={22} />
-          {isSidebarOpen && <span>{label}</span>}
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="relative shrink-0 flex items-center justify-center">
+            <Icon size={22} />
+            {isLocked && !isSidebarOpen && (
+              <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-amber-400 rounded-full ring-2 ring-forest-500" />
+            )}
+          </div>
+          {isSidebarOpen && <span className="truncate">{label}</span>}
         </div>
-        {badge && badge > 0 ? (
-          <span className="bg-teal-300 text-forest-900 text-xs font-bold px-2 py-0.5 rounded-full">
-            {badge}
-          </span>
-        ) : null}
+
+        {isSidebarOpen && (
+          <div className="flex items-center gap-1.5 shrink-0 ml-2">
+            {badge && badge > 0 && !isLocked ? (
+              <span className="bg-teal-300 text-forest-900 text-xs font-bold px-2 py-0.5 rounded-full">
+                {badge}
+              </span>
+            ) : null}
+            {isLocked && (
+              <span className={`text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full flex items-center gap-1 border ${
+                requiredPlan === 'enterprise'
+                  ? 'bg-purple-500/20 text-purple-200 border-purple-400/40'
+                  : 'bg-amber-400/20 text-amber-200 border-amber-400/40'
+              }`}>
+                <Lock size={10} />
+                <span>{requiredPlan === 'enterprise' ? 'Ent' : 'Growth'}</span>
+              </span>
+            )}
+          </div>
+        )}
       </Link>
+    );
+  };
+
+  const PlanProtectedPage = ({
+    featureName,
+    requiredPlan,
+    description,
+    children
+  }: {
+    featureName: string;
+    requiredPlan: 'growth' | 'enterprise';
+    description: string;
+    children: React.ReactNode;
+  }) => {
+    const isAllowed = PLAN_LEVELS[userPlan] >= PLAN_LEVELS[requiredPlan];
+    if (isAllowed) {
+      return <>{children}</>;
+    }
+
+    return (
+      <div className="min-h-[70vh] flex flex-col items-center justify-center text-center p-6 max-w-lg mx-auto animate-fade-in">
+        <div className="w-16 h-16 rounded-3xl bg-amber-50 text-amber-600 flex items-center justify-center mb-6 ring-8 ring-amber-50 shadow-xs">
+          <Lock size={30} />
+        </div>
+        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider mb-3 bg-amber-100 text-amber-800">
+          <Sparkles size={12} />
+          {requiredPlan === 'enterprise' ? 'Enterprise & Marketplace Plan' : 'Growth & Omnichannel Plan'}
+        </div>
+        <h2 className="text-2xl font-bold text-slate-900">
+          {featureName} is Locked
+        </h2>
+        <p className="text-sm text-slate-500 mt-2 max-w-md leading-relaxed">
+          {description}
+        </p>
+
+        <div className="bg-white border border-slate-200 rounded-2xl p-5 my-6 text-left w-full shadow-xs">
+          <p className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-2">
+            Why upgrade to {requiredPlan === 'enterprise' ? 'Enterprise' : 'Growth'}?
+          </p>
+          {requiredPlan === 'enterprise' ? (
+            <ul className="text-xs text-slate-600 space-y-1.5 list-disc list-inside">
+              <li>Manage unlimited WhatsApp groups & auto-welcome new members</li>
+              <li>Real-time webhook sync for external databases & inventory</li>
+              <li>50,000 AI messages per month allowance</li>
+              <li>Dedicated account manager & priority SLA</li>
+            </ul>
+          ) : (
+            <ul className="text-xs text-slate-600 space-y-1.5 list-disc list-inside">
+              <li>WhatsApp Cloud API + WhatsApp Bridge QR pairing</li>
+              <li>Live Chats human takeover dashboard</li>
+              <li>Voice note audio transcription powered by Whisper</li>
+              <li>Automated multi-step drip workflows</li>
+              <li>10,000 AI messages per month allowance</li>
+            </ul>
+          )}
+        </div>
+
+        <div className="flex flex-col sm:flex-row gap-3 w-full justify-center">
+          <Link
+            to="/billing"
+            className="py-3 px-6 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-sm shadow-md shadow-teal-600/20 active:scale-98 transition-all flex items-center justify-center gap-2"
+          >
+            <span>Upgrade to {requiredPlan === 'enterprise' ? 'Enterprise (₦500k/mo)' : 'Growth (₦250k/mo)'}</span>
+            <ArrowRight size={16} />
+          </Link>
+          <Link
+            to="/billing"
+            className="py-3 px-6 rounded-xl border border-slate-200 text-slate-600 font-semibold text-sm hover:bg-slate-50 transition-colors text-center"
+          >
+            View All Plans
+          </Link>
+        </div>
+      </div>
     );
   };
 
@@ -1092,16 +1274,52 @@ function App() {
           <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
             <NavItem to="/" icon={LayoutDashboard} label="Dashboard" />
             <NavItem to="/contacts" icon={Users} label="Contacts" />
-            <NavItem to="/chats" icon={MessageCircle} label="Live Chats" badge={logs.filter(l => l.type === 'Inbound' && l.status !== MessageStatus.RESPONDED).length} />
+            <NavItem
+              to="/chats"
+              icon={MessageCircle}
+              label="Live Chats"
+              badge={logs.filter(l => l.type === 'Inbound' && l.status !== MessageStatus.RESPONDED).length}
+              requiredPlan="growth"
+              featureName="Live Chats Takeover"
+              description="Monitor incoming customer inquiries across WhatsApp and web chat and take over live in real time."
+            />
             <NavItem to="/catalog" icon={Package} label="Catalog & Offerings" />
             <NavItem to="/widget" icon={Globe} label="Website Widget" />
             <NavItem to="/billing" icon={CreditCard} label="Subscription" />
             <NavItem to="/bookings" icon={Calendar} label="Bookings" />
-            <NavItem to="/library" icon={Bot} label="Media Library" />
+            <NavItem
+              to="/library"
+              icon={Bot}
+              label="Media Library"
+              requiredPlan="growth"
+              featureName="Media Library & Attachments"
+              description="Upload brochures, catalogs, PDFs, and audio notes to auto-send to your leads on WhatsApp."
+            />
             <NavItem to="/knowledge" icon={BookOpen} label="Knowledge Base" />
-            <NavItem to="/workflows" icon={Zap} label="Workflows" />
-            <NavItem to="/groups" icon={Users} label="Groups" />
-            <NavItem to="/campaigns" icon={Send} label="Generate & Send" />
+            <NavItem
+              to="/workflows"
+              icon={Zap}
+              label="Workflows"
+              requiredPlan="growth"
+              featureName="Automated Workflows"
+              description="Schedule automated multi-day follow-up tracks, drip sequences, and automatic check-ins."
+            />
+            <NavItem
+              to="/groups"
+              icon={Users}
+              label="Groups"
+              requiredPlan="enterprise"
+              featureName="WhatsApp Community Groups"
+              description="Manage multiple WhatsApp groups, broadcast announcements, and auto-welcome new members as they join."
+            />
+            <NavItem
+              to="/campaigns"
+              icon={Send}
+              label="Generate & Send"
+              requiredPlan="growth"
+              featureName="Bulk Campaigns & Blasts"
+              description="Generate personalized AI messages and broadcast them across your WhatsApp contact list."
+            />
             <NavItem to="/settings" icon={SettingsIcon} label="Settings" />
           </nav>
 
@@ -1142,35 +1360,75 @@ function App() {
             <Routes>
               <Route path="/" element={<Dashboard contacts={contacts} logs={logs} resources={resources} organizationName={organizationName} />} />
               <Route path="/contacts" element={<ContactsManager contacts={contacts} setContacts={setContacts} onAddContact={handleContactAdded} categories={categories} onAddCategory={handleAddCategory} />} />
-              <Route path="/chats" element={<LiveChats
-                contacts={contacts}
-                logs={logs}
-                setLogs={setLogs}
-                suggestedReplies={suggestedReplies}
-                onClearSuggestion={(contactId) => setSuggestedReplies(prev => { const n = {...prev}; delete n[contactId]; return n; })}
-                onRegenerateSuggestion={(contactId) => {
-                  const contact = contacts.find(c => c.id === contactId);
-                  if (!contact) return;
-                  const history = logs.filter(l => l.contactId === contactId);
-                  const media = getMediaFiles();
-                  setSuggestedReplies(prev => { const n = {...prev}; delete n[contactId]; return n; });
-                  generateAgentReply(contact, '(regenerate)', history, resources, media, aiName, organizationName)
-                    .then(result => {
-                      if (result.reply) setSuggestedReplies(prev => ({ ...prev, [contactId]: { contactId, reply: result.reply, action: result.action, generatedAt: new Date().toISOString() } }));
-                    }).catch(console.error);
-                }}
-                organizationName={organizationName}
-                mediaFiles={mediaFiles}
-              />} />
+              <Route path="/chats" element={
+                <PlanProtectedPage
+                  featureName="Live Chats Takeover"
+                  requiredPlan="growth"
+                  description="Monitor incoming customer inquiries across WhatsApp and web chat and take over live in real time."
+                >
+                  <LiveChats
+                    contacts={contacts}
+                    logs={logs}
+                    setLogs={setLogs}
+                    suggestedReplies={suggestedReplies}
+                    onClearSuggestion={(contactId) => setSuggestedReplies(prev => { const n = {...prev}; delete n[contactId]; return n; })}
+                    onRegenerateSuggestion={(contactId) => {
+                      const contact = contacts.find(c => c.id === contactId);
+                      if (!contact) return;
+                      const history = logs.filter(l => l.contactId === contactId);
+                      const media = getMediaFiles();
+                      setSuggestedReplies(prev => { const n = {...prev}; delete n[contactId]; return n; });
+                      generateAgentReply(contact, '(regenerate)', history, resources, media, aiName, organizationName)
+                        .then(result => {
+                          if (result.reply) setSuggestedReplies(prev => ({ ...prev, [contactId]: { contactId, reply: result.reply, action: result.action, generatedAt: new Date().toISOString() } }));
+                        }).catch(console.error);
+                    }}
+                    organizationName={organizationName}
+                    mediaFiles={mediaFiles}
+                  />
+                </PlanProtectedPage>
+              } />
               <Route path="/catalog" element={<CatalogManager />} />
               <Route path="/widget" element={<WidgetConfigurator />} />
               <Route path="/billing" element={<SubscriptionBilling />} />
               <Route path="/bookings" element={<Bookings />} />
-              <Route path="/library" element={<MediaLibrary />} />
+              <Route path="/library" element={
+                <PlanProtectedPage
+                  featureName="Media Library & Attachments"
+                  requiredPlan="growth"
+                  description="Upload brochures, catalogs, PDFs, and audio notes to auto-send to your leads on WhatsApp."
+                >
+                  <MediaLibrary />
+                </PlanProtectedPage>
+              } />
               <Route path="/knowledge" element={<KnowledgeBase resources={resources} setResources={setResources} />} />
-              <Route path="/workflows" element={<WorkflowsManager />} />
-              <Route path="/groups" element={<Groups />} />
-              <Route path="/campaigns" element={<CampaignScheduler contacts={contacts} resources={resources} logs={logs} setLogs={setLogs} aiName={aiName} organizationName={organizationName} categories={categories} />} />
+              <Route path="/workflows" element={
+                <PlanProtectedPage
+                  featureName="Automated Workflows"
+                  requiredPlan="growth"
+                  description="Schedule automated multi-day follow-up tracks, drip sequences, and automatic check-ins."
+                >
+                  <WorkflowsManager />
+                </PlanProtectedPage>
+              } />
+              <Route path="/groups" element={
+                <PlanProtectedPage
+                  featureName="WhatsApp Community Groups"
+                  requiredPlan="enterprise"
+                  description="Manage multiple WhatsApp groups, broadcast announcements, and auto-welcome new members as they join."
+                >
+                  <Groups />
+                </PlanProtectedPage>
+              } />
+              <Route path="/campaigns" element={
+                <PlanProtectedPage
+                  featureName="Bulk Campaigns & Blasts"
+                  requiredPlan="growth"
+                  description="Generate personalized AI messages and broadcast them across your WhatsApp contact list."
+                >
+                  <CampaignScheduler contacts={contacts} resources={resources} logs={logs} setLogs={setLogs} aiName={aiName} organizationName={organizationName} categories={categories} />
+                </PlanProtectedPage>
+              } />
               <Route path="/settings" element={<Settings
                 aiName={aiName}
                 setAiName={setAiName}
@@ -1203,6 +1461,78 @@ function App() {
         </main>
 
         <MobileBottomNav />
+
+        {/* Feature Lock Upgrade Modal */}
+        {lockedFeatureModal && lockedFeatureModal.isOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in">
+            <div className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-8 shadow-2xl border border-slate-100 relative animate-scale-up">
+              <button
+                type="button"
+                onClick={() => setLockedFeatureModal(null)}
+                className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-2 rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                <X size={20} />
+              </button>
+
+              <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mb-4 ring-8 ring-amber-50/50">
+                <Lock size={24} />
+              </div>
+
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider mb-2 bg-amber-100 text-amber-800">
+                <Sparkles size={12} />
+                {lockedFeatureModal.requiredPlan === 'enterprise' ? 'Enterprise Tier Feature' : 'Growth Tier Feature'}
+              </div>
+
+              <h3 className="text-xl font-bold text-slate-900">
+                Unlock {lockedFeatureModal.featureName}
+              </h3>
+
+              <p className="text-sm text-slate-600 mt-2 leading-relaxed">
+                {lockedFeatureModal.description}
+              </p>
+
+              <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 my-5 space-y-2 text-xs text-slate-700">
+                <p className="font-semibold text-slate-900">
+                  Included in {lockedFeatureModal.requiredPlan === 'enterprise' ? 'Enterprise & Marketplace (₦500k/mo)' : 'Growth & Omnichannel (₦250k/mo)'}:
+                </p>
+                {lockedFeatureModal.requiredPlan === 'enterprise' ? (
+                  <ul className="space-y-1.5 list-disc list-inside text-slate-600">
+                    <li>WhatsApp Groups auto-welcome & blasts</li>
+                    <li>Real-time external API catalog sync</li>
+                    <li>50,000 AI messages / month</li>
+                    <li>Dedicated account manager & 99.9% SLA</li>
+                  </ul>
+                ) : (
+                  <ul className="space-y-1.5 list-disc list-inside text-slate-600">
+                    <li>WhatsApp Cloud API + WhatsApp Bridge QR pairing</li>
+                    <li>Live Chats human takeover dashboard</li>
+                    <li>Voice note speech transcription (Whisper)</li>
+                    <li>Automated Workflows & Broadcasts</li>
+                    <li>10,000 AI messages / month</li>
+                  </ul>
+                )}
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-3">
+                <Link
+                  to="/billing"
+                  onClick={() => setLockedFeatureModal(null)}
+                  className="flex-1 py-3 px-4 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-sm text-center shadow-md shadow-teal-600/20 active:scale-98 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <span>Upgrade to {lockedFeatureModal.requiredPlan === 'enterprise' ? 'Enterprise' : 'Growth'}</span>
+                  <ArrowRight size={16} />
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => setLockedFeatureModal(null)}
+                  className="py-3 px-4 rounded-xl border border-slate-200 text-slate-600 font-semibold text-sm hover:bg-slate-50 transition-colors cursor-pointer"
+                >
+                  Maybe Later
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </HashRouter>
   );

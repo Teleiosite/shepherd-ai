@@ -135,6 +135,13 @@ async def send_whatsapp_message(
     """
     logger.info(f"User {current_user.id} sending message to {message.phone}")
     
+    # Check plan permission
+    from app.models.organization import Organization
+    from app.api.billing import require_plan_feature
+    org = db.query(Organization).filter(Organization.id == current_user.organization_id).first()
+    if org:
+        require_plan_feature("whatsapp", org)
+
     # Get organization's WhatsApp configuration
     config = get_organization_whatsapp_config(db, current_user.organization_id)
     
@@ -227,6 +234,13 @@ async def send_whatsapp_media(
     """
     logger.info(f"User {current_user.id} sending {media.media_type} to {media.phone}")
     
+    # Check plan permission
+    from app.models.organization import Organization
+    from app.api.billing import require_plan_feature
+    org = db.query(Organization).filter(Organization.id == current_user.organization_id).first()
+    if org:
+        require_plan_feature("whatsapp", org)
+
     # Get organization's WhatsApp configuration
     config = get_organization_whatsapp_config(db, current_user.organization_id)
     

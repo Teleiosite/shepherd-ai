@@ -28,7 +28,7 @@ SUBSCRIPTION_PLANS: Dict[str, Dict[str, Any]] = {
         "monthly_limit": 1000,
         "period": "month",
         "description": "Ideal for single-location businesses, boutique stores, and salons.",
-        "features": ["web_chat", "catalog", "bookings", "knowledge_base"]
+        "features": ["web_chat", "catalog", "bookings", "knowledge_base", "contacts", "dashboard", "settings"]
     },
     "growth": {
         "id": "growth",
@@ -38,7 +38,7 @@ SUBSCRIPTION_PLANS: Dict[str, Dict[str, Any]] = {
         "monthly_limit": 10000,
         "period": "month",
         "description": "For growing businesses, clinics, and churches needing WhatsApp + Web.",
-        "features": ["web_chat", "catalog", "bookings", "knowledge_base", "whatsapp", "whatsapp_bridge", "voice_notes", "live_chats"]
+        "features": ["web_chat", "catalog", "bookings", "knowledge_base", "contacts", "dashboard", "settings", "whatsapp", "whatsapp_bridge", "voice_notes", "live_chats", "workflows", "campaigns", "media_library"]
     },
     "enterprise": {
         "id": "enterprise",
@@ -48,7 +48,7 @@ SUBSCRIPTION_PLANS: Dict[str, Dict[str, Any]] = {
         "monthly_limit": 50000,
         "period": "month",
         "description": "For platforms like Rentigram, real estate firms, and multi-location fleets.",
-        "features": ["web_chat", "catalog", "bookings", "knowledge_base", "whatsapp", "whatsapp_bridge", "voice_notes", "live_chats", "groups", "external_webhook", "white_label"]
+        "features": ["web_chat", "catalog", "bookings", "knowledge_base", "contacts", "dashboard", "settings", "whatsapp", "whatsapp_bridge", "voice_notes", "live_chats", "workflows", "campaigns", "media_library", "groups", "external_webhook", "white_label"]
     }
 }
 
