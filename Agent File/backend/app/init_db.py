@@ -212,6 +212,10 @@ def init_catalog_and_saas_tables():
     ALTER TABLE organizations ADD COLUMN IF NOT EXISTS flutterwave_subscription_id VARCHAR(100);
     ALTER TABLE organizations ADD COLUMN IF NOT EXISTS groq_api_key VARCHAR(255);
 
+    -- Ensure starter plan quota is strictly 1000 messages in DB
+    UPDATE organizations SET monthly_message_limit = 1000
+        WHERE (subscription_plan = 'starter' OR subscription_plan IS NULL) AND monthly_message_limit != 1000;
+
     -- Add Universal Catalog & Webhook fields to organizations
     ALTER TABLE organizations ADD COLUMN IF NOT EXISTS catalog_mode VARCHAR(50) DEFAULT 'internal';
     ALTER TABLE organizations ADD COLUMN IF NOT EXISTS external_search_webhook_url VARCHAR(500);

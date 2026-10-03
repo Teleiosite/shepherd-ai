@@ -65,6 +65,21 @@ async def get_ai_config(
         }
     
     groq_masked = mask_api_key(result[4]) if len(result) > 4 and result[4] else ""
+    sub_plan = result[7] if len(result) > 7 and result[7] else "starter"
+    msg_limit = result[5] if len(result) > 5 and result[5] is not None else 1000
+
+    # Ensure starter plan is strictly 1000 messages and self-heal DB if needed
+    if sub_plan.lower() == "starter" and msg_limit != 1000:
+        msg_limit = 1000
+        try:
+            db.execute(
+                text("UPDATE organizations SET monthly_message_limit = 1000 WHERE id = :org_id"),
+                {"org_id": str(current_user.organization_id)}
+            )
+            db.commit()
+        except Exception as e:
+            logger.warning(f"Could not update monthly_message_limit in DB: {e}")
+
     return {
         "provider": result[0] or "gemini",
         "api_key_masked": mask_api_key(result[1]) if result[1] else "",
@@ -72,9 +87,9 @@ async def get_ai_config(
         "model": result[2] or "gemini-1.5-flash",
         "base_url": result[3],
         "configured": bool(result[1]),
-        "monthly_message_limit": result[5] if len(result) > 5 and result[5] is not None else 1000,
+        "monthly_message_limit": msg_limit,
         "messages_used_this_month": result[6] if len(result) > 6 and result[6] is not None else 0,
-        "subscription_plan": result[7] if len(result) > 7 and result[7] else "starter"
+        "subscription_plan": sub_plan
     }
 
 
