@@ -57,7 +57,24 @@ PLAN_FEATURES = {f: plan["features"] for f, plan in SUBSCRIPTION_PLANS.items()}
 
 
 def require_plan_feature(feature: str, org: Organization):
-    """Raise 403 if the organization's plan does not include the requested feature."""
+    """Raise 403 if the organization's plan does not include the requested feature.
+    Super Admin custom_permissions overrides plan defaults if explicitly set.
+    """
+    import json
+    if getattr(org, "custom_permissions", None):
+        try:
+            custom_perms = json.loads(org.custom_permissions) if isinstance(org.custom_permissions, str) else org.custom_permissions
+            if isinstance(custom_perms, dict) and feature in custom_perms:
+                if custom_perms[feature] is True:
+                    return  # Super Admin explicitly enabled this feature!
+                elif custom_perms[feature] is False:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail=f"The '{feature}' feature has been disabled for your organization by the administrator."
+                    )
+        except (ValueError, TypeError):
+            pass
+
     plan = (org.subscription_plan or "starter").lower()
     allowed = PLAN_FEATURES.get(plan, PLAN_FEATURES["starter"])
     if feature not in allowed:

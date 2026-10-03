@@ -38,7 +38,7 @@ async def health_check():
     return {"status": "healthy"}
 
 
-from app.api import auth, contacts, messages, knowledge, workflows, whatsapp, settings, bridge, bridge_polling, groups, bookings, browse, conversations, widget, media_library, catalog, billing
+from app.api import auth, contacts, messages, knowledge, workflows, whatsapp, settings, bridge, bridge_polling, groups, bookings, browse, conversations, widget, media_library, catalog, billing, admin
 app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
 app.include_router(contacts.router, prefix="/api/contacts", tags=["Contacts"])
 app.include_router(messages.router, prefix="/api/messages", tags=["Messages"])
@@ -56,6 +56,7 @@ app.include_router(widget.router, tags=["Website Widget"])
 app.include_router(media_library.router, tags=["Media Library"])
 app.include_router(catalog.router, tags=["Universal Catalog"])
 app.include_router(billing.router, prefix="/api/billing", tags=["Billing & Subscriptions"])
+app.include_router(admin.router, tags=["Super Admin"])
 
 
 @app.on_event("startup")

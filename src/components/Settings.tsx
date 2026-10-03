@@ -1,6 +1,6 @@
 
 import React, { useRef, useState, useEffect } from 'react';
-import { Bot, Building2, Database, Download, Upload, AlertTriangle, Check, Key, MessageCircle, Save, ExternalLink, Cpu, Globe, Settings as SettingsIcon, Zap, Smartphone, Server, RefreshCw, Loader2, HelpCircle, XCircle, Code2, BrainCircuit, Clock, CreditCard, Link2, Volume2 } from 'lucide-react';
+import { Bot, Building2, Database, Download, Upload, AlertTriangle, Check, Key, MessageCircle, Save, ExternalLink, Cpu, Globe, Settings as SettingsIcon, Zap, Smartphone, Server, RefreshCw, Loader2, HelpCircle, XCircle, Code2, BrainCircuit, Clock, CreditCard, Link2, Volume2, Lock } from 'lucide-react';
 import { storage } from '../services/storage';
 import { AIConfig } from '../types';
 import { whatsappService, WhatsAppConfig } from '../services/whatsappService';
@@ -15,6 +15,7 @@ interface SettingsProps {
     setAutoRunEnabled: (enabled: boolean) => void;
     businessType?: string;
     setBusinessType?: (type: string) => void;
+    userPlan?: 'starter' | 'growth' | 'enterprise';
 }
 
 const DEFAULT_MODELS = {
@@ -28,8 +29,13 @@ const DEFAULT_MODELS = {
 const Settings: React.FC<SettingsProps> = ({
     aiName, setAiName, organizationName, setOrganizationName,
     autoRunEnabled, setAutoRunEnabled,
-    businessType = 'Organization', setBusinessType
+    businessType = 'Organization', setBusinessType,
+    userPlan
 }) => {
+    const [detectedPlan, setDetectedPlan] = useState<'starter' | 'growth' | 'enterprise'>('starter');
+    const effectivePlan = userPlan || detectedPlan;
+    const canUseGrowthSettings = effectivePlan === 'growth' || effectivePlan === 'enterprise';
+
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [restoreStatus, setRestoreStatus] = useState<'idle' | 'success' | 'error'>('idle');
     const [showBridgeModal, setShowBridgeModal] = useState(false);
@@ -125,6 +131,12 @@ const Settings: React.FC<SettingsProps> = ({
                 });
                 if (aiRes.ok) {
                     const aiData = await aiRes.json();
+                    if (aiData.subscription_plan) {
+                        const p = aiData.subscription_plan.toLowerCase();
+                        if (['starter', 'growth', 'enterprise'].includes(p)) {
+                            setDetectedPlan(p as any);
+                        }
+                    }
                     if (aiData.configured || aiData.groq_api_key_masked) {
                         setAiConfig(prev => ({
                             provider: aiData.provider || prev.provider,
@@ -906,30 +918,48 @@ const Settings: React.FC<SettingsProps> = ({
                         </div>
 
                         {/* 2. Groq Cloud API Key for Instant Voice Transcription */}
-                        <div className="bg-amber-50/60 p-6 rounded-xl border border-amber-200">
+                        <div className={`p-6 rounded-xl border relative transition-all ${
+                            canUseGrowthSettings ? 'bg-amber-50/60 border-amber-200' : 'bg-slate-50 border-slate-200'
+                        }`}>
                             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
                                 <div>
                                     <div className="flex items-center gap-2">
                                         <h4 className="text-base font-bold text-slate-800 flex items-center gap-2">
-                                            <Zap size={20} className="text-amber-600" />
+                                            <Zap size={20} className={canUseGrowthSettings ? "text-amber-600" : "text-slate-400"} />
                                             Groq Cloud API Key
                                         </h4>
-                                        <span className="text-[11px] font-bold bg-amber-200 text-amber-900 px-2 py-0.5 rounded-full uppercase tracking-wider">
+                                        <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
+                                            canUseGrowthSettings ? 'bg-amber-200 text-amber-900' : 'bg-slate-200 text-slate-600'
+                                        }`}>
                                             0.3s Voice Transcription
                                         </span>
+                                        {!canUseGrowthSettings && (
+                                            <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200 shadow-xs">
+                                                <Lock size={11} /> Growth Plan Feature
+                                            </span>
+                                        )}
                                     </div>
                                     <p className="text-xs text-slate-600 mt-1">
                                         Transcribes incoming WhatsApp and Web Widget audio notes instantly using Groq Whisper (<code className="font-mono text-slate-700">whisper-large-v3-turbo</code>). Free tier includes 7,200 requests/day and handles Nigerian Pidgin, Yoruba, Hausa, Igbo, and English.
                                     </p>
                                 </div>
-                                <a
-                                    href="https://console.groq.com/keys"
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-700 hover:text-amber-900 bg-amber-100 hover:bg-amber-200 px-3 py-1.5 rounded-lg border border-amber-300 transition-colors w-fit"
-                                >
-                                    Get Free Groq Key <ExternalLink size={13} />
-                                </a>
+                                {canUseGrowthSettings ? (
+                                    <a
+                                        href="https://console.groq.com/keys"
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-700 hover:text-amber-900 bg-amber-100 hover:bg-amber-200 px-3 py-1.5 rounded-lg border border-amber-300 transition-colors w-fit"
+                                    >
+                                        Get Free Groq Key <ExternalLink size={13} />
+                                    </a>
+                                ) : (
+                                    <a
+                                        href="#/billing"
+                                        className="inline-flex items-center gap-1.5 text-xs font-bold text-amber-800 bg-amber-100 hover:bg-amber-200 px-3 py-1.5 rounded-lg border border-amber-300 transition-colors w-fit"
+                                    >
+                                        <Lock size={12} /> Unlock with Growth
+                                    </a>
+                                )}
                             </div>
 
                             <div className="mt-4">
@@ -939,18 +969,26 @@ const Settings: React.FC<SettingsProps> = ({
                                 <div className="relative">
                                     <input
                                         type="password"
+                                        disabled={!canUseGrowthSettings}
+                                        readOnly={!canUseGrowthSettings}
                                         value={aiConfig.groqApiKey || ''}
                                         onChange={(e) => setAiConfig({ ...aiConfig, groqApiKey: e.target.value })}
-                                        placeholder="gsk_..."
-                                        className="w-full border border-amber-300 rounded-lg pl-3 pr-10 py-2 text-sm focus:ring-2 focus:ring-amber-500 outline-none font-mono bg-white"
+                                        placeholder={canUseGrowthSettings ? "gsk_..." : "Requires Growth & Omnichannel Plan"}
+                                        className={`w-full border rounded-lg pl-3 pr-10 py-2 text-sm outline-none font-mono ${
+                                            canUseGrowthSettings
+                                                ? 'border-amber-300 focus:ring-2 focus:ring-amber-500 bg-white'
+                                                : 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed select-none'
+                                        }`}
                                     />
-                                    <Key size={16} className="absolute right-3 top-2.5 text-amber-500 pointer-events-none" />
+                                    <Key size={16} className={`absolute right-3 top-2.5 ${canUseGrowthSettings ? "text-amber-500" : "text-slate-300"} pointer-events-none`} />
                                 </div>
                                 <div className="flex flex-wrap items-center justify-between gap-2 mt-1.5">
                                     <p className="text-[11px] text-slate-500">
-                                        Optional but strongly recommended for instant voice responses under 60 seconds. Without this key, voice notes fall back to CPU audio conversion.
+                                        {!canUseGrowthSettings
+                                            ? '🔒 Voice note audio transcription is exclusive to Growth & Omnichannel and Enterprise subscribers.'
+                                            : 'Optional but strongly recommended for instant voice responses under 60 seconds. Without this key, voice notes fall back to CPU audio conversion.'}
                                     </p>
-                                    {aiConfig.groqApiKey && (
+                                    {canUseGrowthSettings && aiConfig.groqApiKey && (
                                         <span className="text-[11px] text-emerald-700 font-semibold flex items-center gap-1">
                                             <Check size={12} /> Groq configured
                                         </span>
@@ -984,33 +1022,62 @@ const Settings: React.FC<SettingsProps> = ({
 
 
                     {/* Bridge Connection Code */}
-                    <div className="mb-8 bg-gradient-to-r from-purple-50 to-blue-50 p-6 rounded-lg border-2 border-purple-200">
+                    <div className={`mb-8 p-6 rounded-lg border-2 relative transition-all ${
+                        canUseGrowthSettings
+                            ? 'bg-gradient-to-r from-purple-50 to-blue-50 border-purple-200'
+                            : 'bg-slate-50 border-slate-200'
+                    }`}>
                         <div className="flex items-center justify-between mb-4">
                             <h4 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                                <Smartphone className="text-purple-500" size={20} />
+                                <Smartphone className={canUseGrowthSettings ? "text-purple-500" : "text-slate-400"} size={20} />
                                 WhatsApp Bridge Connection
                             </h4>
-                            {bridgeStatus && <span className="text-xs bg-green-100 text-green-700 px-3 py-1 rounded-full font-medium">● Connected</span>}
+                            {canUseGrowthSettings ? (
+                                bridgeStatus && <span className="text-xs bg-green-100 text-green-700 px-3 py-1 rounded-full font-medium">● Connected</span>
+                            ) : (
+                                <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200 shadow-xs">
+                                    <Lock size={11} /> Growth Plan Feature
+                                </span>
+                            )}
                         </div>
 
-                        <div className="bg-white p-4 rounded-lg border border-purple-200 mb-4">
+                        {!canUseGrowthSettings && (
+                            <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-between text-xs text-amber-800 font-medium">
+                                <div className="flex items-center gap-2">
+                                    <Lock size={14} className="text-amber-600 shrink-0" />
+                                    <span>WhatsApp Bridge pairing and QR connectivity require the <strong>Growth & Omnichannel</strong> plan.</span>
+                                </div>
+                                <a href="#/billing" className="font-bold underline shrink-0 hover:text-amber-900">Upgrade Plan →</a>
+                            </div>
+                        )}
+
+                        <div className="bg-white p-4 rounded-lg border border-slate-200 mb-4">
                             <label className="block text-sm font-semibold text-slate-700 mb-2">
                                 Your Connection Code:
                             </label>
                             <div className="flex items-center gap-2">
                                 <input
                                     type="text"
-                                    value={bridgeConnectionCode || 'Loading...'}
+                                    disabled={!canUseGrowthSettings}
+                                    value={canUseGrowthSettings ? (bridgeConnectionCode || 'Loading...') : 'LOCKED — UPGRADE TO GROWTH'}
                                     readOnly
-                                    className="flex-1 px-4 py-3 bg-slate-50 border border-slate-300 rounded-lg font-mono text-lg font-bold text-center tracking-wider cursor-default"
+                                    className={`flex-1 px-4 py-3 rounded-lg font-mono text-lg font-bold text-center tracking-wider ${
+                                        canUseGrowthSettings ? 'bg-slate-50 border border-slate-300 cursor-default' : 'bg-slate-100 border border-slate-200 text-slate-400 cursor-not-allowed select-none'
+                                    }`}
                                 />
                                 <button
+                                    disabled={!canUseGrowthSettings}
                                     onClick={() => {
+                                        if (!canUseGrowthSettings) return;
                                         navigator.clipboard.writeText(bridgeConnectionCode);
                                         setCodeCopied(true);
                                         setTimeout(() => setCodeCopied(false), 2000);
                                     }}
-                                    className="px-4 py-3 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-all flex items-center gap-2 font-medium"
+                                    className={`px-4 py-3 rounded-lg transition-all flex items-center gap-2 font-medium ${
+                                        canUseGrowthSettings
+                                            ? 'bg-purple-500 text-white hover:bg-purple-600 cursor-pointer'
+                                            : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                                    }`}
                                 >
                                     {codeCopied ? (
                                         <>
@@ -1039,38 +1106,75 @@ const Settings: React.FC<SettingsProps> = ({
                                 <li className="break-words">Done! Messages auto-send via WhatsApp</li>
                             </ol>
                             <div className="mt-4">
-                                <button
-                                    className="w-full bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white px-4 py-3 rounded-full font-bold flex items-center justify-center gap-2 transition-all shadow-lg hover:shadow-xl text-sm sm:text-base"
-                                    onClick={() => {
-                                        window.location.href = 'https://github.com/Teleiosite/shepherd-ai/releases/download/v1.0.1/Shepherd-AI-Bridge.zip';
-                                    }}
-                                >
-                                    <Download size={20} />
-                                    <span className="truncate">Download Bridge App (Windows)</span>
-                                </button>
+                                {canUseGrowthSettings ? (
+                                    <button
+                                        className="w-full bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white px-4 py-3 rounded-full font-bold flex items-center justify-center gap-2 transition-all shadow-lg hover:shadow-xl text-sm sm:text-base cursor-pointer"
+                                        onClick={() => {
+                                            window.location.href = 'https://github.com/Teleiosite/shepherd-ai/releases/download/v1.0.1/Shepherd-AI-Bridge.zip';
+                                        }}
+                                    >
+                                        <Download size={20} />
+                                        <span className="truncate">Download Bridge App (Windows)</span>
+                                    </button>
+                                ) : (
+                                    <a
+                                        href="#/billing"
+                                        className="w-full bg-slate-800 hover:bg-slate-900 text-white px-4 py-3 rounded-full font-bold flex items-center justify-center gap-2 transition-all shadow-md text-sm sm:text-base text-center"
+                                    >
+                                        <Lock size={18} />
+                                        <span>Upgrade to Growth to Enable Bridge App</span>
+                                    </a>
+                                )}
                             </div>
                         </div>
                     </div>
 
                     {/* WhatsApp Config */}
-                    <div>
+                    <div className="relative">
                         <div className="flex items-center justify-between mb-4">
-                            <h4 className="text-lg font-bold text-slate-800 flex items-center gap-2"><MessageCircle className="text-green-500" size={20} /> WhatsApp Delivery Method</h4>
+                            <h4 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                                <MessageCircle className={canUseGrowthSettings ? "text-green-500" : "text-slate-400"} size={20} />
+                                WhatsApp Delivery Method
+                            </h4>
                             <div className="flex bg-slate-100 p-1 rounded-lg">
                                 <button
+                                    disabled={!canUseGrowthSettings}
                                     onClick={() => setWaConfig({ ...waConfig, provider: 'meta' })}
-                                    className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${waConfig.provider === 'meta' ? 'bg-white shadow text-slate-800' : 'text-slate-500'}`}
+                                    className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                                        !canUseGrowthSettings
+                                            ? 'text-slate-400 cursor-not-allowed'
+                                            : waConfig.provider === 'meta'
+                                            ? 'bg-white shadow text-slate-800'
+                                            : 'text-slate-500'
+                                    }`}
                                 >
                                     Meta Cloud API
                                 </button>
                                 <button
+                                    disabled={!canUseGrowthSettings}
                                     onClick={() => setWaConfig({ ...waConfig, provider: 'venom' })}
-                                    className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${waConfig.provider === 'venom' ? 'bg-white shadow text-slate-800' : 'text-slate-500'}`}
+                                    className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                                        !canUseGrowthSettings
+                                            ? 'text-slate-400 cursor-not-allowed'
+                                            : waConfig.provider === 'venom'
+                                            ? 'bg-white shadow text-slate-800'
+                                            : 'text-slate-500'
+                                    }`}
                                 >
                                     WPPConnect Bridge
                                 </button>
                             </div>
                         </div>
+
+                        {!canUseGrowthSettings && (
+                            <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-between text-xs text-amber-800 font-medium">
+                                <div className="flex items-center gap-2">
+                                    <Lock size={14} className="text-amber-600 shrink-0" />
+                                    <span>Official Meta WhatsApp Cloud API credentials configuration requires <strong>Growth & Omnichannel</strong>.</span>
+                                </div>
+                                <a href="#/billing" className="font-bold underline shrink-0 hover:text-amber-900">Upgrade Plan →</a>
+                            </div>
+                        )}
 
                         {waConfig.provider === 'meta' ? (
                             <div className="bg-slate-50 p-6 rounded-xl border border-slate-200 space-y-4 animate-fade-in">
@@ -1083,20 +1187,28 @@ const Settings: React.FC<SettingsProps> = ({
                                         <label className="block text-sm font-medium text-slate-700 mb-1">Phone Number ID</label>
                                         <input
                                             type="text"
+                                            disabled={!canUseGrowthSettings}
+                                            readOnly={!canUseGrowthSettings}
                                             value={waConfig.phoneId || ''}
                                             onChange={(e) => setWaConfig({ ...waConfig, phoneId: e.target.value })}
-                                            placeholder="e.g. 10452..."
-                                            className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-base focus:ring-2 focus:ring-green-500 outline-none font-mono bg-white"
+                                            placeholder={canUseGrowthSettings ? "e.g. 10452..." : "Requires Growth Plan"}
+                                            className={`w-full border rounded-lg px-4 py-2.5 text-base outline-none font-mono ${
+                                                canUseGrowthSettings ? 'border-slate-300 focus:ring-2 focus:ring-green-500 bg-white' : 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed select-none'
+                                            }`}
                                         />
                                     </div>
                                     <div>
                                         <label className="block text-sm font-medium text-slate-700 mb-1">Permanent Access Token</label>
                                         <input
                                             type="password"
+                                            disabled={!canUseGrowthSettings}
+                                            readOnly={!canUseGrowthSettings}
                                             value={waConfig.token || ''}
                                             onChange={(e) => setWaConfig({ ...waConfig, token: e.target.value })}
-                                            placeholder="e.g. EAAG..."
-                                            className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-base focus:ring-2 focus:ring-green-500 outline-none font-mono bg-white"
+                                            placeholder={canUseGrowthSettings ? "e.g. EAAG..." : "Requires Growth Plan"}
+                                            className={`w-full border rounded-lg px-4 py-2.5 text-base outline-none font-mono ${
+                                                canUseGrowthSettings ? 'border-slate-300 focus:ring-2 focus:ring-green-500 bg-white' : 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed select-none'
+                                            }`}
                                         />
                                     </div>
                                 </div>
@@ -1112,9 +1224,13 @@ const Settings: React.FC<SettingsProps> = ({
                                     <div className="flex gap-2">
                                         <input
                                             type="text"
+                                            disabled={!canUseGrowthSettings}
+                                            readOnly={!canUseGrowthSettings}
                                             value={waConfig.bridgeUrl || 'http://localhost:3001'}
                                             onChange={(e) => setWaConfig({ ...waConfig, bridgeUrl: e.target.value })}
-                                            className="flex-1 border border-slate-300 rounded-lg px-4 py-2.5 text-base focus:ring-2 focus:ring-purple-500 outline-none font-mono bg-white"
+                                            className={`flex-1 border rounded-lg px-4 py-2.5 text-base outline-none font-mono ${
+                                                canUseGrowthSettings ? 'border-slate-300 focus:ring-2 focus:ring-purple-500 bg-white' : 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed select-none'
+                                            }`}
                                         />
                                     </div>
                                 </div>
@@ -1129,8 +1245,13 @@ const Settings: React.FC<SettingsProps> = ({
                         <div className="flex items-center justify-between mb-4">
                             <div>
                                 <h4 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                                    <Zap className="text-orange-500" size={20} />
+                                    <Zap className={canUseGrowthSettings ? "text-orange-500" : "text-slate-400"} size={20} />
                                     Smart Workflows Automation
+                                    {!canUseGrowthSettings && (
+                                        <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200 shadow-xs">
+                                            <Lock size={11} /> Growth Plan Feature
+                                        </span>
+                                    )}
                                 </h4>
                                 <p className="text-sm text-slate-600 mt-1">
                                     Automatically run daily workflow checks and send messages to due contacts
@@ -1138,15 +1259,28 @@ const Settings: React.FC<SettingsProps> = ({
                             </div>
                         </div>
 
-                        <div className="bg-slate-50 p-6 rounded-xl border border-slate-200 space-y-4">
+                        {!canUseGrowthSettings && (
+                            <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-between text-xs text-amber-800 font-medium">
+                                <div className="flex items-center gap-2">
+                                    <Lock size={14} className="text-amber-600 shrink-0" />
+                                    <span>Automated background workflow execution requires <strong>Growth & Omnichannel</strong>.</span>
+                                </div>
+                                <a href="#/billing" className="font-bold underline shrink-0 hover:text-amber-900">Upgrade Plan →</a>
+                            </div>
+                        )}
+
+                        <div className={`p-6 rounded-xl border space-y-4 ${
+                            canUseGrowthSettings ? 'bg-slate-50 border-slate-200' : 'bg-slate-50/70 border-slate-200'
+                        }`}>
                             <div className="flex items-start justify-between gap-4">
                                 <div className="flex-1">
-                                    <label className="flex items-center gap-3 cursor-pointer group">
+                                    <label className={`flex items-center gap-3 ${canUseGrowthSettings ? 'cursor-pointer group' : 'cursor-not-allowed opacity-50 select-none'}`}>
                                         <div className="relative">
                                             <input
                                                 type="checkbox"
-                                                checked={autoRunEnabled}
-                                                onChange={handleToggleAutoRun}
+                                                disabled={!canUseGrowthSettings}
+                                                checked={canUseGrowthSettings ? autoRunEnabled : false}
+                                                onChange={canUseGrowthSettings ? handleToggleAutoRun : undefined}
                                                 className="sr-only peer"
                                             />
                                             <div className="w-14 h-8 bg-slate-300 rounded-full peer peer-checked:bg-green-500 transition-colors"></div>

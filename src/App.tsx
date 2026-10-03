@@ -4,7 +4,7 @@ import { HashRouter, Routes, Route, Link, useLocation, useNavigate, Navigate } f
 import {
   LayoutDashboard, Users, BookOpen, Send, Menu, Settings as SettingsIcon,
   MessageCircle, Zap, Loader2, LogOut, Calendar, Bot, Package, Globe,
-  CreditCard, Lock, Sparkles, ArrowRight, X
+  CreditCard, Lock, Sparkles, ArrowRight, X, Shield
 } from 'lucide-react';
 import { BACKEND_URL } from './services/env';
 
@@ -21,6 +21,7 @@ export const PLAN_DETAILS: Record<PlanTier, { name: string; price: string }> = {
   growth: { name: 'Growth & Omnichannel', price: '₦250,000/mo' },
   enterprise: { name: 'Enterprise & Marketplace', price: '₦500,000/mo' }
 };
+import SuperAdminDashboard from './components/SuperAdminDashboard';
 import Dashboard from './components/Dashboard';
 import ContactsManager from './components/ContactsManager';
 import KnowledgeBase from './components/KnowledgeBase-enhanced';
@@ -263,6 +264,11 @@ function App() {
       fetchUserPlan();
     }
   }, [user]);
+
+  // Check if current user is super admin
+  const isSuperAdmin = Boolean(
+    user?.email && ['seye@gmail.com', 'seye4kunmi@gmail.com'].includes(user.email.toLowerCase().trim())
+  );
 
   // Data State - Initialize as empty and load from backend
   const [contacts, setContacts] = useState<Contact[]>([]);
@@ -1321,6 +1327,9 @@ function App() {
               description="Generate personalized AI messages and broadcast them across your WhatsApp contact list."
             />
             <NavItem to="/settings" icon={SettingsIcon} label="Settings" />
+            {isSuperAdmin && (
+              <NavItem to="/admin" icon={Shield} label="Super Admin" />
+            )}
           </nav>
 
           <div className="p-4" style={{ borderTop: '1px solid rgba(255,255,255,0.1)' }}>
@@ -1438,7 +1447,11 @@ function App() {
                 setAutoRunEnabled={setAutoRunEnabled}
                 businessType={businessType}
                 setBusinessType={(val) => { setBusinessType(val); localStorage.setItem('shepherd_business_type', val); }}
+                userPlan={userPlan}
               />} />
+              {isSuperAdmin && (
+                <Route path="/admin" element={<SuperAdminDashboard />} />
+              )}
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </div>

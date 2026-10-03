@@ -42,6 +42,7 @@ class Organization(Base):
     paystack_subscription_code = Column(String(100), nullable=True)
     flutterwave_tx_ref = Column(String(100), nullable=True)
     flutterwave_subscription_id = Column(String(100), nullable=True)
+    custom_permissions = Column(Text, nullable=True, default="{}")
 
     # Universal Catalog & External Webhook
     catalog_mode = Column(String(50), nullable=True, default="internal")  # "internal", "external_webhook"
