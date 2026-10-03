@@ -44,7 +44,8 @@ async def get_ai_config(
     result = db.execute(
         text("""
             SELECT ai_provider, ai_api_key, ai_model, ai_base_url, groq_api_key,
-                   monthly_message_limit, messages_used_this_month, subscription_plan
+                   monthly_message_limit, messages_used_this_month, subscription_plan,
+                   custom_permissions
             FROM organizations
             WHERE id = :org_id
         """),
@@ -61,7 +62,8 @@ async def get_ai_config(
             "configured": False,
             "monthly_message_limit": 1000,
             "messages_used_this_month": 0,
-            "subscription_plan": "starter"
+            "subscription_plan": "starter",
+            "custom_permissions": {}
         }
     
     groq_masked = mask_api_key(result[4]) if len(result) > 4 and result[4] else ""
@@ -80,6 +82,16 @@ async def get_ai_config(
         except Exception as e:
             logger.warning(f"Could not update monthly_message_limit in DB: {e}")
 
+    # Parse Super Admin custom permissions overrides
+    import json
+    raw_perms = result[8] if len(result) > 8 and result[8] else "{}"
+    custom_perms = {}
+    if raw_perms:
+        try:
+            custom_perms = json.loads(raw_perms) if isinstance(raw_perms, str) else raw_perms
+        except Exception:
+            custom_perms = {}
+
     return {
         "provider": result[0] or "gemini",
         "api_key_masked": mask_api_key(result[1]) if result[1] else "",
@@ -89,7 +101,8 @@ async def get_ai_config(
         "configured": bool(result[1]),
         "monthly_message_limit": msg_limit,
         "messages_used_this_month": result[6] if len(result) > 6 and result[6] is not None else 0,
-        "subscription_plan": sub_plan
+        "subscription_plan": sub_plan,
+        "custom_permissions": custom_perms
     }
 
 

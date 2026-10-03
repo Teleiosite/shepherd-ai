@@ -230,6 +230,7 @@ function App() {
 
   // Organization Plan State & Locked Feature Modal
   const [userPlan, setUserPlan] = useState<PlanTier>('starter');
+  const [customPermissions, setCustomPermissions] = useState<Record<string, boolean>>({});
   const [lockedFeatureModal, setLockedFeatureModal] = useState<{
     isOpen: boolean;
     featureName: string;
@@ -253,6 +254,9 @@ function App() {
                 setUserPlan(p);
               }
             }
+            if (data.custom_permissions && typeof data.custom_permissions === 'object') {
+              setCustomPermissions(data.custom_permissions);
+            }
           }
         }
       } catch (err) {
@@ -264,6 +268,16 @@ function App() {
       fetchUserPlan();
     }
   }, [user]);
+
+  // Check if a specific feature is allowed: customPermissions overrides base plan
+  const isFeatureAllowed = (featureId?: string, requiredPlan?: PlanTier): boolean => {
+    if (featureId && customPermissions && typeof customPermissions[featureId] === 'boolean') {
+      return customPermissions[featureId];
+    }
+    if (!requiredPlan) return true;
+    return PLAN_LEVELS[userPlan] >= PLAN_LEVELS[requiredPlan];
+  };
+
 
   // Check if current user is super admin
   const isSuperAdmin = Boolean(
@@ -1073,6 +1087,7 @@ function App() {
     label,
     badge,
     requiredPlan,
+    featureId,
     featureName,
     description
   }: {
@@ -1081,12 +1096,13 @@ function App() {
     label: string;
     badge?: number;
     requiredPlan?: PlanTier;
+    featureId?: string;
     featureName?: string;
     description?: string;
   }) => {
     const location = useLocation();
     const isActive = location.pathname === to;
-    const isLocked = requiredPlan ? (PLAN_LEVELS[userPlan] < PLAN_LEVELS[requiredPlan]) : false;
+    const isLocked = !isFeatureAllowed(featureId, requiredPlan);
 
     const handleClick = (e: React.MouseEvent) => {
       if (isLocked) {
@@ -1094,8 +1110,8 @@ function App() {
         setLockedFeatureModal({
           isOpen: true,
           featureName: featureName || label,
-          requiredPlan: requiredPlan!,
-          description: description || `Upgrade to ${PLAN_DETAILS[requiredPlan!].name} to unlock full access to this feature.`
+          requiredPlan: requiredPlan || 'growth',
+          description: description || `Access to ${featureName || label} is restricted for your organization. Contact your administrator or upgrade your subscription plan to unlock full access.`
         });
         return;
       }
@@ -1154,17 +1170,19 @@ function App() {
   };
 
   const PlanProtectedPage = ({
+    featureId,
     featureName,
     requiredPlan,
     description,
     children
   }: {
+    featureId?: string;
     featureName: string;
     requiredPlan: 'growth' | 'enterprise';
     description: string;
     children: React.ReactNode;
   }) => {
-    const isAllowed = PLAN_LEVELS[userPlan] >= PLAN_LEVELS[requiredPlan];
+    const isAllowed = isFeatureAllowed(featureId, requiredPlan);
     if (isAllowed) {
       return <>{children}</>;
     }
@@ -1179,7 +1197,7 @@ function App() {
           {requiredPlan === 'enterprise' ? 'Enterprise & Marketplace Plan' : 'Growth & Omnichannel Plan'}
         </div>
         <h2 className="text-2xl font-bold text-slate-900">
-          {featureName} is Locked
+          {featureName} is Restricted
         </h2>
         <p className="text-sm text-slate-500 mt-2 max-w-md leading-relaxed">
           {description}
@@ -1286,6 +1304,7 @@ function App() {
               label="Live Chats"
               badge={logs.filter(l => l.type === 'Inbound' && l.status !== MessageStatus.RESPONDED).length}
               requiredPlan="growth"
+              featureId="live_chats"
               featureName="Live Chats Takeover"
               description="Monitor incoming customer inquiries across WhatsApp and web chat and take over live in real time."
             />
@@ -1298,6 +1317,7 @@ function App() {
               icon={Bot}
               label="Media Library"
               requiredPlan="growth"
+              featureId="voice_notes"
               featureName="Media Library & Attachments"
               description="Upload brochures, catalogs, PDFs, and audio notes to auto-send to your leads on WhatsApp."
             />
@@ -1307,6 +1327,7 @@ function App() {
               icon={Zap}
               label="Workflows"
               requiredPlan="growth"
+              featureId="workflows"
               featureName="Automated Workflows"
               description="Schedule automated multi-day follow-up tracks, drip sequences, and automatic check-ins."
             />
@@ -1315,6 +1336,7 @@ function App() {
               icon={Users}
               label="Groups"
               requiredPlan="enterprise"
+              featureId="groups"
               featureName="WhatsApp Community Groups"
               description="Manage multiple WhatsApp groups, broadcast announcements, and auto-welcome new members as they join."
             />
@@ -1323,6 +1345,7 @@ function App() {
               icon={Send}
               label="Generate & Send"
               requiredPlan="growth"
+              featureId="campaigns"
               featureName="Bulk Campaigns & Blasts"
               description="Generate personalized AI messages and broadcast them across your WhatsApp contact list."
             />
@@ -1371,6 +1394,7 @@ function App() {
               <Route path="/contacts" element={<ContactsManager contacts={contacts} setContacts={setContacts} onAddContact={handleContactAdded} categories={categories} onAddCategory={handleAddCategory} />} />
               <Route path="/chats" element={
                 <PlanProtectedPage
+                  featureId="live_chats"
                   featureName="Live Chats Takeover"
                   requiredPlan="growth"
                   description="Monitor incoming customer inquiries across WhatsApp and web chat and take over live in real time."
@@ -1403,6 +1427,7 @@ function App() {
               <Route path="/bookings" element={<Bookings />} />
               <Route path="/library" element={
                 <PlanProtectedPage
+                  featureId="voice_notes"
                   featureName="Media Library & Attachments"
                   requiredPlan="growth"
                   description="Upload brochures, catalogs, PDFs, and audio notes to auto-send to your leads on WhatsApp."
@@ -1413,6 +1438,7 @@ function App() {
               <Route path="/knowledge" element={<KnowledgeBase resources={resources} setResources={setResources} />} />
               <Route path="/workflows" element={
                 <PlanProtectedPage
+                  featureId="workflows"
                   featureName="Automated Workflows"
                   requiredPlan="growth"
                   description="Schedule automated multi-day follow-up tracks, drip sequences, and automatic check-ins."
@@ -1422,6 +1448,7 @@ function App() {
               } />
               <Route path="/groups" element={
                 <PlanProtectedPage
+                  featureId="groups"
                   featureName="WhatsApp Community Groups"
                   requiredPlan="enterprise"
                   description="Manage multiple WhatsApp groups, broadcast announcements, and auto-welcome new members as they join."
@@ -1431,6 +1458,7 @@ function App() {
               } />
               <Route path="/campaigns" element={
                 <PlanProtectedPage
+                  featureId="campaigns"
                   featureName="Bulk Campaigns & Blasts"
                   requiredPlan="growth"
                   description="Generate personalized AI messages and broadcast them across your WhatsApp contact list."
@@ -1448,6 +1476,7 @@ function App() {
                 businessType={businessType}
                 setBusinessType={(val) => { setBusinessType(val); localStorage.setItem('shepherd_business_type', val); }}
                 userPlan={userPlan}
+                customPermissions={customPermissions}
               />} />
               {isSuperAdmin && (
                 <Route path="/admin" element={<SuperAdminDashboard />} />
