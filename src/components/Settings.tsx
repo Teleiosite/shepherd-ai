@@ -43,7 +43,7 @@ const Settings: React.FC<SettingsProps> = ({
         ? customPermissions
         : dbCustomPermissions;
 
-    const isFeatureAllowed = (featureId: string, minGrowth = true): boolean => {
+    const isFeatureAllowed = (featureId: string, minGrowth = false): boolean => {
         if (activePermissions && typeof activePermissions[featureId] === 'boolean') {
             return activePermissions[featureId];
         }
@@ -53,10 +53,23 @@ const Settings: React.FC<SettingsProps> = ({
         return true;
     };
 
+    // Platform features
     const canUseVoice = isFeatureAllowed('voice_notes', true);
     const canUseBridge = isFeatureAllowed('whatsapp_bridge', true);
     const canUseWhatsApp = isFeatureAllowed('whatsapp', true);
     const canUseWorkflows = isFeatureAllowed('workflows', true);
+
+    // Settings page permissions (Granular Super Admin controls)
+    const canEditPersona = isFeatureAllowed('setting_agent_persona', false);
+    const canEditAutopilot = isFeatureAllowed('setting_agent_autopilot', false);
+    const canEditVoiceMode = isFeatureAllowed('setting_voice_mode', false);
+    const canEditAiKeys = isFeatureAllowed('setting_ai_keys', false);
+    const canEditGroqKey = isFeatureAllowed('setting_groq_key', true) && canUseVoice;
+    const canEditWhatsAppDelivery = isFeatureAllowed('setting_whatsapp_delivery', true) && canUseWhatsApp;
+    const canEditWorkflows = isFeatureAllowed('setting_workflows_autorun', true) && canUseWorkflows;
+    const canEditDataBackup = isFeatureAllowed('setting_data_backup', false);
+
+    const [personaSaved, setPersonaSaved] = useState(false);
 
 
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -426,7 +439,9 @@ const Settings: React.FC<SettingsProps> = ({
 
         setIsSaving(false);
         setIsSaved(true);
-        setTimeout(() => setIsSaved(false), 2000);
+        setTimeout(() => {
+            window.location.reload();
+        }, 700);
     };
 
 
@@ -572,11 +587,23 @@ const Settings: React.FC<SettingsProps> = ({
 
             {/* Identity Section */}
             <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
-                <div className="p-4 sm:p-6 border-b border-slate-100 bg-slate-50">
+                <div className="p-4 sm:p-6 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
                     <h3 className="font-semibold text-lg sm:text-xl text-slate-800 flex items-center gap-2">
                         <Bot className="text-primary-600" />
                         Identity & Persona
                     </h3>
+                    <div className="flex items-center gap-2">
+                        {!canEditPersona && (
+                            <span className="text-xs bg-amber-100 text-amber-800 font-semibold px-2.5 py-1 rounded-md flex items-center gap-1">
+                                <Lock size={12} /> Managed by Super Admin
+                            </span>
+                        )}
+                        {personaSaved && (
+                            <span className="text-green-600 font-bold flex items-center gap-2 text-sm animate-fade-in">
+                                <Check size={18} /> Profile Saved
+                            </span>
+                        )}
+                    </div>
                 </div>
                 <div className="p-4 sm:p-6 md:p-8 space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -587,8 +614,9 @@ const Settings: React.FC<SettingsProps> = ({
                                 <input
                                     type="text"
                                     value={organizationName}
+                                    disabled={!canEditPersona}
                                     onChange={(e) => setOrganizationName(e.target.value)}
-                                    className="w-full border border-slate-300 rounded-lg pl-10 pr-4 py-2.5 text-base focus:ring-2 focus:ring-primary-500 outline-none"
+                                    className="w-full border border-slate-300 rounded-lg pl-10 pr-4 py-2.5 text-base focus:ring-2 focus:ring-primary-500 outline-none disabled:bg-slate-100 disabled:cursor-not-allowed"
                                 />
                             </div>
                         </div>
@@ -597,8 +625,9 @@ const Settings: React.FC<SettingsProps> = ({
                             <input
                                 type="text"
                                 value={aiName}
+                                disabled={!canEditPersona}
                                 onChange={(e) => setAiName(e.target.value)}
-                                className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-base focus:ring-2 focus:ring-primary-500 outline-none"
+                                className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-base focus:ring-2 focus:ring-primary-500 outline-none disabled:bg-slate-100 disabled:cursor-not-allowed"
                             />
                         </div>
                         <div className="col-span-1 md:col-span-2">
@@ -606,12 +635,52 @@ const Settings: React.FC<SettingsProps> = ({
                             <input
                                 type="text"
                                 value={businessType}
+                                disabled={!canEditPersona}
                                 onChange={(e) => setBusinessType?.(e.target.value)}
                                 placeholder="e.g. Church, Restaurant, Hair Salon, Real Estate, E-commerce"
-                                className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-base focus:ring-2 focus:ring-primary-500 outline-none"
+                                className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-base focus:ring-2 focus:ring-primary-500 outline-none disabled:bg-slate-100 disabled:cursor-not-allowed"
                             />
                             <p className="text-xs text-slate-400 mt-1">This helps the AI agent adapt its vocabulary and tone to suit your industry.</p>
                         </div>
+                    </div>
+
+                    <div className="pt-2">
+                        <button
+                            type="button"
+                            disabled={!canEditPersona}
+                            onClick={async () => {
+                                localStorage.setItem('shepherd_org_name', organizationName);
+                                localStorage.setItem('shepherd_ai_name', aiName);
+                                if (businessType) localStorage.setItem('shepherd_business_type', businessType);
+
+                                try {
+                                    const token = localStorage.getItem('authToken');
+                                    const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
+                                    if (token) {
+                                        await fetch(`${backendUrl}/api/settings/ai-autopilot`, {
+                                            method: 'PUT',
+                                            headers: {
+                                                'Content-Type': 'application/json',
+                                                'Authorization': `Bearer ${token}`
+                                            },
+                                            body: JSON.stringify({
+                                                business_type: businessType
+                                            })
+                                        });
+                                    }
+                                } catch (e) {
+                                    console.error('Error saving business type:', e);
+                                }
+
+                                setPersonaSaved(true);
+                                setTimeout(() => {
+                                    window.location.reload();
+                                }, 700);
+                            }}
+                            className="bg-primary-600 text-white px-5 py-2.5 rounded-lg hover:bg-primary-700 font-bold transition-all shadow-sm active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 text-sm"
+                        >
+                            {personaSaved ? <><Check size={16} /> Saved! Reloading...</> : <><Save size={16} /> Save Identity Settings</>}
+                        </button>
                     </div>
                 </div>
             </div>
@@ -623,16 +692,24 @@ const Settings: React.FC<SettingsProps> = ({
                         <BrainCircuit className="text-violet-600" />
                         AI Agent Auto-Reply Settings
                     </h3>
-                    {agentSaved && <span className="text-green-600 font-bold flex items-center gap-2 text-sm animate-fade-in"><Check size={18} /> Settings Saved</span>}
+                    <div className="flex items-center gap-2">
+                        {!canEditAutopilot && (
+                            <span className="text-xs bg-amber-100 text-amber-800 font-semibold px-2.5 py-1 rounded-md flex items-center gap-1">
+                                <Lock size={12} /> Managed by Super Admin
+                            </span>
+                        )}
+                        {agentSaved && <span className="text-green-600 font-bold flex items-center gap-2 text-sm animate-fade-in"><Check size={18} /> Settings Saved</span>}
+                    </div>
                 </div>
                 <div className="p-4 sm:p-6 md:p-8 space-y-6">
                     <div className="flex items-start justify-between gap-4 p-4 bg-violet-50/50 border border-violet-100 rounded-xl">
                         <div className="flex-1">
-                            <label className="flex items-center gap-3 cursor-pointer group">
+                            <label className={`flex items-center gap-3 ${canEditAutopilot ? 'cursor-pointer group' : 'cursor-not-allowed opacity-60'}`}>
                                 <div className="relative">
                                     <input
                                         type="checkbox"
                                         checked={agentEnabled}
+                                        disabled={!canEditAutopilot}
                                         onChange={(e) => handleToggleAgent(e.target.checked)}
                                         className="sr-only peer"
                                     />
@@ -661,15 +738,17 @@ const Settings: React.FC<SettingsProps> = ({
                                     <div className="flex bg-slate-100 p-1 rounded-lg">
                                         <button
                                             type="button"
+                                            disabled={!canEditAutopilot}
                                             onClick={() => handleSelectAgentMode('suggest')}
-                                            className={`flex-1 py-2 text-center rounded-md text-sm font-medium transition-colors ${agentMode === 'suggest' ? 'bg-white shadow text-slate-800' : 'text-slate-500'}`}
+                                            className={`flex-1 py-2 text-center rounded-md text-sm font-medium transition-colors ${!canEditAutopilot ? 'opacity-60 cursor-not-allowed ' : ''}${agentMode === 'suggest' ? 'bg-white shadow text-slate-800' : 'text-slate-500'}`}
                                         >
                                             Suggest (Review First)
                                         </button>
                                         <button
                                             type="button"
+                                            disabled={!canEditAutopilot}
                                             onClick={() => handleSelectAgentMode('auto-send')}
-                                            className={`flex-1 py-2 text-center rounded-md text-sm font-medium transition-colors ${agentMode === 'auto-send' ? 'bg-white shadow text-slate-800' : 'text-slate-500'}`}
+                                            className={`flex-1 py-2 text-center rounded-md text-sm font-medium transition-colors ${!canEditAutopilot ? 'opacity-60 cursor-not-allowed ' : ''}${agentMode === 'auto-send' ? 'bg-white shadow text-slate-800' : 'text-slate-500'}`}
                                         >
                                             Auto-Send Immediately
                                         </button>
@@ -677,7 +756,7 @@ const Settings: React.FC<SettingsProps> = ({
                                     <p className="text-xs text-slate-400 mt-1">
                                         {agentMode === 'suggest' 
                                             ? 'AI drafts suggestions for you to review & edit in Live Chats.' 
-                                            : 'AI sends responses directly to contacts without waiting.'}
+                                             : 'AI sends responses directly to contacts without waiting.'}
                                     </p>
                                 </div>
 
@@ -689,24 +768,33 @@ const Settings: React.FC<SettingsProps> = ({
                                         type="number"
                                         min={0}
                                         max={120}
+                                        disabled={!canEditAutopilot}
                                         value={agentDelay}
                                         onChange={(e) => setAgentDelay(parseInt(e.target.value, 10) || 0)}
-                                        className="w-full border border-slate-300 rounded-lg px-4 py-2 text-base focus:ring-2 focus:ring-violet-500 outline-none"
+                                        className="w-full border border-slate-300 rounded-lg px-4 py-2 text-base focus:ring-2 focus:ring-violet-500 outline-none disabled:bg-slate-100 disabled:cursor-not-allowed"
                                     />
                                     <p className="text-xs text-slate-400 mt-1">Delay before auto-reply to make responses feel more human.</p>
                                 </div>
                             </div>
 
                             <div>
-                                <label className="block text-sm font-bold text-slate-700 mb-2 flex items-center gap-2">
-                                    <MessageCircle size={16} /> AI Tone & Instructions
-                                </label>
+                                <div className="flex items-center justify-between mb-2">
+                                    <label className="text-sm font-bold text-slate-700 flex items-center gap-2">
+                                        <MessageCircle size={16} /> AI Tone & Instructions
+                                    </label>
+                                    {!canEditPersona && (
+                                        <span className="text-[11px] bg-amber-100 text-amber-800 font-semibold px-2 py-0.5 rounded flex items-center gap-1">
+                                            <Lock size={11} /> Persona Locked
+                                        </span>
+                                    )}
+                                </div>
                                 <textarea
                                     rows={4}
                                     value={agentTone}
+                                    disabled={!canEditPersona}
                                     onChange={(e) => setAgentTone(e.target.value)}
                                     placeholder="Describe your tone. E.g. Warm and friendly, casual Nigerian pastor tone, or professional client success manager tone."
-                                    className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-base focus:ring-2 focus:ring-violet-500 outline-none leading-relaxed"
+                                    className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-base focus:ring-2 focus:ring-violet-500 outline-none leading-relaxed disabled:bg-slate-100 disabled:cursor-not-allowed"
                                 />
                             </div>
 
@@ -717,9 +805,10 @@ const Settings: React.FC<SettingsProps> = ({
                                 <input
                                     type="text"
                                     value={paymentLink}
+                                    disabled={!canEditPersona}
                                     onChange={(e) => setPaymentLink(e.target.value)}
                                     placeholder="https://paystack.com/pay/your-link"
-                                    className="w-full border border-slate-300 rounded-lg px-4 py-2 text-base focus:ring-2 focus:ring-violet-500 outline-none"
+                                    className="w-full border border-slate-300 rounded-lg px-4 py-2 text-base focus:ring-2 focus:ring-violet-500 outline-none disabled:bg-slate-100 disabled:cursor-not-allowed"
                                 />
                                 <p className="text-xs text-slate-400 mt-1">AI will automatically paste this link when contacts ask how to pay, give, or buy.</p>
                             </div>
@@ -727,15 +816,23 @@ const Settings: React.FC<SettingsProps> = ({
                             {/* Voice Note Response Mode */}
                             <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-4">
                                 <div>
-                                    <label className="block text-sm font-bold text-slate-800 mb-1 flex items-center gap-2">
-                                        <Volume2 size={16} className="text-violet-600" /> Voice Note Response Mode
-                                        <span className="text-[10px] bg-green-100 text-green-700 font-bold px-2 py-0.5 rounded-full">100% Free</span>
-                                    </label>
+                                    <div className="flex items-center justify-between mb-1">
+                                        <label className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                                            <Volume2 size={16} className="text-violet-600" /> Voice Note Response Mode
+                                            <span className="text-[10px] bg-green-100 text-green-700 font-bold px-2 py-0.5 rounded-full">100% Free</span>
+                                        </label>
+                                        {!canEditVoiceMode && (
+                                            <span className="text-[11px] bg-amber-100 text-amber-800 font-semibold px-2 py-0.5 rounded flex items-center gap-1">
+                                                <Lock size={11} /> Voice Locked
+                                            </span>
+                                        )}
+                                    </div>
                                     <p className="text-xs text-slate-500 mb-3">Choose whether the AI replies with text or spoken audio voice notes.</p>
                                     <select
                                         value={voiceReplyMode}
+                                        disabled={!canEditVoiceMode}
                                         onChange={(e) => setVoiceReplyMode(e.target.value as any)}
-                                        className="w-full border border-slate-300 rounded-lg px-4 py-2 text-sm font-medium focus:ring-2 focus:ring-violet-500 outline-none bg-white"
+                                        className="w-full border border-slate-300 rounded-lg px-4 py-2 text-sm font-medium focus:ring-2 focus:ring-violet-500 outline-none bg-white disabled:bg-slate-100 disabled:cursor-not-allowed"
                                     >
                                         <option value="text">💬 Text Only (Default — AI always replies with text)</option>
                                         <option value="match_input">🎙️ Match Customer (Reply in voice when customer sends a voice note, text otherwise)</option>
@@ -750,8 +847,9 @@ const Settings: React.FC<SettingsProps> = ({
                                         </label>
                                         <select
                                             value={voiceName}
+                                            disabled={!canEditVoiceMode}
                                             onChange={(e) => setVoiceName(e.target.value)}
-                                            className="w-full border border-slate-300 rounded-lg px-4 py-2 text-xs font-medium focus:ring-2 focus:ring-violet-500 outline-none bg-white"
+                                            className="w-full border border-slate-300 rounded-lg px-4 py-2 text-xs font-medium focus:ring-2 focus:ring-violet-500 outline-none bg-white disabled:bg-slate-100 disabled:cursor-not-allowed"
                                         >
                                             <option value="en-NG-EzinneNeural">🇳🇬 Nigerian English (Warm Female - Ezinne)</option>
                                             <option value="en-NG-AbeoNeural">🇳🇬 Nigerian English (Warm Male - Abeo)</option>
@@ -765,6 +863,7 @@ const Settings: React.FC<SettingsProps> = ({
 
                             <div>
                                 <button
+                                    disabled={!canEditAutopilot && !canEditPersona && !canEditVoiceMode}
                                     onClick={async () => {
                                         localStorage.setItem('shepherd_agent_enabled', String(agentEnabled));
                                         localStorage.setItem('shepherd_agent_mode', agentMode);
@@ -800,9 +899,11 @@ const Settings: React.FC<SettingsProps> = ({
                                         }
 
                                         setAgentSaved(true);
-                                        setTimeout(() => setAgentSaved(false), 2000);
+                                        setTimeout(() => {
+                                            window.location.reload();
+                                        }, 700);
                                     }}
-                                    className={`px-6 py-2.5 rounded-lg font-bold transition-all shadow-sm active:scale-95 flex items-center gap-2 ${
+                                    className={`px-6 py-2.5 rounded-lg font-bold transition-all shadow-sm active:scale-95 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed ${
                                         agentSaved
                                             ? 'bg-green-600 text-white hover:bg-green-700'
                                             : 'bg-violet-600 text-white hover:bg-violet-700'
@@ -810,7 +911,7 @@ const Settings: React.FC<SettingsProps> = ({
                                 >
                                     {agentSaved ? (
                                         <>
-                                            <Check size={18} /> Saved Successfully!
+                                            <Check size={18} /> Saved! Reloading...
                                         </>
                                     ) : (
                                         'Save Agent Settings'
@@ -891,19 +992,30 @@ const Settings: React.FC<SettingsProps> = ({
                                     <h4 className="text-base font-bold text-slate-800 flex items-center gap-2">
                                         <BrainCircuit size={20} className="text-indigo-600" />
                                         Primary AI Reasoning & Intelligence Key
+                                        {!canEditAiKeys && (
+                                            <span className="text-[11px] bg-amber-100 text-amber-800 font-semibold px-2 py-0.5 rounded flex items-center gap-1">
+                                                <Lock size={11} /> Locked by Super Admin
+                                            </span>
+                                        )}
                                     </h4>
                                     <p className="text-xs text-slate-500 mt-1">
                                         Powers auto-replies, product recommendations, catalog lookups, and appointment bookings.
                                     </p>
                                 </div>
-                                <a
-                                    href="https://aistudio.google.com/app/apikey"
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg border border-indigo-200 transition-colors w-fit"
-                                >
-                                    Get Free Gemini Key <ExternalLink size={13} />
-                                </a>
+                                {canEditAiKeys ? (
+                                    <a
+                                        href="https://aistudio.google.com/app/apikey"
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg border border-indigo-200 transition-colors w-fit"
+                                    >
+                                        Get Free Gemini Key <ExternalLink size={13} />
+                                    </a>
+                                ) : (
+                                    <span className="inline-flex items-center gap-1.5 text-xs font-bold text-amber-800 bg-amber-100 px-3 py-1.5 rounded-lg border border-amber-300 w-fit">
+                                        <Lock size={12} /> Managed by Super Admin
+                                    </span>
+                                )}
                             </div>
 
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
@@ -913,8 +1025,9 @@ const Settings: React.FC<SettingsProps> = ({
                                     </label>
                                     <select
                                         value={aiConfig.provider}
+                                        disabled={!canEditAiKeys}
                                         onChange={handleProviderChange}
-                                        className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
+                                        className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white disabled:bg-slate-100 disabled:cursor-not-allowed"
                                     >
                                         <option value="gemini">Google Gemini (Recommended - Free Tier)</option>
                                         <option value="openai">OpenAI (GPT-4 / GPT-3.5)</option>
@@ -929,10 +1042,11 @@ const Settings: React.FC<SettingsProps> = ({
                                     <div className="relative">
                                         <input
                                             type="password"
-                                            value={aiConfig.apiKey}
+                                            disabled={!canEditAiKeys}
+                                            value={canEditAiKeys ? aiConfig.apiKey : ''}
                                             onChange={(e) => setAiConfig({ ...aiConfig, apiKey: e.target.value })}
-                                            placeholder={aiConfig.provider === 'gemini' ? "AIzaSy..." : `Enter ${aiConfig.provider} API Key`}
-                                            className="w-full border border-slate-300 rounded-lg pl-3 pr-10 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none font-mono"
+                                            placeholder={!canEditAiKeys ? "API key locked by administrator" : (aiConfig.provider === 'gemini' ? "AIzaSy..." : `Enter ${aiConfig.provider} API Key`)}
+                                            className="w-full border border-slate-300 rounded-lg pl-3 pr-10 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none font-mono disabled:bg-slate-100 disabled:cursor-not-allowed"
                                         />
                                         <Key size={16} className="absolute right-3 top-2.5 text-slate-400 pointer-events-none" />
                                     </div>
@@ -945,21 +1059,21 @@ const Settings: React.FC<SettingsProps> = ({
 
                         {/* 2. Groq Cloud API Key for Instant Voice Transcription */}
                         <div className={`p-6 rounded-xl border relative transition-all ${
-                            canUseVoice ? 'bg-amber-50/60 border-amber-200' : 'bg-slate-50 border-slate-200'
+                            canEditGroqKey ? 'bg-amber-50/60 border-amber-200' : 'bg-slate-50 border-slate-200'
                         }`}>
                             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
                                 <div>
                                     <div className="flex items-center gap-2">
                                         <h4 className="text-base font-bold text-slate-800 flex items-center gap-2">
-                                            <Zap size={20} className={canUseVoice ? "text-amber-600" : "text-slate-400"} />
+                                            <Zap size={20} className={canEditGroqKey ? "text-amber-600" : "text-slate-400"} />
                                             Groq Cloud API Key
                                         </h4>
                                         <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
-                                            canUseVoice ? 'bg-amber-200 text-amber-900' : 'bg-slate-200 text-slate-600'
+                                            canEditGroqKey ? 'bg-amber-200 text-amber-900' : 'bg-slate-200 text-slate-600'
                                         }`}>
                                             0.3s Voice Transcription
                                         </span>
-                                        {!canUseVoice && (
+                                        {!canEditGroqKey && (
                                             <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200 shadow-xs">
                                                 <Lock size={11} /> Feature Restricted
                                             </span>
@@ -969,7 +1083,7 @@ const Settings: React.FC<SettingsProps> = ({
                                         Transcribes incoming WhatsApp and Web Widget audio notes instantly using Groq Whisper (<code className="font-mono text-slate-700">whisper-large-v3-turbo</code>). Free tier includes 7,200 requests/day and handles Nigerian Pidgin, Yoruba, Hausa, Igbo, and English.
                                     </p>
                                 </div>
-                                {canUseVoice ? (
+                                {canEditGroqKey ? (
                                     <a
                                         href="https://console.groq.com/keys"
                                         target="_blank"
@@ -995,26 +1109,26 @@ const Settings: React.FC<SettingsProps> = ({
                                 <div className="relative">
                                     <input
                                         type="password"
-                                        disabled={!canUseVoice}
-                                        readOnly={!canUseVoice}
+                                        disabled={!canEditGroqKey}
+                                        readOnly={!canEditGroqKey}
                                         value={aiConfig.groqApiKey || ''}
                                         onChange={(e) => setAiConfig({ ...aiConfig, groqApiKey: e.target.value })}
-                                        placeholder={canUseVoice ? "gsk_..." : "Voice transcription restricted for your organization"}
+                                        placeholder={canEditGroqKey ? "gsk_..." : "Voice transcription restricted for your organization"}
                                         className={`w-full border rounded-lg pl-3 pr-10 py-2 text-sm outline-none font-mono ${
-                                            canUseVoice
+                                            canEditGroqKey
                                                 ? 'border-amber-300 focus:ring-2 focus:ring-amber-500 bg-white'
                                                 : 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed select-none'
                                         }`}
                                     />
-                                    <Key size={16} className={`absolute right-3 top-2.5 ${canUseVoice ? "text-amber-500" : "text-slate-300"} pointer-events-none`} />
+                                    <Key size={16} className={`absolute right-3 top-2.5 ${canEditGroqKey ? "text-amber-500" : "text-slate-300"} pointer-events-none`} />
                                 </div>
                                 <div className="flex flex-wrap items-center justify-between gap-2 mt-1.5">
                                     <p className="text-[11px] text-slate-500">
-                                        {!canUseVoice
+                                        {!canEditGroqKey
                                             ? '🔒 Voice note audio transcription is disabled for your organization.'
                                             : 'Optional but strongly recommended for instant voice responses under 60 seconds. Without this key, voice notes fall back to CPU audio conversion.'}
                                     </p>
-                                    {canUseVoice && aiConfig.groqApiKey && (
+                                    {canEditGroqKey && aiConfig.groqApiKey && (
                                         <span className="text-[11px] text-emerald-700 font-semibold flex items-center gap-1">
                                             <Check size={12} /> Groq configured
                                         </span>
@@ -1159,15 +1273,20 @@ const Settings: React.FC<SettingsProps> = ({
                     <div className="relative">
                         <div className="flex items-center justify-between mb-4">
                             <h4 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                                <MessageCircle className={canUseWhatsApp ? "text-green-500" : "text-slate-400"} size={20} />
+                                <MessageCircle className={canEditWhatsAppDelivery ? "text-green-500" : "text-slate-400"} size={20} />
                                 WhatsApp Delivery Method
+                                {!canEditWhatsAppDelivery && (
+                                    <span className="text-[11px] bg-amber-100 text-amber-800 font-semibold px-2 py-0.5 rounded flex items-center gap-1">
+                                        <Lock size={11} /> Locked by Super Admin
+                                    </span>
+                                )}
                             </h4>
                             <div className="flex bg-slate-100 p-1 rounded-lg">
                                 <button
-                                    disabled={!canUseWhatsApp}
+                                    disabled={!canEditWhatsAppDelivery}
                                     onClick={() => setWaConfig({ ...waConfig, provider: 'meta' })}
                                     className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                                        !canUseWhatsApp
+                                        !canEditWhatsAppDelivery
                                             ? 'text-slate-400 cursor-not-allowed'
                                             : waConfig.provider === 'meta'
                                             ? 'bg-white shadow text-slate-800'
@@ -1177,10 +1296,10 @@ const Settings: React.FC<SettingsProps> = ({
                                     Meta Cloud API
                                 </button>
                                 <button
-                                    disabled={!canUseWhatsApp}
+                                    disabled={!canEditWhatsAppDelivery}
                                     onClick={() => setWaConfig({ ...waConfig, provider: 'venom' })}
                                     className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                                        !canUseWhatsApp
+                                        !canEditWhatsAppDelivery
                                             ? 'text-slate-400 cursor-not-allowed'
                                             : waConfig.provider === 'venom'
                                             ? 'bg-white shadow text-slate-800'
@@ -1192,13 +1311,12 @@ const Settings: React.FC<SettingsProps> = ({
                             </div>
                         </div>
 
-                        {!canUseWhatsApp && (
+                        {!canEditWhatsAppDelivery && (
                             <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-between text-xs text-amber-800 font-medium">
                                 <div className="flex items-center gap-2">
                                     <Lock size={14} className="text-amber-600 shrink-0" />
-                                    <span>WhatsApp Delivery credentials configuration is restricted for your organization.</span>
+                                    <span>WhatsApp Delivery credentials configuration is managed or restricted by your administrator.</span>
                                 </div>
-                                <a href="#/billing" className="font-bold underline shrink-0 hover:text-amber-900">Upgrade Plan →</a>
                             </div>
                         )}
 
@@ -1213,13 +1331,13 @@ const Settings: React.FC<SettingsProps> = ({
                                         <label className="block text-sm font-medium text-slate-700 mb-1">Phone Number ID</label>
                                         <input
                                             type="text"
-                                            disabled={!canUseWhatsApp}
-                                            readOnly={!canUseWhatsApp}
+                                            disabled={!canEditWhatsAppDelivery}
+                                            readOnly={!canEditWhatsAppDelivery}
                                             value={waConfig.phoneId || ''}
                                             onChange={(e) => setWaConfig({ ...waConfig, phoneId: e.target.value })}
-                                            placeholder={canUseWhatsApp ? "e.g. 10452..." : "Restricted for your organization"}
+                                            placeholder={canEditWhatsAppDelivery ? "e.g. 10452..." : "Restricted by administrator"}
                                             className={`w-full border rounded-lg px-4 py-2.5 text-base outline-none font-mono ${
-                                                canUseWhatsApp ? 'border-slate-300 focus:ring-2 focus:ring-green-500 bg-white' : 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed select-none'
+                                                canEditWhatsAppDelivery ? 'border-slate-300 focus:ring-2 focus:ring-green-500 bg-white' : 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed select-none'
                                             }`}
                                         />
                                     </div>
@@ -1227,13 +1345,13 @@ const Settings: React.FC<SettingsProps> = ({
                                         <label className="block text-sm font-medium text-slate-700 mb-1">Permanent Access Token</label>
                                         <input
                                             type="password"
-                                            disabled={!canUseWhatsApp}
-                                            readOnly={!canUseWhatsApp}
+                                            disabled={!canEditWhatsAppDelivery}
+                                            readOnly={!canEditWhatsAppDelivery}
                                             value={waConfig.token || ''}
                                             onChange={(e) => setWaConfig({ ...waConfig, token: e.target.value })}
-                                            placeholder={canUseWhatsApp ? "e.g. EAAG..." : "Restricted for your organization"}
+                                            placeholder={canEditWhatsAppDelivery ? "e.g. EAAG..." : "Restricted by administrator"}
                                             className={`w-full border rounded-lg px-4 py-2.5 text-base outline-none font-mono ${
-                                                canUseWhatsApp ? 'border-slate-300 focus:ring-2 focus:ring-green-500 bg-white' : 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed select-none'
+                                                canEditWhatsAppDelivery ? 'border-slate-300 focus:ring-2 focus:ring-green-500 bg-white' : 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed select-none'
                                             }`}
                                         />
                                     </div>
@@ -1250,12 +1368,12 @@ const Settings: React.FC<SettingsProps> = ({
                                     <div className="flex gap-2">
                                         <input
                                             type="text"
-                                            disabled={!canUseWhatsApp}
-                                            readOnly={!canUseWhatsApp}
+                                            disabled={!canEditWhatsAppDelivery}
+                                            readOnly={!canEditWhatsAppDelivery}
                                             value={waConfig.bridgeUrl || 'http://localhost:3001'}
                                             onChange={(e) => setWaConfig({ ...waConfig, bridgeUrl: e.target.value })}
                                             className={`flex-1 border rounded-lg px-4 py-2.5 text-base outline-none font-mono ${
-                                                canUseWhatsApp ? 'border-slate-300 focus:ring-2 focus:ring-purple-500 bg-white' : 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed select-none'
+                                                canEditWhatsAppDelivery ? 'border-slate-300 focus:ring-2 focus:ring-purple-500 bg-white' : 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed select-none'
                                             }`}
                                         />
                                     </div>
@@ -1271,9 +1389,9 @@ const Settings: React.FC<SettingsProps> = ({
                         <div className="flex items-center justify-between mb-4">
                             <div>
                                 <h4 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                                    <Zap className={canUseWorkflows ? "text-orange-500" : "text-slate-400"} size={20} />
+                                    <Zap className={canEditWorkflows ? "text-orange-500" : "text-slate-400"} size={20} />
                                     Smart Workflows Automation
-                                    {!canUseWorkflows && (
+                                    {!canEditWorkflows && (
                                         <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200 shadow-xs">
                                             <Lock size={11} /> Feature Restricted
                                         </span>
@@ -1285,28 +1403,27 @@ const Settings: React.FC<SettingsProps> = ({
                             </div>
                         </div>
 
-                        {!canUseWorkflows && (
+                        {!canEditWorkflows && (
                             <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-between text-xs text-amber-800 font-medium">
                                 <div className="flex items-center gap-2">
                                     <Lock size={14} className="text-amber-600 shrink-0" />
-                                    <span>Automated background workflow execution is restricted for your organization.</span>
+                                    <span>Automated background workflow execution is restricted or managed by your administrator.</span>
                                 </div>
-                                <a href="#/billing" className="font-bold underline shrink-0 hover:text-amber-900">Upgrade Plan →</a>
                             </div>
                         )}
 
                         <div className={`p-6 rounded-xl border space-y-4 ${
-                            canUseWorkflows ? 'bg-slate-50 border-slate-200' : 'bg-slate-50/70 border-slate-200'
+                            canEditWorkflows ? 'bg-slate-50 border-slate-200' : 'bg-slate-50/70 border-slate-200'
                         }`}>
                             <div className="flex items-start justify-between gap-4">
                                 <div className="flex-1">
-                                    <label className={`flex items-center gap-3 ${canUseWorkflows ? 'cursor-pointer group' : 'cursor-not-allowed opacity-50 select-none'}`}>
+                                    <label className={`flex items-center gap-3 ${canEditWorkflows ? 'cursor-pointer group' : 'cursor-not-allowed opacity-50 select-none'}`}>
                                         <div className="relative">
                                             <input
                                                 type="checkbox"
-                                                disabled={!canUseWorkflows}
-                                                checked={canUseWorkflows ? autoRunEnabled : false}
-                                                onChange={canUseWorkflows ? handleToggleAutoRun : undefined}
+                                                disabled={!canEditWorkflows}
+                                                checked={canEditWorkflows ? autoRunEnabled : false}
+                                                onChange={canEditWorkflows ? handleToggleAutoRun : undefined}
                                                 className="sr-only peer"
                                             />
                                             <div className="w-14 h-8 bg-slate-300 rounded-full peer peer-checked:bg-green-500 transition-colors"></div>
@@ -1365,7 +1482,7 @@ const Settings: React.FC<SettingsProps> = ({
                             ) : isSaved ? (
                                 <>
                                     <Check size={20} />
-                                    Saved!
+                                    Saved! Reloading...
                                 </>
                             ) : (
                                 <>
@@ -1380,11 +1497,16 @@ const Settings: React.FC<SettingsProps> = ({
 
             {/* Database & Backup Section */}
             <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
-                <div className="p-6 border-b border-slate-100 bg-slate-50">
+                <div className="p-6 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
                     <h3 className="font-semibold text-xl text-slate-800 flex items-center gap-2">
                         <Database className="text-blue-600" />
                         Database & Data Management
                     </h3>
+                    {!canEditDataBackup && (
+                        <span className="text-xs bg-amber-100 text-amber-800 font-semibold px-2.5 py-1 rounded-md flex items-center gap-1">
+                            <Lock size={12} /> Managed by Super Admin
+                        </span>
+                    )}
                 </div>
                 <div className="p-8 space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -1393,7 +1515,11 @@ const Settings: React.FC<SettingsProps> = ({
                                 <div className="p-2 bg-blue-100 text-blue-600 rounded-lg"><Download size={20} /></div>
                                 <h4 className="font-bold text-slate-800">Backup Data</h4>
                             </div>
-                            <button onClick={() => storage.downloadBackup()} className="w-full py-2.5 bg-white border border-slate-300 text-slate-700 font-medium rounded-lg hover:bg-slate-100 transition-colors shadow-sm">
+                            <button
+                                disabled={!canEditDataBackup}
+                                onClick={() => storage.downloadBackup()}
+                                className="w-full py-2.5 bg-white border border-slate-300 text-slate-700 font-medium rounded-lg hover:bg-slate-100 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
                                 Download Backup (.json)
                             </button>
                         </div>
@@ -1404,8 +1530,19 @@ const Settings: React.FC<SettingsProps> = ({
                                 <h4 className="font-bold text-slate-800">Restore Data</h4>
                             </div>
                             <div className="relative">
-                                <input type="file" ref={fileInputRef} accept=".json" className="hidden" onChange={handleRestore} />
-                                <button onClick={() => fileInputRef.current?.click()} className="w-full py-2.5 bg-white border border-slate-300 text-slate-700 font-medium rounded-lg hover:bg-slate-100 transition-colors shadow-sm flex items-center justify-center gap-2">
+                                <input
+                                    type="file"
+                                    ref={fileInputRef}
+                                    accept=".json"
+                                    disabled={!canEditDataBackup}
+                                    className="hidden"
+                                    onChange={handleRestore}
+                                />
+                                <button
+                                    disabled={!canEditDataBackup}
+                                    onClick={() => fileInputRef.current?.click()}
+                                    className="w-full py-2.5 bg-white border border-slate-300 text-slate-700 font-medium rounded-lg hover:bg-slate-100 transition-colors shadow-sm flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
                                     {restoreStatus === 'success' ? <span className="text-green-600 flex items-center gap-2"><Check size={18} /> Restored! Reloading...</span> : 'Select Backup File'}
                                 </button>
                             </div>
@@ -1419,7 +1556,13 @@ const Settings: React.FC<SettingsProps> = ({
                                 <p className="text-sm text-red-800 font-medium">Factory Reset</p>
                                 <p className="text-xs text-red-600">Permanently delete all data.</p>
                             </div>
-                            <button onClick={handleReset} className="px-4 py-2 bg-white border border-red-200 text-red-600 font-bold rounded-lg hover:bg-red-600 hover:text-white transition-colors text-sm">Reset All Data</button>
+                            <button
+                                disabled={!canEditDataBackup}
+                                onClick={handleReset}
+                                className="px-4 py-2 bg-white border border-red-200 text-red-600 font-bold rounded-lg hover:bg-red-600 hover:text-white transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                Reset All Data
+                            </button>
                         </div>
                     </div>
                 </div>

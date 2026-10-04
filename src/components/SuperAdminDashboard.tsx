@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import {
   Shield, Users, CheckCircle, AlertTriangle, ArrowUpRight, Search,
   RefreshCw, Trash2, Edit3, Lock, Sparkles, MessageSquare, PhoneCall,
-  Zap, Globe, Bot, X, Check, Save, Sliders, ChevronDown
+  Zap, Globe, Bot, X, Check, Save, Sliders, ChevronDown, Send,
+  Volume2, Key, BrainCircuit
 } from 'lucide-react';
 import { BACKEND_URL } from '../services/env';
 
@@ -25,16 +26,37 @@ interface Subscriber {
   };
 }
 
-const ALL_FEATURES = [
-  { id: 'whatsapp', label: 'WhatsApp Cloud API & Bridge', icon: PhoneCall, minPlan: 'Growth' },
-  { id: 'whatsapp_bridge', label: 'WhatsApp Bridge Pairing', icon: PhoneCall, minPlan: 'Growth' },
-  { id: 'live_chats', label: 'Live Chats Takeover', icon: MessageSquare, minPlan: 'Growth' },
-  { id: 'voice_notes', label: 'Voice Note Transcription (Whisper)', icon: Bot, minPlan: 'Growth' },
-  { id: 'workflows', label: 'Automated Drip Workflows', icon: Zap, minPlan: 'Growth' },
-  { id: 'campaigns', label: 'Campaigns & Broadcasts', icon: Zap, minPlan: 'Growth' },
-  { id: 'groups', label: 'WhatsApp Community Groups', icon: Users, minPlan: 'Enterprise' },
-  { id: 'external_webhook', label: 'External Catalog Webhook Sync', icon: Globe, minPlan: 'Enterprise' },
+interface FeatureItem {
+  id: string;
+  label: string;
+  category: 'Platform Features & Add-ons' | 'Settings Page Permissions';
+  icon: any;
+  minPlan: string;
+  description: string;
+}
+
+const ALL_FEATURES: FeatureItem[] = [
+  // 1. Platform Features & Add-ons
+  { id: 'whatsapp', label: 'WhatsApp Cloud API & Bridge Delivery', category: 'Platform Features & Add-ons', icon: PhoneCall, minPlan: 'Growth', description: 'Enable WhatsApp delivery methods and messaging integrations' },
+  { id: 'whatsapp_bridge', label: 'WhatsApp Bridge Pairing & Connection', category: 'Platform Features & Add-ons', icon: PhoneCall, minPlan: 'Growth', description: 'Allow pairing and running the desktop WhatsApp bridge app' },
+  { id: 'live_chats', label: 'Live Chats Takeover & Real-Time Inbox', category: 'Platform Features & Add-ons', icon: MessageSquare, minPlan: 'Growth', description: 'Real-time multi-agent live chat takeover across WhatsApp and web' },
+  { id: 'voice_notes', label: 'Voice Note Audio Transcription (Groq Whisper)', category: 'Platform Features & Add-ons', icon: Bot, minPlan: 'Growth', description: 'Instant transcription of incoming audio notes and media library' },
+  { id: 'workflows', label: 'Automated Drip Follow-Up Tracks', category: 'Platform Features & Add-ons', icon: Zap, minPlan: 'Growth', description: 'Multi-day follow-up workflows and smart drip sequences' },
+  { id: 'campaigns', label: 'Bulk Campaigns & Blasts', category: 'Platform Features & Add-ons', icon: Send, minPlan: 'Growth', description: 'Personalized AI broadcasting across WhatsApp contact lists' },
+  { id: 'groups', label: 'WhatsApp Community Groups Management', category: 'Platform Features & Add-ons', icon: Users, minPlan: 'Enterprise', description: 'Multi-group coordination, auto-welcoming, and announcements' },
+  { id: 'external_webhook', label: 'External Catalog & CRM Webhook Sync', category: 'Platform Features & Add-ons', icon: Globe, minPlan: 'Enterprise', description: 'Real-time webhooks for WooCommerce, Shopify, and CRM catalogs' },
+
+  // 2. Settings Page Permissions (Admin controls what subscriber can edit in Settings)
+  { id: 'setting_ai_keys', label: 'Configure Custom AI Keys (Gemini/OpenAI/Groq)', category: 'Settings Page Permissions', icon: BrainCircuit, minPlan: 'All Tiers', description: 'Allow subscriber to configure their own primary AI LLM provider & API keys' },
+  { id: 'setting_groq_key', label: 'Configure Groq Whisper API Key', category: 'Settings Page Permissions', icon: Key, minPlan: 'Growth', description: 'Allow subscriber to enter their custom Groq Cloud API key for voice notes' },
+  { id: 'setting_whatsapp_delivery', label: 'Configure WhatsApp Credentials & Bridge URL', category: 'Settings Page Permissions', icon: PhoneCall, minPlan: 'Growth', description: 'Allow subscriber to edit Meta Phone ID, Access Token, and Bridge Server URL' },
+  { id: 'setting_agent_persona', label: 'Edit Identity, Assistant Name & Tone Prompt', category: 'Settings Page Permissions', icon: Bot, minPlan: 'All Tiers', description: 'Allow subscriber to customize organization name, assistant name, tone, and payment link' },
+  { id: 'setting_agent_autopilot', label: 'Toggle AI Auto-Reply & Autopilot Mode', category: 'Settings Page Permissions', icon: Sparkles, minPlan: 'All Tiers', description: 'Allow subscriber to toggle AI auto-reply on/off and switch between suggest/auto-send' },
+  { id: 'setting_voice_mode', label: 'Change Voice Reply Mode & Neural Accents', category: 'Settings Page Permissions', icon: Volume2, minPlan: 'All Tiers', description: 'Allow subscriber to toggle text vs voice note replies and choose TTS neural voices' },
+  { id: 'setting_workflows_autorun', label: 'Toggle Daily Workflows Auto-Execution', category: 'Settings Page Permissions', icon: Zap, minPlan: 'Growth', description: 'Allow subscriber to enable or disable automatic daily workflow check-ins' },
+  { id: 'setting_data_backup', label: 'Database Backup, Restore & Reset', category: 'Settings Page Permissions', icon: Shield, minPlan: 'All Tiers', description: 'Allow subscriber to download JSON backups, restore data, or trigger factory reset' },
 ];
+
 
 export default function SuperAdminDashboard() {
   const [subscribers, setSubscribers] = useState<Subscriber[]>([]);
@@ -89,8 +111,11 @@ export default function SuperAdminDashboard() {
       });
       const data = await res.json();
       if (res.ok) {
-        setNotification({ type: 'success', message: data.message });
+        setNotification({ type: 'success', message: `${data.message} - Updating immediately...` });
         await fetchSubscribers();
+        setTimeout(() => {
+          window.location.reload();
+        }, 600);
       } else {
         setNotification({ type: 'error', message: data.detail || 'Failed to change plan' });
       }
@@ -117,9 +142,12 @@ export default function SuperAdminDashboard() {
       });
       const data = await res.json();
       if (res.ok) {
-        setNotification({ type: 'success', message: `Quota updated to ${newQuotaValue.toLocaleString()} messages.` });
+        setNotification({ type: 'success', message: `Quota updated to ${newQuotaValue.toLocaleString()} messages. Refreshing...` });
         setEditingQuotaSub(null);
         await fetchSubscribers();
+        setTimeout(() => {
+          window.location.reload();
+        }, 600);
       } else {
         setNotification({ type: 'error', message: data.detail || 'Failed to update quota' });
       }
@@ -146,8 +174,11 @@ export default function SuperAdminDashboard() {
         })
       });
       if (res.ok) {
-        setNotification({ type: 'success', message: `Subscriber ${sub.name} is now ${nextStatus}.` });
+        setNotification({ type: 'success', message: `Subscriber ${sub.name} is now ${nextStatus}. Refreshing...` });
         await fetchSubscribers();
+        setTimeout(() => {
+          window.location.reload();
+        }, 600);
       }
     } catch (err) {
       setNotification({ type: 'error', message: 'Failed to toggle status' });
@@ -169,9 +200,12 @@ export default function SuperAdminDashboard() {
       });
       const data = await res.json();
       if (res.ok) {
-        setNotification({ type: 'success', message: data.message });
+        setNotification({ type: 'success', message: `${data.message} - Updating immediately...` });
         setEditingPermissionsSub(null);
         await fetchSubscribers();
+        setTimeout(() => {
+          window.location.reload();
+        }, 600);
       } else {
         setNotification({ type: 'error', message: data.detail || 'Failed to save permissions' });
       }
@@ -196,6 +230,9 @@ export default function SuperAdminDashboard() {
         setNotification({ type: 'success', message: data.message });
         setDeletingSub(null);
         await fetchSubscribers();
+        setTimeout(() => {
+          window.location.reload();
+        }, 600);
       } else {
         setNotification({ type: 'error', message: data.detail || 'Failed to delete subscriber' });
       }
@@ -523,51 +560,71 @@ export default function SuperAdminDashboard() {
               </button>
             </div>
 
-            <div className="mt-6 space-y-3">
-              {ALL_FEATURES.map((feat) => {
-                const Icon = feat.icon;
-                const isExplicitlySet = feat.id in tempPermissions;
-                const isEnabled = tempPermissions[feat.id] === true;
+            <div className="mt-6 space-y-6">
+              {(['Platform Features & Add-ons', 'Settings Page Permissions'] as const).map((categoryName) => {
+                const categoryFeatures = ALL_FEATURES.filter(f => f.category === categoryName);
+                if (categoryFeatures.length === 0) return null;
 
                 return (
-                  <div key={feat.id} className="p-3.5 rounded-2xl border border-slate-100 bg-slate-50/50 flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-slate-600 shrink-0">
-                        <Icon size={16} />
-                      </div>
-                      <div>
-                        <p className="text-xs font-bold text-slate-800">{feat.label}</p>
-                        <p className="text-[10px] text-slate-400">Standard Tier: {feat.minPlan}</p>
-                      </div>
+                  <div key={categoryName} className="space-y-2.5">
+                    <div className="flex items-center justify-between pb-1 border-b border-slate-100">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                        {categoryName}
+                      </span>
+                      <span className="text-[10px] text-slate-400">
+                        {categoryFeatures.length} items
+                      </span>
                     </div>
 
-                    <div className="flex items-center gap-2">
-                      <select
-                        value={isExplicitlySet ? (isEnabled ? 'enabled' : 'disabled') : 'default'}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setTempPermissions(prev => {
-                            const updated = { ...prev };
-                            if (val === 'default') {
-                              delete updated[feat.id];
-                            } else {
-                              updated[feat.id] = val === 'enabled';
-                            }
-                            return updated;
-                          });
-                        }}
-                        className={`text-xs font-bold px-2.5 py-1.5 rounded-xl border outline-none cursor-pointer ${
-                          isExplicitlySet
-                            ? isEnabled
-                              ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
-                              : 'bg-rose-50 text-rose-700 border-rose-300'
-                            : 'bg-white text-slate-500 border-slate-200'
-                        }`}
-                      >
-                        <option value="default">Plan Default</option>
-                        <option value="enabled">Force Enabled (✓)</option>
-                        <option value="disabled">Force Disabled (✗)</option>
-                      </select>
+                    <div className="space-y-2.5">
+                      {categoryFeatures.map((feat) => {
+                        const Icon = feat.icon;
+                        const isExplicitlySet = feat.id in tempPermissions;
+                        const isEnabled = tempPermissions[feat.id] === true;
+
+                        return (
+                          <div key={feat.id} className="p-3 rounded-2xl border border-slate-100 bg-slate-50/60 flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className="w-8 h-8 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-slate-600 shrink-0">
+                                <Icon size={16} />
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-xs font-bold text-slate-800 truncate">{feat.label}</p>
+                                <p className="text-[10px] text-slate-400 truncate">{feat.description || `Standard: ${feat.minPlan}`}</p>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2 shrink-0">
+                              <select
+                                value={isExplicitlySet ? (isEnabled ? 'enabled' : 'disabled') : 'default'}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setTempPermissions(prev => {
+                                    const updated = { ...prev };
+                                    if (val === 'default') {
+                                      delete updated[feat.id];
+                                    } else {
+                                      updated[feat.id] = val === 'enabled';
+                                    }
+                                    return updated;
+                                  });
+                                }}
+                                className={`text-xs font-bold px-2.5 py-1.5 rounded-xl border outline-none cursor-pointer ${
+                                  isExplicitlySet
+                                    ? isEnabled
+                                      ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                                      : 'bg-rose-50 text-rose-700 border-rose-300'
+                                    : 'bg-white text-slate-500 border-slate-200'
+                                }`}
+                              >
+                                <option value="default">Plan Default</option>
+                                <option value="enabled">Force Enabled (✓)</option>
+                                <option value="disabled">Force Disabled (✗)</option>
+                              </select>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 );
