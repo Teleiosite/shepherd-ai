@@ -595,7 +595,7 @@ const Settings: React.FC<SettingsProps> = ({
                     <div className="flex items-center gap-2">
                         {!canEditPersona && (
                             <span className="text-xs bg-amber-100 text-amber-800 font-semibold px-2.5 py-1 rounded-md flex items-center gap-1">
-                                <Lock size={12} /> Managed by Super Admin
+                                <Lock size={12} /> Locked
                             </span>
                         )}
                         {personaSaved && (
@@ -695,7 +695,7 @@ const Settings: React.FC<SettingsProps> = ({
                     <div className="flex items-center gap-2">
                         {!canEditAutopilot && (
                             <span className="text-xs bg-amber-100 text-amber-800 font-semibold px-2.5 py-1 rounded-md flex items-center gap-1">
-                                <Lock size={12} /> Managed by Super Admin
+                                <Lock size={12} /> Locked
                             </span>
                         )}
                         {agentSaved && <span className="text-green-600 font-bold flex items-center gap-2 text-sm animate-fade-in"><Check size={18} /> Settings Saved</span>}
@@ -994,7 +994,7 @@ const Settings: React.FC<SettingsProps> = ({
                                         Primary AI Reasoning & Intelligence Key
                                         {!canEditAiKeys && (
                                             <span className="text-[11px] bg-amber-100 text-amber-800 font-semibold px-2 py-0.5 rounded flex items-center gap-1">
-                                                <Lock size={11} /> Locked by Super Admin
+                                                <Lock size={11} /> Locked
                                             </span>
                                         )}
                                     </h4>
@@ -1013,7 +1013,7 @@ const Settings: React.FC<SettingsProps> = ({
                                     </a>
                                 ) : (
                                     <span className="inline-flex items-center gap-1.5 text-xs font-bold text-amber-800 bg-amber-100 px-3 py-1.5 rounded-lg border border-amber-300 w-fit">
-                                        <Lock size={12} /> Managed by Super Admin
+                                        <Lock size={12} /> Locked
                                     </span>
                                 )}
                             </div>
@@ -1045,7 +1045,7 @@ const Settings: React.FC<SettingsProps> = ({
                                             disabled={!canEditAiKeys}
                                             value={canEditAiKeys ? aiConfig.apiKey : ''}
                                             onChange={(e) => setAiConfig({ ...aiConfig, apiKey: e.target.value })}
-                                            placeholder={!canEditAiKeys ? "API key locked by administrator" : (aiConfig.provider === 'gemini' ? "AIzaSy..." : `Enter ${aiConfig.provider} API Key`)}
+                                            placeholder={!canEditAiKeys ? "Locked" : (aiConfig.provider === 'gemini' ? "AIzaSy..." : `Enter ${aiConfig.provider} API Key`)}
                                             className="w-full border border-slate-300 rounded-lg pl-3 pr-10 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none font-mono disabled:bg-slate-100 disabled:cursor-not-allowed"
                                         />
                                         <Key size={16} className="absolute right-3 top-2.5 text-slate-400 pointer-events-none" />
@@ -1277,7 +1277,7 @@ const Settings: React.FC<SettingsProps> = ({
                                 WhatsApp Delivery Method
                                 {!canEditWhatsAppDelivery && (
                                     <span className="text-[11px] bg-amber-100 text-amber-800 font-semibold px-2 py-0.5 rounded flex items-center gap-1">
-                                        <Lock size={11} /> Locked by Super Admin
+                                        <Lock size={11} /> Locked
                                     </span>
                                 )}
                             </h4>
@@ -1315,7 +1315,7 @@ const Settings: React.FC<SettingsProps> = ({
                             <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-between text-xs text-amber-800 font-medium">
                                 <div className="flex items-center gap-2">
                                     <Lock size={14} className="text-amber-600 shrink-0" />
-                                    <span>WhatsApp Delivery credentials configuration is managed or restricted by your administrator.</span>
+                                    <span>WhatsApp Delivery credentials configuration is locked.</span>
                                 </div>
                             </div>
                         )}
@@ -1335,7 +1335,7 @@ const Settings: React.FC<SettingsProps> = ({
                                             readOnly={!canEditWhatsAppDelivery}
                                             value={waConfig.phoneId || ''}
                                             onChange={(e) => setWaConfig({ ...waConfig, phoneId: e.target.value })}
-                                            placeholder={canEditWhatsAppDelivery ? "e.g. 10452..." : "Restricted by administrator"}
+                                            placeholder={canEditWhatsAppDelivery ? "e.g. 10452..." : "Locked"}
                                             className={`w-full border rounded-lg px-4 py-2.5 text-base outline-none font-mono ${
                                                 canEditWhatsAppDelivery ? 'border-slate-300 focus:ring-2 focus:ring-green-500 bg-white' : 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed select-none'
                                             }`}
@@ -1349,7 +1349,7 @@ const Settings: React.FC<SettingsProps> = ({
                                             readOnly={!canEditWhatsAppDelivery}
                                             value={waConfig.token || ''}
                                             onChange={(e) => setWaConfig({ ...waConfig, token: e.target.value })}
-                                            placeholder={canEditWhatsAppDelivery ? "e.g. EAAG..." : "Restricted by administrator"}
+                                            placeholder={canEditWhatsAppDelivery ? "e.g. EAAG..." : "Locked"}
                                             className={`w-full border rounded-lg px-4 py-2.5 text-base outline-none font-mono ${
                                                 canEditWhatsAppDelivery ? 'border-slate-300 focus:ring-2 focus:ring-green-500 bg-white' : 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed select-none'
                                             }`}
@@ -1407,7 +1407,7 @@ const Settings: React.FC<SettingsProps> = ({
                             <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-between text-xs text-amber-800 font-medium">
                                 <div className="flex items-center gap-2">
                                     <Lock size={14} className="text-amber-600 shrink-0" />
-                                    <span>Automated background workflow execution is restricted or managed by your administrator.</span>
+                                    <span>Automated background workflow execution is locked.</span>
                                 </div>
                             </div>
                         )}
@@ -1504,7 +1504,7 @@ const Settings: React.FC<SettingsProps> = ({
                     </h3>
                     {!canEditDataBackup && (
                         <span className="text-xs bg-amber-100 text-amber-800 font-semibold px-2.5 py-1 rounded-md flex items-center gap-1">
-                            <Lock size={12} /> Managed by Super Admin
+                            <Lock size={12} /> Locked
                         </span>
                     )}
                 </div>
