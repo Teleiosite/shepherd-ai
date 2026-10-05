@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef as _useRef } from 'react';
-import { HashRouter, Routes, Route, Link, useLocation, useNavigate, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Link, useLocation, useNavigate, Navigate } from 'react-router-dom';
 import {
   LayoutDashboard, Users, BookOpen, Send, Menu, Settings as SettingsIcon,
   MessageCircle, Zap, Loader2, LogOut, Calendar, Bot, Package, Globe,
@@ -197,12 +197,20 @@ function App() {
   const [authChecked, setAuthChecked] = useState(false);
   const [authModalView, setAuthModalView] = useState<'login' | 'register' | null>(() => {
     if (typeof window !== 'undefined') {
-      const hash = window.location.hash.toLowerCase();
-      if (hash.includes('login') || hash.includes('signin')) return 'login';
-      if (hash.includes('register') || hash.includes('signup')) return 'register';
+      const fullPath = (window.location.pathname + window.location.hash).toLowerCase();
+      if (fullPath.includes('login') || fullPath.includes('signin')) return 'login';
+      if (fullPath.includes('register') || fullPath.includes('signup')) return 'register';
     }
     return null;
   });
+
+  // Automatically migrate legacy hash URLs (e.g. /#/admin) to clean paths (/admin)
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.location.hash.startsWith('#/')) {
+      const cleanPath = window.location.hash.slice(1);
+      window.history.replaceState(null, '', cleanPath);
+    }
+  }, []);
 
   // Check authentication on mount
   useEffect(() => {
@@ -1270,7 +1278,7 @@ function App() {
   }
 
   return (
-    <HashRouter>
+    <BrowserRouter>
       <div className="flex h-screen bg-gray-50 font-sans text-gray-900 overflow-hidden">
 
         {/* Mobile Overlay */}
@@ -1576,7 +1584,7 @@ function App() {
           </div>
         )}
       </div>
-    </HashRouter>
+    </BrowserRouter>
   );
 }
 

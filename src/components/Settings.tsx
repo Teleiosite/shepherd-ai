@@ -1094,7 +1094,7 @@ const Settings: React.FC<SettingsProps> = ({
                                     </a>
                                 ) : (
                                     <a
-                                        href="#/billing"
+                                        href="/billing"
                                         className="inline-flex items-center gap-1.5 text-xs font-bold text-amber-800 bg-amber-100 hover:bg-amber-200 px-3 py-1.5 rounded-lg border border-amber-300 transition-colors w-fit"
                                     >
                                         <Lock size={12} /> Restricted Feature
@@ -1187,7 +1187,7 @@ const Settings: React.FC<SettingsProps> = ({
                                     <Lock size={14} className="text-amber-600 shrink-0" />
                                     <span>WhatsApp Bridge pairing and QR connectivity are restricted for your organization. Contact your administrator or upgrade plan.</span>
                                 </div>
-                                <a href="#/billing" className="font-bold underline shrink-0 hover:text-amber-900">Upgrade Plan →</a>
+                                <a href="/billing" className="font-bold underline shrink-0 hover:text-amber-900">Upgrade Plan →</a>
                             </div>
                         )}
 
@@ -1258,7 +1258,7 @@ const Settings: React.FC<SettingsProps> = ({
                                     </button>
                                 ) : (
                                     <a
-                                        href="#/billing"
+                                        href="/billing"
                                         className="w-full bg-slate-800 hover:bg-slate-900 text-white px-4 py-3 rounded-full font-bold flex items-center justify-center gap-2 transition-all shadow-md text-sm sm:text-base text-center"
                                     >
                                         <Lock size={18} />

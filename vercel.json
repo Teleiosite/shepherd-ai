@@ -8,6 +8,12 @@
             "VITE_BACKEND_URL": "https://shepherd-ai-backend.onrender.com"
         }
     },
+    "rewrites": [
+        {
+            "source": "/(.*)",
+            "destination": "/index.html"
+        }
+    ],
     "headers": [
         {
             "source": "/(.*)",

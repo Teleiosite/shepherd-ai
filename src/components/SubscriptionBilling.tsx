@@ -66,7 +66,7 @@ export default function SubscriptionBilling() {
         }
 
         // Clean up URL parameters without full page reload
-        window.history.replaceState({}, document.title, window.location.pathname + '#/billing');
+        window.history.replaceState({}, document.title, '/billing');
       }
     };
 
@@ -148,7 +148,7 @@ export default function SubscriptionBilling() {
         },
         body: JSON.stringify({
           plan_id: planId,
-          redirect_url: `${window.location.origin}/#/billing`
+          redirect_url: `${window.location.origin}/billing`
         })
       });
 
