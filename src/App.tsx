@@ -218,7 +218,10 @@ function App() {
       const isAuth = authService.isAuthenticated();
       if (isAuth) {
         // Have token, fetch user data
-        const userData = await authService.getCurrentUser();
+        let userData = await authService.getCurrentUser();
+        if (!userData) {
+          userData = authService.getCurrentUserSync();
+        }
         setUser(userData);
         if (userData?.organizationName) {
           const storedOrg = localStorage.getItem('shepherd_org_name');
@@ -1078,8 +1081,14 @@ function App() {
   };
 
   const handleLogin = async () => {
-    const userData = await authService.getCurrentUser();
+    let userData = await authService.getCurrentUser();
+    if (!userData) {
+      userData = authService.getCurrentUserSync();
+    }
     setUser(userData);
+    if (userData?.organizationName) {
+      setOrganizationName(userData.organizationName);
+    }
     setAuthModalView(null);
   };
 

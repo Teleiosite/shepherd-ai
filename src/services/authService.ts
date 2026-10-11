@@ -136,6 +136,23 @@ export const authService = {
     return !!localStorage.getItem(AUTH_TOKEN_KEY);
   },
 
+  // Demo Guest Login for Evaluators & Reviewers
+  loginAsDemoGuest: (): User => {
+    const demoUser: User = {
+      id: 'demo-evaluator-001',
+      name: 'NAISH Evaluator (Demo)',
+      email: 'evaluator@naish-demo.gov.ng',
+      passwordHash: '',
+      organizationName: 'Teachers Registration Council of Nigeria (TRCN)'
+    };
+    localStorage.setItem(AUTH_TOKEN_KEY, 'demo-guest-jwt-token-evaluator');
+    localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(demoUser));
+    localStorage.setItem('shepherd_org_name', 'Teachers Registration Council of Nigeria (TRCN)');
+    localStorage.setItem('shepherd_business_type', 'Public Sector & Teacher Licensing');
+    localStorage.setItem('shepherd_user_plan', 'enterprise');
+    return demoUser;
+  },
+
   // Logout
   logout: () => {
     localStorage.removeItem(AUTH_TOKEN_KEY);
