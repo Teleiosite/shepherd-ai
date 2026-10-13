@@ -60,14 +60,6 @@ export const storage = {
 
       if (!response.ok) {
         if (response.status === 401) {
-          if (token === 'demo-guest-jwt-token-evaluator' || token.startsWith('demo-')) {
-            // Keep demo token and return cached demo contacts
-            const cached = localStorage.getItem('shepherd_contacts_cache');
-            if (cached) {
-              try { return JSON.parse(cached); } catch {}
-            }
-            return [];
-          }
           localStorage.removeItem('authToken');
           return [];
         }

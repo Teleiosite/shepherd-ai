@@ -280,30 +280,6 @@ const Auth: React.FC<AuthProps> = ({ onLogin, initialView = 'login', onBackToLan
                       </>
                     )}
                   </button>
-
-                  {view === 'login' && (
-                    <div className="pt-2">
-                      <div className="relative flex py-2 items-center">
-                        <div className="flex-grow border-t border-emerald-800/80"></div>
-                        <span className="flex-shrink mx-3 text-[11px] font-semibold text-emerald-300 uppercase tracking-wider">
-                          Evaluation / Trial Access
-                        </span>
-                        <div className="flex-grow border-t border-emerald-800/80"></div>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          authService.loginAsDemoGuest();
-                          onLogin();
-                        }}
-                        className="w-full py-2.5 sm:py-3 px-4 rounded-full bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 text-white font-bold text-xs sm:text-sm shadow-md transition transform hover:scale-[1.01] active:scale-95 flex items-center justify-center gap-2 border border-teal-300/30"
-                      >
-                        <Sparkles size={15} className="text-yellow-300 animate-pulse" />
-                        <span>Instant Evaluator Demo Access (No Password)</span>
-                      </button>
-                    </div>
-                  )}
                 </form>
 
                 {/* Footer Gating Links */}

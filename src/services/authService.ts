@@ -91,11 +91,6 @@ export const authService = {
     const token = localStorage.getItem(AUTH_TOKEN_KEY);
     if (!token) return null;
 
-    // Special bypass for demo guest tokens
-    if (token === 'demo-guest-jwt-token-evaluator' || token.startsWith('demo-')) {
-      return authService.getCurrentUserSync();
-    }
-
     try {
       const response = await fetch(`${BACKEND_URL}/api/auth/me`, {
         headers: { 'Authorization': `Bearer ${token}` }
@@ -139,62 +134,6 @@ export const authService = {
   // Check if user is authenticated
   isAuthenticated: (): boolean => {
     return !!localStorage.getItem(AUTH_TOKEN_KEY);
-  },
-
-  // Demo Guest Login for Evaluators & Reviewers
-  loginAsDemoGuest: (): User => {
-    const demoUser: User = {
-      id: 'demo-evaluator-001',
-      name: 'NAISH Evaluator (Demo)',
-      email: 'evaluator@naish-demo.gov.ng',
-      passwordHash: '',
-      organizationName: 'Teachers Registration Council of Nigeria (TRCN)'
-    };
-    localStorage.setItem(AUTH_TOKEN_KEY, 'demo-guest-jwt-token-evaluator');
-    localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(demoUser));
-    localStorage.setItem('shepherd_org_name', 'Teachers Registration Council of Nigeria (TRCN)');
-    localStorage.setItem('shepherd_business_type', 'Public Sector & Teacher Licensing');
-    localStorage.setItem('shepherd_user_plan', 'enterprise');
-
-    // Seed mock TRCN demo contacts if none exist in cache
-    const existingContacts = localStorage.getItem('shepherd_contacts_cache');
-    if (!existingContacts || existingContacts === '[]') {
-      const demoContacts = [
-        {
-          id: 'demo-c1',
-          name: 'Ahmed Bello (Primary School Educator)',
-          phone: '+2348031234567',
-          email: 'ahmed.bello@schools.gov.ng',
-          category: 'Triennial Renewal Due',
-          joinDate: '2023-04-12T10:00:00.000Z',
-          notes: 'Licence expired March 2026. Needs MCPD verification link.',
-          status: 'Active'
-        },
-        {
-          id: 'demo-c2',
-          name: 'Ngozi Okonkwo (Secondary School Teacher)',
-          phone: '+2348059876543',
-          email: 'ngozi.o@education.gov.ng',
-          category: 'Remote Enrolment',
-          joinDate: '2024-01-15T09:30:00.000Z',
-          notes: 'Enquiring on licence renewal via WhatsApp from rural LGA.',
-          status: 'Active'
-        },
-        {
-          id: 'demo-c3',
-          name: 'Babajide Adeleke (College of Education)',
-          phone: '+2348074455667',
-          email: 'b.adeleke@fce.edu.ng',
-          category: 'Active Licenced',
-          joinDate: '2024-08-20T14:15:00.000Z',
-          notes: 'Completed MCPD 15 credits. Paid via Remita.',
-          status: 'Active'
-        }
-      ];
-      localStorage.setItem('shepherd_contacts_cache', JSON.stringify(demoContacts));
-    }
-
-    return demoUser;
   },
 
   // Logout

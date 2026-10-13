@@ -34,8 +34,7 @@ import {
   RotateCcw,
   X,
   MessageCircle,
-  CheckCircle,
-  GraduationCap
+  CheckCircle
 } from 'lucide-react';
 import logoImage from '../logo.png';
 
@@ -128,23 +127,6 @@ const DEMO_SCENARIOS: DemoScenario[] = [
       specs: ["24/7 Power", "Private Infinity Pool", "Gym Access", "Smart Lock Check-in"],
       actionText: "Book Inspection / Stay",
       successMessage: "Dates confirmed! Smart lock check-in pin and access guide dispatched."
-    }
-  },
-  {
-    id: 'trcn',
-    name: 'TRCN Teacher Licensing',
-    industry: 'Public Services & Education Council',
-    icon: GraduationCap,
-    visitorMessage: "Good day! My 3-year TRCN teacher licence expired. How do I renew it, clear my annual dues, and upload my MCPD credits?",
-    aiReply: "Hello Teacher! Triennial renewal requires your 3-year annual dues receipts, letter of continuous practice, and 15 MCPD credit points. Here is your instant verified renewal link and step-by-step guidance:",
-    card: {
-      title: "TRCN Triennial Licence Renewal & Verification",
-      subtitle: "Teachers Registration Council of Nigeria • Digital Support Portal",
-      price: "Official Dues: ₦6,000 (3 Yrs)",
-      image: "https://images.unsplash.com/photo-1580582932707-520aed937b7b?auto=format&fit=crop&w=700&q=80",
-      specs: ["Instant MCPD Credit Check", "Direct Remita RRR Generation", "WhatsApp & SMS Status Nudges", "Human Officer Triage Escalation"],
-      actionText: "Initiate Licence Renewal",
-      successMessage: "Renewal request initiated! Remita RRR and document checklist sent to your WhatsApp."
     }
   }
 ];
@@ -386,36 +368,36 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
 
           {/* Main Headline */}
           <h1 className="text-3xl sm:text-5xl lg:text-7xl font-extrabold tracking-tight text-white max-w-5xl mx-auto leading-[1.18] sm:leading-[1.12]">
-            Turn Every Citizen Query & Customer Chat into{' '}
+            Turn Every Website Visitor & WhatsApp Chat into{' '}
             <span className="bg-gradient-to-r from-emerald-400 via-teal-300 to-cyan-400 bg-clip-text text-transparent">
-              Instant Resolutions & Completed Actions
+              Confirmed Bookings & Revenue
             </span>
           </h1>
 
           {/* Subtitle */}
           <p className="mt-4 sm:mt-8 text-sm sm:text-xl text-slate-300 max-w-3xl mx-auto leading-relaxed font-normal px-2 sm:px-0">
-            Deploy autonomous AI concierges that answer licensing & regulatory questions, automate appointment bookings, recommend catalogs, and verify payments 24/7 across WhatsApp and web portals.
+            Deploy autonomous AI concierges that recommend your live vehicle fleet, food menus, or properties, display rich visual cards with instant quotes, and collect deposits 24/7 across WhatsApp and your website.
           </p>
 
           {/* Action Buttons */}
           <div className="mt-8 sm:mt-10 flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 w-full max-w-md sm:max-w-none mx-auto">
             <button
-              onClick={() => onOpenAuth('login')}
-              className="w-full sm:w-auto px-6 sm:px-8 py-3.5 sm:py-4 rounded-xl sm:rounded-2xl bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 text-white font-bold text-sm sm:text-base shadow-xl shadow-emerald-500/25 hover:shadow-emerald-500/40 hover:from-emerald-400 hover:to-cyan-400 transition-all transform hover:-translate-y-0.5 active:scale-95 flex items-center justify-center gap-2.5 sm:gap-3"
-            >
-              <span>Explore Live Sandbox & Demo</span>
-              <ArrowRight size={18} />
-            </button>
-            <button
               onClick={() => {
                 setDeploySubmitted(false);
                 setIsDeployModalOpen(true);
               }}
+              className="w-full sm:w-auto px-6 sm:px-8 py-3.5 sm:py-4 rounded-xl sm:rounded-2xl bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 text-white font-bold text-sm sm:text-base shadow-xl shadow-emerald-500/25 hover:shadow-emerald-500/40 hover:from-emerald-400 hover:to-cyan-400 transition-all transform hover:-translate-y-0.5 active:scale-95 flex items-center justify-center gap-2.5 sm:gap-3"
+            >
+              <span>Request Custom Deployment</span>
+              <ArrowRight size={18} />
+            </button>
+            <a
+              href="#simulator"
               className="w-full sm:w-auto px-6 sm:px-8 py-3.5 sm:py-4 rounded-xl sm:rounded-2xl bg-slate-900/90 hover:bg-slate-800 text-slate-200 hover:text-white font-semibold text-sm sm:text-base border border-slate-700/80 transition-all flex items-center justify-center gap-2 backdrop-blur-md"
             >
               <Bot size={18} className="text-teal-400" />
-              <span>Request Custom MDA / Enterprise Deployment</span>
-            </button>
+              <span>Watch Live Motion Demo</span>
+            </a>
           </div>
 
           {/* Social Proof & Metrics */}
@@ -1123,8 +1105,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
                       value={deployFormData.industry}
                       onChange={(e) => setDeployFormData({ ...deployFormData, industry: e.target.value })}
                     >
-                      <option value="Public Sector & Government MDAs">Public Sector & Government MDAs (TRCN, Licensing, Citizen Services)</option>
-                      <option value="Education & Professional Councils">Education Councils & Professional Licensing</option>
                       <option value="Car Rental & Fleet Logistics">Car Rental & Fleet Logistics (e.g. Rentigram)</option>
                       <option value="Powersports & Logistics">Power Bikes & Dispatch Fleet</option>
                       <option value="Restaurant & Food Delivery">Restaurants & Food Delivery (Amala, Ewedu, Jollof)</option>
