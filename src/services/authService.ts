@@ -47,7 +47,7 @@ export const authService = {
   },
 
   // Login existing user via backend API
-  login: async (email: string, password: string, rememberMe: boolean = true): Promise<{ success: boolean; user?: User; message?: string }> => {
+  login: async (email: string, password: string): Promise<{ success: boolean; user?: User; message?: string }> => {
     try {
       const response = await fetch(`${BACKEND_URL}/api/auth/login`, {
         method: 'POST',
@@ -64,14 +64,8 @@ export const authService = {
         return { success: false, message: data.detail || 'Login failed' };
       }
 
-      // Store auth token in appropriate storage
-      if (rememberMe) {
-        localStorage.setItem(AUTH_TOKEN_KEY, data.access_token);
-        sessionStorage.removeItem(AUTH_TOKEN_KEY);
-      } else {
-        sessionStorage.setItem(AUTH_TOKEN_KEY, data.access_token);
-        localStorage.removeItem(AUTH_TOKEN_KEY);
-      }
+      // Store auth token
+      localStorage.setItem(AUTH_TOKEN_KEY, data.access_token);
 
       // Store user info from response
       if (data.user) {
@@ -80,18 +74,9 @@ export const authService = {
           name: data.user.full_name,
           email: data.user.email,
           passwordHash: '',
-          role: data.user.role,
-          is_superadmin: Boolean(data.user.is_superadmin),
-          plan: data.user.plan,
           organizationName: data.user.organization_name || 'My Organization'
         };
-        if (rememberMe) {
-          localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(userInfo));
-          sessionStorage.removeItem(CURRENT_USER_KEY);
-        } else {
-          sessionStorage.setItem(CURRENT_USER_KEY, JSON.stringify(userInfo));
-          localStorage.removeItem(CURRENT_USER_KEY);
-        }
+        localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(userInfo));
         return { success: true, user: userInfo };
       }
 
@@ -103,7 +88,7 @@ export const authService = {
 
   // Get current user from backend
   getCurrentUser: async (): Promise<User | null> => {
-    const token = authService.getToken();
+    const token = localStorage.getItem(AUTH_TOKEN_KEY);
     if (!token) return null;
 
     // Special bypass for demo guest tokens
@@ -119,9 +104,7 @@ export const authService = {
       if (!response.ok) {
         // Token invalid, clear it
         localStorage.removeItem(AUTH_TOKEN_KEY);
-        sessionStorage.removeItem(AUTH_TOKEN_KEY);
         localStorage.removeItem(CURRENT_USER_KEY);
-        sessionStorage.removeItem(CURRENT_USER_KEY);
         return null;
       }
 
@@ -133,9 +116,6 @@ export const authService = {
         name: data.full_name,
         email: data.email,
         passwordHash: '', // Not needed
-        role: data.role,
-        is_superadmin: Boolean(data.is_superadmin),
-        plan: data.plan,
         organizationName: data.organization_name || 'My Organization'
       };
 
@@ -147,18 +127,18 @@ export const authService = {
 
   // Get current user from cache (synchronous)
   getCurrentUserSync: (): User | null => {
-    const stored = localStorage.getItem(CURRENT_USER_KEY) || sessionStorage.getItem(CURRENT_USER_KEY);
+    const stored = localStorage.getItem(CURRENT_USER_KEY);
     return stored ? JSON.parse(stored) : null;
   },
 
-  // Get auth token from persistent or session storage
+  //Get auth token
   getToken: (): string | null => {
-    return localStorage.getItem(AUTH_TOKEN_KEY) || sessionStorage.getItem(AUTH_TOKEN_KEY);
+    return localStorage.getItem(AUTH_TOKEN_KEY);
   },
 
   // Check if user is authenticated
   isAuthenticated: (): boolean => {
-    return !!authService.getToken();
+    return !!localStorage.getItem(AUTH_TOKEN_KEY);
   },
 
   // Demo Guest Login for Evaluators & Reviewers
@@ -220,9 +200,8 @@ export const authService = {
   // Logout
   logout: () => {
     localStorage.removeItem(AUTH_TOKEN_KEY);
-    sessionStorage.removeItem(AUTH_TOKEN_KEY);
     localStorage.removeItem(CURRENT_USER_KEY);
-    sessionStorage.removeItem(CURRENT_USER_KEY);
+    window.location.reload();
   },
 
   // Password Recovery (backend endpoint to be implemented)

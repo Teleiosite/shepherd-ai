@@ -661,7 +661,7 @@ async def generate_ai_completion(
     # Retrieve organization's AI configuration
     org_id = str(current_user.organization_id)
     org_row = db.execute(
-        text("SELECT ai_provider, ai_api_key, ai_model, ai_base_url, groq_api_key FROM organizations WHERE id = :org_id"),
+        text("SELECT ai_provider, ai_api_key, ai_model, ai_base_url FROM organizations WHERE id = :org_id"),
         {"org_id": org_id}
     ).fetchone()
 
@@ -669,65 +669,23 @@ async def generate_ai_completion(
     api_key = (org_row[1] if org_row else None) or app_settings.gemini_api_key
     selected_model = (org_row[2] if org_row and org_row[2] else None) or model
     base_url = org_row[3] if org_row else None
-    groq_api_key = (org_row[4] if org_row else None) or getattr(app_settings, "groq_api_key", None) or os.getenv("GROQ_API_KEY")
-
-    # Tier 1: Try Groq first for ultra-fast ~0.3s response
-    if groq_api_key:
-        try:
-            async with httpx.AsyncClient(timeout=2.0) as client:
-                g_res = await client.post(
-                    "https://api.groq.com/openai/v1/chat/completions",
-                    headers={"Authorization": f"Bearer {groq_api_key}", "Content-Type": "application/json"},
-                    json={
-                        "model": "llama-3.1-8b-instant",
-                        "messages": [
-                            {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": f"{user_turn}\nRespond in valid JSON format."}
-                        ],
-                        "temperature": temperature,
-                        "response_format": {"type": "json_object"}
-                    }
-                )
-                if g_res.status_code == 200:
-                    g_data = g_res.json()
-                    text_out = g_data.get("choices", [{}])[0].get("message", {}).get("content", "{}")
-                    if text_out and len(text_out.strip()) > 2:
-                        return {"text": text_out}
-        except Exception as g_err:
-            logger.warning(f"Groq primary completion in ai-generate failed: {g_err}")
 
     if not api_key:
         raise HTTPException(status_code=400, detail="No AI API key configured on server or organization")
 
     try:
         if provider == "gemini":
-            import asyncio
             genai.configure(api_key=api_key)
-            actual_model = "gemini-2.0-flash" if ("3.7" in selected_model or "3.8" in selected_model or "3.5" in selected_model) else selected_model
-            model_candidates = [actual_model, "gemini-1.5-flash"]
-            unique_candidates = []
-            for m in model_candidates:
-                if m not in unique_candidates:
-                    unique_candidates.append(m)
-
+            model_name = selected_model
+            if not model_name or "gemini" not in model_name or model_name == "gemini-3.5-flash":
+                model_name = "gemini-1.5-flash"
+            g_model = genai.GenerativeModel(model_name)
             combined_prompt = f"{system_prompt}\n\n{user_turn}" if system_prompt else user_turn
-
-            for m_cand in unique_candidates[:2]:
-                try:
-                    g_model = genai.GenerativeModel(m_cand)
-                    res = await asyncio.wait_for(
-                        asyncio.to_thread(
-                            g_model.generate_content,
-                            combined_prompt,
-                            generation_config=genai.types.GenerationConfig(temperature=temperature)
-                        ),
-                        timeout=3.5
-                    )
-                    if res and res.text:
-                        return {"text": res.text}
-                except Exception as m_err:
-                    logger.warning(f"Gemini candidate {m_cand} failed in ai-generate: {m_err}")
-            return {"text": "{}"}
+            res = g_model.generate_content(
+                combined_prompt,
+                generation_config=genai.types.GenerationConfig(temperature=temperature)
+            )
+            return {"text": res.text or "{}"}
         else:
             url = base_url
             if not url:
@@ -740,7 +698,7 @@ async def generate_ai_completion(
             if not url:
                 raise HTTPException(status_code=400, detail=f"No base URL for provider {provider}")
 
-            async with httpx.AsyncClient(timeout=4.0) as client:
+            async with httpx.AsyncClient(timeout=30.0) as client:
                 res = await client.post(
                     f"{url.rstrip('/')}/chat/completions",
                     headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},

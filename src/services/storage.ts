@@ -309,13 +309,10 @@ export const storage = {
 
   // =================== BACKUP/RESTORE ===================
 
-  createBackup: async () => {
-    let contacts = await storage.refreshContacts();
-    if (!contacts || contacts.length === 0) contacts = storage.getContacts();
-    let resources = await storage.refreshResources();
-    if (!resources || resources.length === 0) resources = storage.getResources();
-    let logs = await storage.refreshLogs();
-    if (!logs || logs.length === 0) logs = storage.getLogs();
+  createBackup: () => {
+    const contacts = storage.getContacts();
+    const resources = storage.getResources();
+    const logs = storage.getLogs();
 
     return {
       version: 2,
@@ -324,15 +321,14 @@ export const storage = {
       resources,
       logs,
       settings: {
-        aiName: localStorage.getItem('shepherd_ai_name') || 'Shepherd AI',
-        organizationName: localStorage.getItem('shepherd_org_name') || 'My Organization',
-        businessType: localStorage.getItem('shepherd_business_type') || 'Organization'
+        aiName: 'Shepherd AI',
+        organizationName: 'My Organization'
       }
     };
   },
 
-  downloadBackup: async () => {
-    const backup = await storage.createBackup();
+  downloadBackup: () => {
+    const backup = storage.createBackup();
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(backup, null, 2));
     const downloadAnchorNode = document.createElement('a');
     downloadAnchorNode.setAttribute("href", dataStr);
@@ -343,45 +339,7 @@ export const storage = {
   },
 
   restoreBackup: async (file: File): Promise<boolean> => {
-    try {
-      const text = await file.text();
-      const backup = JSON.parse(text);
-      if (!backup || typeof backup !== 'object') {
-        throw new Error('Invalid backup file format');
-      }
-
-      // Restore contacts
-      if (Array.isArray(backup.contacts)) {
-        for (const contact of backup.contacts) {
-          if (contact.name && contact.phone) {
-            await storage.saveContact(contact);
-          }
-        }
-        localStorage.setItem('shepherd_contacts_cache', JSON.stringify(backup.contacts));
-      }
-
-      // Restore resources
-      if (Array.isArray(backup.resources)) {
-        for (const res of backup.resources) {
-          if (res.title && res.content) {
-            await storage.saveResource(res);
-          }
-        }
-        localStorage.setItem('shepherd_resources_cache', JSON.stringify(backup.resources));
-      }
-
-      // Restore settings
-      if (backup.settings) {
-        if (backup.settings.aiName) localStorage.setItem('shepherd_ai_name', backup.settings.aiName);
-        if (backup.settings.organizationName) localStorage.setItem('shepherd_org_name', backup.settings.organizationName);
-        if (backup.settings.businessType) localStorage.setItem('shepherd_business_type', backup.settings.businessType);
-      }
-
-      return true;
-    } catch (err: any) {
-      console.error('Failed to restore backup:', err);
-      throw new Error(err.message || 'Failed to restore backup');
-    }
+    throw new Error('Backup restore via backend API not yet implemented');
   },
 
   factoryReset: () => {

@@ -20,7 +20,7 @@ interface SettingsProps {
 }
 
 const DEFAULT_MODELS = {
-    gemini: 'gemini-3.7-flash',
+    gemini: 'gemini-2.0-flash',
     openai: 'gpt-4o',
     deepseek: 'deepseek-chat',
     groq: 'llama-3.3-70b-versatile',
@@ -80,7 +80,7 @@ const Settings: React.FC<SettingsProps> = ({
     const [agentEnabled, setAgentEnabled] = useState(() => localStorage.getItem('shepherd_agent_enabled') === 'true');
     const [agentMode, setAgentMode] = useState<'suggest' | 'auto-send'>(() => (localStorage.getItem('shepherd_agent_mode') as any) || 'auto-send');
     const [agentTone, setAgentTone] = useState(() => localStorage.getItem('shepherd_agent_tone') || 'Warm, professional, and helpful. Use casual WhatsApp-style language.');
-    const [agentDelay, setAgentDelay] = useState(() => parseInt(localStorage.getItem('shepherd_agent_delay') || '1', 10));
+    const [agentDelay, setAgentDelay] = useState(() => parseInt(localStorage.getItem('shepherd_agent_delay') || '5', 10));
     const [paymentLink, setPaymentLink] = useState(() => localStorage.getItem('shepherd_payment_link') || '');
     const [voiceReplyMode, setVoiceReplyMode] = useState<'text' | 'match_input' | 'voice'>(() => (localStorage.getItem('shepherd_voice_reply_mode') as any) || 'text');
     const [voiceName, setVoiceName] = useState(() => localStorage.getItem('shepherd_voice_name') || 'en-NG-EzinneNeural');
@@ -436,11 +436,12 @@ const Settings: React.FC<SettingsProps> = ({
             console.error('Failed to save settings to backend:', error);
         }
 
+
         setIsSaving(false);
         setIsSaved(true);
         setTimeout(() => {
-            setIsSaved(false);
-        }, 3000);
+            window.location.reload();
+        }, 700);
     };
 
 
@@ -673,12 +674,12 @@ const Settings: React.FC<SettingsProps> = ({
 
                                 setPersonaSaved(true);
                                 setTimeout(() => {
-                                    setPersonaSaved(false);
-                                }, 3000);
+                                    window.location.reload();
+                                }, 700);
                             }}
                             className="bg-primary-600 text-white px-5 py-2.5 rounded-lg hover:bg-primary-700 font-bold transition-all shadow-sm active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 text-sm"
                         >
-                            {personaSaved ? <><Check size={16} /> Saved Successfully!</> : <><Save size={16} /> Save Identity Settings</>}
+                            {personaSaved ? <><Check size={16} /> Saved! Reloading...</> : <><Save size={16} /> Save Identity Settings</>}
                         </button>
                     </div>
                 </div>
@@ -982,48 +983,95 @@ const Settings: React.FC<SettingsProps> = ({
                 </div>
 
                 <div className="p-8 space-y-8">
-                    {/* Architecture Overview Banner */}
-                    <div className="bg-gradient-to-r from-amber-50 via-indigo-50 to-emerald-50 p-5 rounded-2xl border border-indigo-100 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-                        <div className="flex items-start gap-3">
-                            <div className="p-2.5 bg-white rounded-xl shadow-xs border border-indigo-100 text-indigo-600 mt-0.5">
-                                <Cpu size={22} />
-                            </div>
-                            <div>
-                                <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                                    Multi-Tier AI Architecture: Groq (Primary) + Gemini (Fallback)
-                                    <span className="text-[10px] bg-emerald-100 text-emerald-800 font-semibold px-2 py-0.5 rounded-full">Active</span>
-                                </h4>
-                                <p className="text-xs text-slate-600 mt-1 max-w-2xl leading-relaxed">
-                                    Shepherd AI prioritizes <strong>Groq Cloud</strong> as the primary ultra-fast engine (~0.3s responses with Llama 3.3/3.1 and Whisper audio transcription). If Groq is rate-limited or unconfigured, it automatically fails over to <strong>Google Gemini</strong> (<code className="font-mono text-indigo-700 bg-indigo-100/60 px-1 py-0.5 rounded text-[11px]">gemini-3.7-flash</code> / <code className="font-mono text-indigo-700 bg-indigo-100/60 px-1 py-0.5 rounded text-[11px]">gemini-3.8-flash</code>) for deep multimodal reasoning.
-                                </p>
-                            </div>
-                        </div>
-                        <div className="flex items-center gap-2 text-xs font-semibold shrink-0">
-                            <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-100 text-amber-900 border border-amber-200 shadow-xs">
-                                <Zap size={14} className="text-amber-600" /> Tier 1: Groq Primary (~0.3s)
-                            </span>
-                            <span className="text-slate-400 font-bold">→</span>
-                            <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-100 text-indigo-900 border border-indigo-200 shadow-xs">
-                                <BrainCircuit size={14} className="text-indigo-600" /> Tier 2: Gemini Fallback
-                            </span>
-                        </div>
-                    </div>
-
                     {/* AI & Voice Intelligence Keys */}
                     <div className="space-y-6">
-                        {/* 1. Groq Cloud Engine (Tier 1: Primary) */}
+                        {/* 1. Google Gemini / Primary AI Key */}
+                        <div className="bg-slate-50 p-6 rounded-xl border border-slate-200">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+                                <div>
+                                    <h4 className="text-base font-bold text-slate-800 flex items-center gap-2">
+                                        <BrainCircuit size={20} className="text-indigo-600" />
+                                        Primary AI Reasoning & Intelligence Key
+                                        {!canEditAiKeys && (
+                                            <span className="text-[11px] bg-amber-100 text-amber-800 font-semibold px-2 py-0.5 rounded flex items-center gap-1">
+                                                <Lock size={11} /> Locked
+                                            </span>
+                                        )}
+                                    </h4>
+                                    <p className="text-xs text-slate-500 mt-1">
+                                        Powers auto-replies, product recommendations, catalog lookups, and appointment bookings.
+                                    </p>
+                                </div>
+                                {canEditAiKeys ? (
+                                    <a
+                                        href="https://aistudio.google.com/app/apikey"
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg border border-indigo-200 transition-colors w-fit"
+                                    >
+                                        Get Free Gemini Key <ExternalLink size={13} />
+                                    </a>
+                                ) : (
+                                    <span className="inline-flex items-center gap-1.5 text-xs font-bold text-amber-800 bg-amber-100 px-3 py-1.5 rounded-lg border border-amber-300 w-fit">
+                                        <Lock size={12} /> Locked
+                                    </span>
+                                )}
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                                <div className="md:col-span-1">
+                                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">
+                                        Provider
+                                    </label>
+                                    <select
+                                        value={aiConfig.provider}
+                                        disabled={!canEditAiKeys}
+                                        onChange={handleProviderChange}
+                                        className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white disabled:bg-slate-100 disabled:cursor-not-allowed"
+                                    >
+                                        <option value="gemini">Google Gemini (Recommended - Free Tier)</option>
+                                        <option value="openai">OpenAI (GPT-4 / GPT-3.5)</option>
+                                        <option value="deepseek">DeepSeek</option>
+                                        <option value="groq">Groq (Llama 3)</option>
+                                    </select>
+                                </div>
+                                <div className="md:col-span-2">
+                                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">
+                                        {aiConfig.provider === 'gemini' ? 'Google Gemini API Key' : `${aiConfig.provider.toUpperCase()} API Key`}
+                                    </label>
+                                    <div className="relative">
+                                        <input
+                                            type="password"
+                                            disabled={!canEditAiKeys}
+                                            value={canEditAiKeys ? aiConfig.apiKey : ''}
+                                            onChange={(e) => setAiConfig({ ...aiConfig, apiKey: e.target.value })}
+                                            placeholder={!canEditAiKeys ? "Locked" : (aiConfig.provider === 'gemini' ? "AIzaSy..." : `Enter ${aiConfig.provider} API Key`)}
+                                            className="w-full border border-slate-300 rounded-lg pl-3 pr-10 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none font-mono disabled:bg-slate-100 disabled:cursor-not-allowed"
+                                        />
+                                        <Key size={16} className="absolute right-3 top-2.5 text-slate-400 pointer-events-none" />
+                                    </div>
+                                    <p className="text-[11px] text-slate-500 mt-1">
+                                        Stored securely. Keys starting with <code className="text-slate-700 bg-slate-200 px-1 rounded">***</code> remain preserved upon saving.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* 2. Groq Cloud API Key for Instant Voice Transcription */}
                         <div className={`p-6 rounded-xl border relative transition-all ${
-                            canEditGroqKey ? 'bg-amber-50/50 border-amber-200' : 'bg-slate-50 border-slate-200'
+                            canEditGroqKey ? 'bg-amber-50/60 border-amber-200' : 'bg-slate-50 border-slate-200'
                         }`}>
                             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
                                 <div>
-                                    <div className="flex items-center gap-2 flex-wrap">
+                                    <div className="flex items-center gap-2">
                                         <h4 className="text-base font-bold text-slate-800 flex items-center gap-2">
                                             <Zap size={20} className={canEditGroqKey ? "text-amber-600" : "text-slate-400"} />
-                                            Tier 1: Groq Cloud Engine (Primary High-Speed AI & Voice Notes)
+                                            Groq Cloud API Key
                                         </h4>
-                                        <span className="text-[11px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider bg-amber-200 text-amber-900">
-                                            Primary • ~0.3s Speed
+                                        <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
+                                            canEditGroqKey ? 'bg-amber-200 text-amber-900' : 'bg-slate-200 text-slate-600'
+                                        }`}>
+                                            0.3s Voice Transcription
                                         </span>
                                         {!canEditGroqKey && (
                                             <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200 shadow-xs">
@@ -1032,7 +1080,7 @@ const Settings: React.FC<SettingsProps> = ({
                                         )}
                                     </div>
                                     <p className="text-xs text-slate-600 mt-1">
-                                        Drives primary real-time text chat (Llama 3.3 70B / 3.1 8B in &lt;0.4s) and instant WhatsApp/Web audio note transcription via Groq Whisper (<code className="font-mono text-slate-700">whisper-large-v3-turbo</code>). Free tier includes 7,200 requests/day and handles Nigerian Pidgin, Yoruba, Hausa, Igbo, and English.
+                                        Transcribes incoming WhatsApp and Web Widget audio notes instantly using Groq Whisper (<code className="font-mono text-slate-700">whisper-large-v3-turbo</code>). Free tier includes 7,200 requests/day and handles Nigerian Pidgin, Yoruba, Hausa, Igbo, and English.
                                     </p>
                                 </div>
                                 {canEditGroqKey ? (
@@ -1056,7 +1104,7 @@ const Settings: React.FC<SettingsProps> = ({
 
                             <div className="mt-4">
                                 <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                                    Groq Cloud API Key (starts with gsk_...)
+                                    Groq API Key (starts with gsk_...)
                                 </label>
                                 <div className="relative">
                                     <input
@@ -1065,7 +1113,7 @@ const Settings: React.FC<SettingsProps> = ({
                                         readOnly={!canEditGroqKey}
                                         value={aiConfig.groqApiKey || ''}
                                         onChange={(e) => setAiConfig({ ...aiConfig, groqApiKey: e.target.value })}
-                                        placeholder={canEditGroqKey ? "gsk_..." : "Groq primary engine restricted for your organization"}
+                                        placeholder={canEditGroqKey ? "gsk_..." : "Voice transcription restricted for your organization"}
                                         className={`w-full border rounded-lg pl-3 pr-10 py-2 text-sm outline-none font-mono ${
                                             canEditGroqKey
                                                 ? 'border-amber-300 focus:ring-2 focus:ring-amber-500 bg-white'
@@ -1077,125 +1125,14 @@ const Settings: React.FC<SettingsProps> = ({
                                 <div className="flex flex-wrap items-center justify-between gap-2 mt-1.5">
                                     <p className="text-[11px] text-slate-500">
                                         {!canEditGroqKey
-                                            ? '🔒 Voice note audio transcription and Groq primary engine are disabled for your organization.'
-                                            : 'Primary choice for zero-latency customer responses and instant WhatsApp voice note replies.'}
+                                            ? '🔒 Voice note audio transcription is disabled for your organization.'
+                                            : 'Optional but strongly recommended for instant voice responses under 60 seconds. Without this key, voice notes fall back to CPU audio conversion.'}
                                     </p>
                                     {canEditGroqKey && aiConfig.groqApiKey && (
                                         <span className="text-[11px] text-emerald-700 font-semibold flex items-center gap-1">
-                                            <Check size={12} /> Tier 1 Groq Active (Primary)
+                                            <Check size={12} /> Groq configured
                                         </span>
                                     )}
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* 2. Google Gemini / Secondary Fallback Engine */}
-                        <div className="bg-slate-50 p-6 rounded-xl border border-slate-200">
-                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
-                                <div>
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                        <h4 className="text-base font-bold text-slate-800 flex items-center gap-2">
-                                            <BrainCircuit size={20} className="text-indigo-600" />
-                                            Tier 2: Google Gemini Multimodal Engine (Secondary & Fallback)
-                                        </h4>
-                                        <span className="text-[11px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider bg-indigo-100 text-indigo-900">
-                                            Secondary Fallback
-                                        </span>
-                                        {!canEditAiKeys && (
-                                            <span className="text-[11px] bg-amber-100 text-amber-800 font-semibold px-2 py-0.5 rounded flex items-center gap-1">
-                                                <Lock size={11} /> Locked
-                                            </span>
-                                        )}
-                                    </div>
-                                    <p className="text-xs text-slate-500 mt-1">
-                                        Provides resilient fallback if Groq rate limits are encountered, and handles multimodal knowledge reasoning and catalog search intelligence.
-                                    </p>
-                                </div>
-                                {canEditAiKeys ? (
-                                    <a
-                                        href="https://aistudio.google.com/app/apikey"
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg border border-indigo-200 transition-colors w-fit"
-                                    >
-                                        Get Free Gemini Key <ExternalLink size={13} />
-                                    </a>
-                                ) : (
-                                    <span className="inline-flex items-center gap-1.5 text-xs font-bold text-amber-800 bg-amber-100 px-3 py-1.5 rounded-lg border border-amber-300 w-fit">
-                                        <Lock size={12} /> Locked
-                                    </span>
-                                )}
-                            </div>
-
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
-                                <div className="md:col-span-1">
-                                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">
-                                        Fallback Provider
-                                    </label>
-                                    <select
-                                        value={aiConfig.provider}
-                                        disabled={!canEditAiKeys}
-                                        onChange={handleProviderChange}
-                                        className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white disabled:bg-slate-100 disabled:cursor-not-allowed"
-                                    >
-                                        <option value="gemini">Google Gemini (Recommended Fallback)</option>
-                                        <option value="openai">OpenAI (GPT-4o / GPT-4)</option>
-                                        <option value="deepseek">DeepSeek</option>
-                                        <option value="groq">Groq (Standalone)</option>
-                                    </select>
-                                </div>
-                                <div className="md:col-span-1">
-                                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">
-                                        {aiConfig.provider === 'gemini' ? 'Gemini Model' : 'Model'}
-                                    </label>
-                                    {aiConfig.provider === 'gemini' ? (
-                                        <select
-                                            value={aiConfig.model || 'gemini-3.7-flash'}
-                                            disabled={!canEditAiKeys}
-                                            onChange={(e) => setAiConfig({ ...aiConfig, model: e.target.value })}
-                                            className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white disabled:bg-slate-100 disabled:cursor-not-allowed"
-                                        >
-                                            <option value="gemini-3.7-flash">gemini-3.7-flash (Default / Recommended)</option>
-                                            <option value="gemini-3.8-flash">gemini-3.8-flash (Next-Gen Preview)</option>
-                                            <option value="gemini-2.5-flash">gemini-2.5-flash (Balanced)</option>
-                                            <option value="gemini-1.5-flash">gemini-1.5-flash (Legacy Stable)</option>
-                                        </select>
-                                    ) : (
-                                        <input
-                                            type="text"
-                                            disabled={!canEditAiKeys}
-                                            value={aiConfig.model}
-                                            onChange={(e) => setAiConfig({ ...aiConfig, model: e.target.value })}
-                                            placeholder="e.g. gpt-4o, deepseek-chat"
-                                            className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white disabled:bg-slate-100 disabled:cursor-not-allowed font-mono"
-                                        />
-                                    )}
-                                </div>
-                                <div className="md:col-span-1">
-                                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">
-                                        {aiConfig.provider === 'gemini' ? 'Google Gemini API Key' : `${aiConfig.provider.toUpperCase()} Key`}
-                                    </label>
-                                    <div className="relative">
-                                        <input
-                                            type="password"
-                                            disabled={!canEditAiKeys}
-                                            value={canEditAiKeys ? aiConfig.apiKey : ''}
-                                            onChange={(e) => setAiConfig({ ...aiConfig, apiKey: e.target.value })}
-                                            placeholder={!canEditAiKeys ? "Locked" : (aiConfig.provider === 'gemini' ? "AIzaSy..." : `Enter ${aiConfig.provider} API Key`)}
-                                            className="w-full border border-slate-300 rounded-lg pl-3 pr-10 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none font-mono disabled:bg-slate-100 disabled:cursor-not-allowed"
-                                        />
-                                        <Key size={16} className="absolute right-3 top-2.5 text-slate-400 pointer-events-none" />
-                                    </div>
-                                    <div className="flex items-center justify-between mt-1">
-                                        <p className="text-[11px] text-slate-500">
-                                            Keys starting with <code className="text-slate-700 bg-slate-200 px-1 rounded">***</code> preserved.
-                                        </p>
-                                        {canEditAiKeys && aiConfig.apiKey && (
-                                            <span className="text-[11px] text-indigo-700 font-semibold flex items-center gap-1">
-                                                <Check size={12} /> Tier 2 Fallback Configured
-                                            </span>
-                                        )}
-                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -1204,10 +1141,10 @@ const Settings: React.FC<SettingsProps> = ({
                     <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
                         <div>
                             <p className="text-sm font-semibold text-slate-800">
-                                Save AI Orchestration Keys
+                                Save AI Model & Key
                             </p>
                             <p className="text-xs text-slate-500">
-                                Updates your Tier 1 (Groq) and Tier 2 (Gemini) active keys across WhatsApp and Web Chat widgets.
+                                Updates your active AI key across your live WhatsApp and Website assistants.
                             </p>
                         </div>
                         <button
@@ -1217,7 +1154,7 @@ const Settings: React.FC<SettingsProps> = ({
                             className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-5 py-2.5 rounded-lg flex items-center gap-2 text-sm shadow-sm transition-all active:scale-95 disabled:opacity-75"
                         >
                             {isSaving ? <Loader2 size={16} className="animate-spin" /> : isSaved ? <Check size={16} /> : <Save size={16} />}
-                            {isSaved ? "Saved Successfully!" : "Save AI Keys Now"}
+                            {isSaved ? "Saved Successfully!" : "Save AI Key Now"}
                         </button>
                     </div>
 
@@ -1545,7 +1482,7 @@ const Settings: React.FC<SettingsProps> = ({
                             ) : isSaved ? (
                                 <>
                                     <Check size={20} />
-                                    Saved Successfully!
+                                    Saved! Reloading...
                                 </>
                             ) : (
                                 <>

@@ -49,8 +49,12 @@ import MediaLibrary from './components/MediaLibrary';
 import Bookings from './pages/Bookings';
 
 
-// Initial starter resources for new workspaces
-const initialContacts: Contact[] = [];
+// Mock Data for Initial Load
+const initialContacts: Contact[] = [
+  { id: '1', name: 'John Okeke', phone: '+2348012345678', category: ContactCategory.NEW_CONVERT, joinDate: new Date().toISOString(), notes: 'Accepted Christ on Sunday', status: 'Active' },
+  { id: '2', name: 'Sarah Williams', phone: '+2348087654321', category: ContactCategory.FIRST_TIMER, joinDate: new Date(Date.now() - 86400000).toISOString(), notes: 'Invited by Grace', status: 'Active' },
+  { id: '3', name: 'Pastor Mike', phone: '+2348099887766', category: ContactCategory.BORN_AGAIN, joinDate: new Date(Date.now() - 100000000).toISOString(), notes: 'Leader', status: 'Active' },
+];
 
 const newConvertPlanContent = `30-Day New Convert Discipleship Plan
 
@@ -153,8 +157,9 @@ Action: Switch to "Re-engagement/Care" mode (gentle check-ins once a week).
 `;
 
 const initialResources: KnowledgeResource[] = [
-  { id: '101', title: 'Organization Overview & Standard Guidelines', type: 'Policy', content: 'Welcome to our organization. We are dedicated to providing responsive, high-quality engagement and support to all clients, visitors, and stakeholders.', uploadDate: new Date().toISOString() },
-  { id: '102', title: 'Frequently Asked Questions (FAQ)', type: 'FAQ', content: 'General information regarding operating hours, service options, bookings, and standard inquiry handling.', uploadDate: new Date().toISOString() },
+  { id: '101', title: 'New Believers Manual - Chapter 1', type: 'Book', content: 'Welcome to the family of God! Salvation is a free gift...', uploadDate: new Date().toISOString() },
+  { id: '102', title: 'Sermon: Faith that Moves Mountains', type: 'Sermon', content: 'Faith is not just believing, it is acting on the Word of God...', uploadDate: new Date().toISOString() },
+  { id: '103', title: '30-Day New Convert Follow-Up Plan', type: 'Book', content: newConvertPlanContent, uploadDate: new Date().toISOString() },
 ];
 
 // Mobile Bottom Navigation Component
@@ -287,13 +292,7 @@ function App() {
 
   // Check if current user is super admin
   const isSuperAdmin = Boolean(
-    user?.role === 'superadmin' ||
-    (user as any)?.is_superadmin ||
-    (user as any)?.isSuperAdmin ||
-    (user?.email && (
-      (import.meta.env.VITE_SUPERADMIN_EMAIL && user.email.toLowerCase().trim() === (import.meta.env.VITE_SUPERADMIN_EMAIL).toLowerCase().trim()) ||
-      ['seye@gmail.com', 'seye4kunmi@gmail.com'].includes(user.email.toLowerCase().trim())
-    ))
+    user?.email && ['seye@gmail.com', 'seye4kunmi@gmail.com'].includes(user.email.toLowerCase().trim())
   );
 
   // Data State - Initialize as empty and load from backend
@@ -388,9 +387,6 @@ function App() {
     if (!user) return;
 
     const pollBackendData = async () => {
-      // Don't poll when tab is inactive to preserve bandwidth and backend resources
-      if (typeof document !== 'undefined' && document.hidden) return;
-
       try {
         // 1. Poll Contacts
         const backendContacts = await storage.refreshContacts();
@@ -482,38 +478,14 @@ function App() {
 
     pollBackendData(); // Run immediately on mount/auth
     const interval = setInterval(pollBackendData, 5000); // Poll every 5 seconds
-
-    const handleVisibilityChange = () => {
-      if (!document.hidden) {
-        pollBackendData();
-      }
-    };
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
-    return () => {
-      clearInterval(interval);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
+    return () => clearInterval(interval);
   }, [user]);
 
-  // Persistence - sanitized with try/catch to avoid quota errors
-  useEffect(() => {
-    try {
-      localStorage.setItem('shepherd_resources', JSON.stringify(resources));
-    } catch (e) {
-      console.warn('Could not cache resources:', e);
-    }
-  }, [resources]);
-
-  useEffect(() => {
-    try {
-      // Keep only most recent 150 logs in local cache to respect 5MB browser storage limits
-      localStorage.setItem('shepherd_logs', JSON.stringify(logs.slice(0, 150)));
-    } catch (e) {
-      console.warn('Could not cache logs:', e);
-    }
-  }, [logs]);
-
+  // Persistence - REMOVED contacts localStorage (now using backend)
+  // useEffect(() => localStorage.setItem('shepherd_contacts', JSON.stringify(contacts)), [contacts]);
+  useEffect(() => localStorage.setItem('shepherd_resources', JSON.stringify(resources)), [resources]);
+  useEffect(() => localStorage.setItem('shepherd_resources', JSON.stringify(resources)), [resources]);
+  useEffect(() => localStorage.setItem('shepherd_logs', JSON.stringify(logs)), [logs]);
   useEffect(() => localStorage.setItem('shepherd_ai_name', aiName), [aiName]);
   useEffect(() => localStorage.setItem('shepherd_org_name', organizationName), [organizationName]);
   useEffect(() => localStorage.setItem('shepherd_categories', JSON.stringify(categories)), [categories]);
@@ -596,7 +568,7 @@ function App() {
         if (Notification.permission === "granted") {
           new Notification("Shepherd AI", {
             body: `Automation Complete: Sent ${newLogs.length} messages to due contacts.`,
-            icon: "/logo.png"
+            icon: "/vite.svg"
           });
         }
       }
@@ -679,7 +651,7 @@ function App() {
       if (dueMessages.length > 0 && Notification.permission === 'granted') {
         new Notification('Shepherd AI - Scheduled Messages', {
           body: `Sent ${dueMessages.length} scheduled message(s)`,
-          icon: '/logo.png'
+          icon: '/vite.svg'
         });
       }
     };
@@ -693,13 +665,8 @@ function App() {
     return () => clearInterval(interval);
   }, [logs, contacts, user]); // Dependencies: logs and contacts
 
-  // Auto-inject 30-Day Plan logic ONLY if organization is a church/ministry
+  // Auto-inject 30-Day Plan logic...
   useEffect(() => {
-    const org = (organizationName || '').toLowerCase();
-    const bType = (localStorage.getItem('shepherd_business_type') || '').toLowerCase();
-    const isFaithOrg = org.includes('church') || org.includes('ministry') || bType.includes('church') || bType.includes('ministry');
-    if (!isFaithOrg) return;
-
     setResources(prev => {
       const index = prev.findIndex(r => r.title === '30-Day New Convert Follow-Up Plan');
       if (index !== -1) {
@@ -713,7 +680,7 @@ function App() {
         return [...prev, { id: '103', title: '30-Day New Convert Follow-Up Plan', type: 'Book', content: newConvertPlanContent, uploadDate: new Date().toISOString() }];
       }
     });
-  }, [organizationName]);
+  }, []);
 
   useEffect(() => {
     if ('Notification' in window && Notification.permission === 'default') {
@@ -752,8 +719,6 @@ function App() {
     }
 
     console.log('[AIAgent] Generating reply for:', targetContact.name, 'Mode:', agentSettings.mode);
-
-    const startTime = Date.now();
 
     try {
       const currentMedia = getMediaFiles();
@@ -798,12 +763,10 @@ function App() {
         setSuggestedReplies(prev => ({ ...prev, [targetContact.id]: suggestion }));
         console.log('[AIAgent] Suggestion set for:', targetContact.name);
       } else {
-        // Human-like reply pacing: account for elapsed generation time so total latency does not build up
-        const targetDelayMs = Math.max(0, (agentSettings.replyDelay ?? 0)) * 1000;
-        const elapsedMs = Date.now() - startTime;
-        const remainingDelay = Math.max(0, targetDelayMs - elapsedMs);
-        if (remainingDelay > 0) {
-          await new Promise(resolve => setTimeout(resolve, remainingDelay));
+        // Auto-send immediately or after delay
+        const delay = Math.max(0, (agentSettings.replyDelay ?? 5)) * 1000;
+        if (delay > 0) {
+          await new Promise(resolve => setTimeout(resolve, delay));
         }
 
         const sendResult = await whatsappService.sendMessage(
@@ -844,15 +807,11 @@ function App() {
             return;
           }
 
-          // Deduplicate messages with bounded memory set
+          // Deduplicate messages
           const messageKey = `${messageData.from}-${messageData.timestamp}`;
           if (processedMessageIds.current.has(messageKey)) {
             console.log('⏭️ Skipping duplicate message');
             return;
-          }
-          if (processedMessageIds.current.size > 500) {
-            const arr = Array.from(processedMessageIds.current);
-            processedMessageIds.current = new Set(arr.slice(-250));
           }
           processedMessageIds.current.add(messageKey);
 
@@ -905,19 +864,28 @@ function App() {
             });
           }
 
-          // 3. If still no match, try matching by NAME only if name is specific (>= 4 chars)
+          // 3. If still no match, try matching by NAME (contactName or pushname)
           if (!contact && (incomingContactName || incomingPushname)) {
-            const targetName = (incomingContactName || incomingPushname || '').trim().toLowerCase();
-            if (targetName.length >= 4) {
-              contact = currentContacts.find(c => {
-                const saved = c.name.trim().toLowerCase();
-                if (saved.length < 4) return false;
-                return saved === targetName || saved.split(' ')[0] === targetName || targetName.split(' ')[0] === saved;
-              });
+            console.log('🔍 Trying name match with:', { savedContacts: currentContacts.length, incoming: [incomingContactName, incomingPushname] });
 
-              if (contact) {
-                console.log('✅ Matched by specific name:', contact.name);
-              }
+            contact = currentContacts.find(c => {
+              const savedNameLower = c.name.toLowerCase();
+              const incomingNameLower = (incomingContactName || '').toLowerCase();
+              const incomingPushnameLower = (incomingPushname || '').toLowerCase();
+
+              // Check if Saved Name is contained in Incoming Names OR Incoming Names contained in Saved Name
+              // e.g. "Seye" matches "Oluwaseye" AND "Oluwaseye" matches "Seye"
+
+              const nameMatch = incomingNameLower && (savedNameLower.includes(incomingNameLower) || incomingNameLower.includes(savedNameLower));
+              const pushnameMatch = incomingPushnameLower && (savedNameLower.includes(incomingPushnameLower) || incomingPushnameLower.includes(savedNameLower));
+
+              return nameMatch || pushnameMatch;
+            });
+
+            if (contact) {
+              console.log('✅ Matched by name:', contact.name);
+            } else {
+              console.log('❌ No name match found among:', currentContacts.map(c => c.name));
             }
           }
 
@@ -967,7 +935,7 @@ function App() {
             if (Notification.permission === 'granted') {
               new Notification(`Message from ${contact.name}`, {
                 body: (messageData.body || '').substring(0, 100),
-                icon: '/logo.png'
+                icon: '/vite.svg'
               });
             }
 
@@ -1016,7 +984,7 @@ function App() {
               name: displayName,
               phone: finalPhone,
               email: '',
-              category: categories[0] || 'Lead', // Dynamic default category (e.g. Lead for business, or first workspace category)
+              category: ContactCategory.NEW_CONVERT, // Default category
               notes: `Auto-created from WhatsApp.${incomingPushname ? ` Display name: ${incomingPushname}` : ''}${incomingContactName ? ` Saved as: ${incomingContactName}` : ''}`,
               joinDate: new Date().toISOString(),
               lastContacted: new Date().toISOString(),
@@ -1044,7 +1012,7 @@ function App() {
             if (Notification.permission === 'granted') {
               new Notification(`New message from ${newContact.name}`, {
                 body: (messageData.body || '').substring(0, 100),
-                icon: '/logo.png'
+                icon: '/vite.svg'
               });
             }
 

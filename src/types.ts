@@ -2,19 +2,11 @@
 export enum ContactCategory {
   NEW_CONVERT = 'New Convert',
   FIRST_TIMER = 'First Timer',
-  BORN_AGAIN = 'Born Again',
-  LEAD = 'Lead',
-  CUSTOMER = 'Customer',
-  INQUIRY = 'Inquiry',
-  VIP = 'VIP'
+  BORN_AGAIN = 'Born Again'
 }
 
-// Default categories — customizable in Settings for any business or enterprise type
+// Default categories — users can customize these in Settings for any business type
 export const DEFAULT_CATEGORIES = [
-  'Lead',
-  'Customer',
-  'Inquiry',
-  'VIP',
   ContactCategory.NEW_CONVERT,
   ContactCategory.FIRST_TIMER,
   ContactCategory.BORN_AGAIN
@@ -33,10 +25,7 @@ export interface User {
   id: string;
   name: string;
   email: string;
-  passwordHash?: string;
-  role?: string;
-  is_superadmin?: boolean;
-  plan?: string;
+  passwordHash: string;
   organizationName?: string; // Generic: works for any business type
 }
 
@@ -60,7 +49,7 @@ export interface Contact {
   name: string;
   phone: string;
   email?: string;
-  category: string; // Dynamic string supporting any industry/workflow
+  category: string; // Changed from Enum to string
   joinDate: string;
   notes: string;
   lastContacted?: string;
@@ -72,7 +61,7 @@ export interface Contact {
 export interface KnowledgeResource {
   id: string;
   title: string;
-  type: 'Book' | 'Sermon' | 'Devotional' | 'Document' | 'FAQ' | 'Policy' | 'Catalog' | 'Guide' | string;
+  type: 'Book' | 'Sermon' | 'Devotional';
   content: string; 
   uploadDate: string;
   fileName?: string;

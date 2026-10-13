@@ -15,42 +15,28 @@
 import { Contact, KnowledgeResource, MessageLog, AgentResult, AgentAction, MediaFile, AIConfig } from '../types';
 
 const getAIConfig = (): AIConfig => {
-  let groqApiKey = localStorage.getItem('shepherd_groq_api_key') || '';
-  let googleApiKey = localStorage.getItem('shepherd_google_api_key') || (import.meta as any).env?.VITE_GEMINI_API_KEY || '';
-  let provider = 'gemini';
-  let model = 'gemini-3.7-flash';
-  let baseUrl = '';
-
   const configStr = localStorage.getItem('shepherd_ai_config');
   if (configStr) {
     try {
       const parsed = JSON.parse(configStr);
-      if (parsed.groqApiKey && !parsed.groqApiKey.startsWith('***')) {
-        groqApiKey = parsed.groqApiKey;
-      }
       if (parsed.apiKey && !parsed.apiKey.startsWith('***')) {
-        googleApiKey = parsed.apiKey;
+        return parsed;
       }
-      if (parsed.provider) provider = parsed.provider;
-      if (parsed.model) model = parsed.model;
-      if (parsed.baseUrl) baseUrl = parsed.baseUrl;
     } catch {}
   }
-
-  return {
-    provider: (provider || 'gemini') as any,
-    apiKey: googleApiKey,
-    groqApiKey: groqApiKey,
-    model: model,
-    baseUrl: baseUrl
-  };
+  const legacyKey = localStorage.getItem('shepherd_google_api_key');
+  if (legacyKey && !legacyKey.startsWith('***')) {
+    return { provider: 'gemini', apiKey: legacyKey, model: 'gemini-3.7-flash' };
+  }
+  const envKey = (import.meta as any).env?.VITE_GEMINI_API_KEY || '';
+  return { provider: 'gemini', apiKey: envKey, model: 'gemini-3.7-flash' };
 };
 
 export const getAgentSettings = () => {
   return {
     enabled: localStorage.getItem('shepherd_agent_enabled') === 'true',
     mode: (localStorage.getItem('shepherd_agent_mode') || 'auto-send') as 'suggest' | 'auto-send',
-    replyDelay: parseInt(localStorage.getItem('shepherd_agent_delay') || '1', 10),
+    replyDelay: parseInt(localStorage.getItem('shepherd_agent_delay') || '5', 10),
     businessType: localStorage.getItem('shepherd_business_type') || 'Organization',
     toneDescription: localStorage.getItem('shepherd_agent_tone') || 'Warm, professional, and helpful',
     paymentLinkUrl: localStorage.getItem('shepherd_payment_link') || '',
@@ -228,176 +214,78 @@ Return ONLY the JSON object. No markdown code blocks, no extra text.`;
 const callBackendAI = async (systemPrompt: string, userTurn: string): Promise<string> => {
   const token = localStorage.getItem('authToken');
   const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 5000);
+  const res = await fetch(`${backendUrl}/api/settings/ai-generate`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    },
+    body: JSON.stringify({
+      system_prompt: systemPrompt,
+      user_turn: userTurn
+    })
+  });
 
-  try {
-    const res = await fetch(`${backendUrl}/api/settings/ai-generate`, {
-      method: 'POST',
-      signal: controller.signal,
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-      },
-      body: JSON.stringify({
-        system_prompt: systemPrompt,
-        user_turn: userTurn
-      })
-    });
-    clearTimeout(timeoutId);
-
-    if (!res.ok) {
-      const errText = await res.text().catch(() => '');
-      throw new Error(`Backend AI proxy error (${res.status}): ${errText || res.statusText}`);
-    }
-
-    const data = await res.json();
-    return data.text || '{}';
-  } catch (err) {
-    clearTimeout(timeoutId);
-    throw err;
+  if (!res.ok) {
+    const errText = await res.text().catch(() => '');
+    throw new Error(`Backend AI proxy error (${res.status}): ${errText || res.statusText}`);
   }
-};
 
-const resolveGeminiProductionModel = (modelName?: string): string => {
-  if (!modelName) return 'gemini-2.0-flash';
-  const clean = modelName.replace('models/', '').trim();
-  // 3.7 / 3.8 are visionary preview options in the UI; map to Google's sub-second flash model
-  if (clean.includes('3.7') || clean.includes('3.8') || clean.includes('3.5')) {
-    return 'gemini-2.0-flash';
-  }
-  return clean;
+  const data = await res.json();
+  return data.text || '{}';
 };
 
 const callAI = async (systemPrompt: string, userTurn: string): Promise<string> => {
   const config = getAIConfig();
+  const hasValidClientKey = Boolean(config.apiKey && !config.apiKey.startsWith('***'));
 
-  const effectiveGroqKey = config.groqApiKey || 
-    (config.apiKey?.startsWith('gsk_') ? config.apiKey : '') || 
-    (config.provider === 'groq' ? config.apiKey : '') || 
-    localStorage.getItem('shepherd_groq_api_key') || 
-    ((import.meta as any).env?.VITE_GROQ_API_KEY || '');
-
-  const effectiveGeminiKey = (config.provider === 'gemini' ? config.apiKey : '') || 
-    (config.apiKey?.startsWith('AIzaSy') ? config.apiKey : '') || 
-    localStorage.getItem('shepherd_google_api_key') || 
-    ((import.meta as any).env?.VITE_GEMINI_API_KEY || '');
-
-  // =========================================================================
-  // TIER 1: Groq Cloud (Primary Ultra-Fast Inference ~0.3s)
-  // =========================================================================
-  if (effectiveGroqKey && !effectiveGroqKey.startsWith('***') && effectiveGroqKey.length > 20) {
+  if (hasValidClientKey) {
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 2000); // 2.0s fast timeout
-
-      const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        signal: controller.signal,
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${effectiveGroqKey}`
-        },
-        body: JSON.stringify({
-          model: 'llama-3.1-8b-instant',
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: `${userTurn}\nRespond in valid JSON format.` }
-          ],
-          temperature: 0.7,
-          response_format: { type: 'json_object' }
-        })
-      });
-      clearTimeout(timeoutId);
-
-      if (res.ok) {
-        const data = await res.json();
-        const content = data.choices?.[0]?.message?.content;
-        if (content && content.trim().length > 2) {
-          console.log('⚡ [Tier 1: Groq LLM] (llama-3.1-8b-instant) instant reply in <0.3s!');
-          return content;
-        }
-      } else {
-        console.warn(`[AIAgent] Groq returned HTTP ${res.status}: ${res.statusText}`);
-      }
-    } catch (modelErr) {
-      console.warn('[AIAgent] Groq fast attempt failed, switching immediately to Gemini:', modelErr);
-    }
-  }
-
-  // =========================================================================
-  // TIER 2: Google Gemini (Secondary / Multimodal Fallback ~1.0s)
-  // =========================================================================
-  if (effectiveGeminiKey && !effectiveGeminiKey.startsWith('***')) {
-    try {
-      console.log('🔄 [Tier 2: Gemini LLM Fallback] Generating reply via Google Gemini...');
-      const { GoogleGenAI } = await import('@google/genai');
-      const genai = new GoogleGenAI({ apiKey: effectiveGeminiKey });
-      const targetModel = resolveGeminiProductionModel(config.model);
-      const modelsToTry = [targetModel, 'gemini-1.5-flash'];
-      const uniqueModels = Array.from(new Set(modelsToTry));
-
-      for (const mName of uniqueModels) {
-        try {
-          const geminiPromise = genai.models.generateContent({
-            model: mName,
-            contents: [{ role: 'user', parts: [{ text: `${systemPrompt}\n\n${userTurn}` }] }],
-            config: { temperature: 0.75 }
-          });
-          const timeoutPromise = new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error(`Gemini ${mName} timeout`)), 3500)
-          );
-          const response = await Promise.race([geminiPromise, timeoutPromise]);
-          if (response?.text) return response.text;
-        } catch (mErr) {
-          console.warn(`[AIAgent] Gemini model ${mName} attempt failed:`, mErr);
-        }
-      }
-    } catch (geminiErr) {
-      console.warn('[AIAgent] Gemini fallback generation failed, falling back to backend AI proxy:', geminiErr);
-    }
-  }
-
-  // =========================================================================
-  // Optional: Custom/OpenAI provider if explicitly selected
-  // =========================================================================
-  if (config.apiKey && !config.apiKey.startsWith('***') && (config.provider === 'openai' || config.provider === 'deepseek' || config.provider === 'custom')) {
-    try {
-      let baseUrl = config.baseUrl;
-      if (!baseUrl) {
-        if (config.provider === 'openai') baseUrl = 'https://api.openai.com/v1';
-        else if (config.provider === 'deepseek') baseUrl = 'https://api.deepseek.com';
-      }
-      if (baseUrl) {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 4000);
-        const res = await fetch(`${baseUrl}/chat/completions`, {
-          method: 'POST',
-          signal: controller.signal,
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${config.apiKey}` },
-          body: JSON.stringify({
-            model: config.model,
-            messages: [
-              { role: 'system', content: systemPrompt },
-              { role: 'user', content: userTurn }
-            ],
-            temperature: 0.75,
-            response_format: { type: 'json_object' }
-          })
+      if (config.provider === 'gemini') {
+        const { GoogleGenAI } = await import('@google/genai');
+        const genai = new GoogleGenAI({ apiKey: config.apiKey });
+        const response = await genai.models.generateContent({
+          model: config.model || 'gemini-3.7-flash',
+          contents: [{ role: 'user', parts: [{ text: `${systemPrompt}\n\n${userTurn}` }] }],
+          config: { temperature: 0.75 }
         });
-        clearTimeout(timeoutId);
+        if (response.text) return response.text;
+      } else {
+        // OpenAI-compatible providers
+        let baseUrl = config.baseUrl;
+        if (!baseUrl) {
+          if (config.provider === 'openai') baseUrl = 'https://api.openai.com/v1';
+          else if (config.provider === 'deepseek') baseUrl = 'https://api.deepseek.com';
+          else if (config.provider === 'groq') baseUrl = 'https://api.groq.com/openai/v1';
+        }
+        if (baseUrl) {
+          const res = await fetch(`${baseUrl}/chat/completions`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${config.apiKey}` },
+            body: JSON.stringify({
+              model: config.model,
+              messages: [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: userTurn }
+              ],
+              temperature: 0.75,
+              response_format: { type: 'json_object' }
+            })
+          });
 
-        if (res.ok) {
-          const data = await res.json();
-          const content = data.choices?.[0]?.message?.content;
-          if (content) return content;
+          if (res.ok) {
+            const data = await res.json();
+            const content = data.choices?.[0]?.message?.content;
+            if (content) return content;
+          }
         }
       }
-    } catch (customErr) {
-      console.warn('[AIAgent] Custom provider failed:', customErr);
+    } catch (clientErr) {
+      console.warn('[AIAgent] Client-side AI generation failed, falling back to backend AI proxy:', clientErr);
     }
   }
 
+  // Robust server-side fallback using backend organization key or GEMINI_API_KEY
   return await callBackendAI(systemPrompt, userTurn);
 };
 
