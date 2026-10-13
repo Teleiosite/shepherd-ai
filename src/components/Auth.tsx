@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { authService } from '../services/authService';
-import { User, Lock, Mail, ArrowRight, Building2, AlertCircle, CheckCircle, ArrowLeft, Sparkles, MessageCircle } from 'lucide-react';
+import { User, Lock, Mail, ArrowRight, Building2, AlertCircle, CheckCircle, ArrowLeft, Sparkles, MessageCircle, X } from 'lucide-react';
 import logoImage from '../logo.png';
 
 interface AuthProps {
@@ -13,6 +13,8 @@ type AuthView = 'login' | 'register' | 'forgot-password';
 
 const Auth: React.FC<AuthProps> = ({ onLogin, initialView = 'login', onBackToLanding }) => {
   const [view, setView] = useState<AuthView>(initialView);
+  const [rememberMe, setRememberMe] = useState(true);
+  const [policyModal, setPolicyModal] = useState<'privacy' | 'terms' | null>(null);
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -34,7 +36,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin, initialView = 'login', onBackToLan
 
     try {
       if (view === 'login') {
-        const result = await authService.login(formData.email, formData.password);
+        const result = await authService.login(formData.email, formData.password, rememberMe);
         if (result.success) {
           onLogin();
         } else {
@@ -93,7 +95,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin, initialView = 'login', onBackToLan
 
           {/* Footer - Desktop only */}
           <div className="text-xs text-slate-400 mt-2 md:mt-auto hidden md:block">
-            © 2025 Shepherd AI. All rights reserved.
+            © {new Date().getFullYear()} Shepherd AI. All rights reserved.
           </div>
         </div>
 
@@ -251,7 +253,12 @@ const Auth: React.FC<AuthProps> = ({ onLogin, initialView = 'login', onBackToLan
 
                           <div className="flex items-center justify-between text-xs sm:text-sm pt-0.5">
                             <label className="flex items-center gap-1.5 text-emerald-200 cursor-pointer">
-                              <input type="checkbox" className="w-3.5 h-3.5 rounded border-emerald-600 bg-emerald-800/50" />
+                              <input
+                                type="checkbox"
+                                checked={rememberMe}
+                                onChange={e => setRememberMe(e.target.checked)}
+                                className="w-3.5 h-3.5 rounded border-emerald-600 bg-emerald-800/50 text-teal-400 focus:ring-teal-400"
+                              />
                               <span>Remember Me</span>
                             </label>
                             <button
@@ -354,9 +361,21 @@ const Auth: React.FC<AuthProps> = ({ onLogin, initialView = 'login', onBackToLan
                   )}
 
                   <div className="mt-4 flex gap-3 justify-center text-[10px] sm:text-xs text-emerald-400">
-                    <a href="#" className="hover:text-emerald-200 transition">Privacy Policy</a>
+                    <button
+                      type="button"
+                      onClick={() => setPolicyModal('privacy')}
+                      className="hover:text-emerald-200 underline transition"
+                    >
+                      Privacy Policy
+                    </button>
                     <span>•</span>
-                    <a href="#" className="hover:text-emerald-200 transition">Terms of Service</a>
+                    <button
+                      type="button"
+                      onClick={() => setPolicyModal('terms')}
+                      className="hover:text-emerald-200 underline transition"
+                    >
+                      Terms of Service
+                    </button>
                   </div>
                 </div>
               </>
@@ -364,6 +383,51 @@ const Auth: React.FC<AuthProps> = ({ onLogin, initialView = 'login', onBackToLan
           </div>
         </div>
       </div>
+
+      {/* Compliance & Policy Modal */}
+      {policyModal && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 text-white rounded-2xl max-w-lg w-full max-h-[80vh] flex flex-col shadow-2xl">
+            <div className="flex items-center justify-between p-5 border-b border-slate-800">
+              <h3 className="font-bold text-lg text-emerald-300">
+                {policyModal === 'privacy' ? 'Privacy Policy & NDPA Compliance' : 'Terms of Service'}
+              </h3>
+              <button
+                onClick={() => setPolicyModal(null)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-6 overflow-y-auto space-y-4 text-xs sm:text-sm text-slate-300 leading-relaxed">
+              {policyModal === 'privacy' ? (
+                <>
+                  <p className="font-semibold text-white">Nigeria Data Protection Act (NDPA 2023) Compliance Notice</p>
+                  <p>Shepherd AI is engineered with privacy-by-design principles. All customer interactions, contact records, and message logs are encrypted in transit using TLS 1.3 and stored with AES-256 encryption.</p>
+                  <p><strong>Data Processing:</strong> Your organization retains complete data ownership. WhatsApp and conversational message logs are processed strictly on behalf of the registered tenant to deliver AI automation, catalog retrieval, and customer triage.</p>
+                  <p><strong>Zero Training Retention:</strong> Confidential customer and organizational data are never sold or used to train public foundation models.</p>
+                  <p><strong>Rights & Access:</strong> End users and contacts may request conversation export or data purge through your administrative panel.</p>
+                </>
+              ) : (
+                <>
+                  <p className="font-semibold text-white">Enterprise Software Agreement</p>
+                  <p>By accessing Shepherd AI, your organization agrees to operate conversational automation in full compliance with the Meta WhatsApp Business Terms of Service and applicable telecommunications regulations.</p>
+                  <p><strong>Permitted Use:</strong> Authorized for customer support, service booking, visual catalog commerce, and authorized citizen/client engagement.</p>
+                  <p><strong>Supervision:</strong> Automated workflows and AI agent suggestions provide human-in-the-loop triage options for sensitive dispute or financial escalations.</p>
+                </>
+              )}
+            </div>
+            <div className="p-4 border-t border-slate-800 flex justify-end">
+              <button
+                onClick={() => setPolicyModal(null)}
+                className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg transition"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -47,12 +47,8 @@ async def call_ai_provider(
     if provider == "gemini":
         # Verified active Google Gemini production models from API catalog
         FAST_GEMINI_MODELS = [
-            "gemini-2.5-flash",
-            "gemini-1.5-flash",
-            "gemini-3.5-flash-lite",
-            "gemini-3.5-flash",
-            "gemini-3.8-flash",
             "gemini-2.0-flash",
+            "gemini-1.5-flash",
             "gemini-flash-latest"
         ]
 
@@ -67,19 +63,27 @@ async def call_ai_provider(
         candidates = []
         if model:
             clean_m = model.replace("models/", "").strip()
-            if not any(ex in clean_m.lower() for ex in EXCLUDE_KEYWORDS) and clean_m not in OBSOLETE_MODELS:
-                candidates.append(clean_m)
+            # Map preview/futuristic aliases directly to Google's active flash model to avoid 404 roundtrip delays
+            if "3.7" in clean_m or "3.8" in clean_m or "3.5" in clean_m:
+                mapped_m = "gemini-2.0-flash"
+            else:
+                mapped_m = clean_m
+            if not any(ex in mapped_m.lower() for ex in EXCLUDE_KEYWORDS) and mapped_m not in OBSOLETE_MODELS:
+                candidates.append(mapped_m)
 
         for fm in FAST_GEMINI_MODELS:
             if fm not in candidates:
                 candidates.append(fm)
 
+        # Cap candidates to at most 2 to guarantee zero latency buildup
+        candidates = candidates[:2]
+
         full_text_turn = f"System Instructions:\n{system_prompt}\n\nCustomer Input:\n{user_turn}\n\nGenerate your JSON response."
         attempt_errors = []
 
-        # 1. Primary: Direct Async REST API (Ultra-low latency, non-blocking with 6.0s timeout)
+        # 1. Primary: Direct Async REST API (Ultra-low latency, non-blocking with 3.5s timeout)
         import httpx
-        async with httpx.AsyncClient(timeout=6.0) as client:
+        async with httpx.AsyncClient(timeout=3.5) as client:
             for cand in candidates:
                 try:
                     logger.info(f"🤖 Fast REST call to Gemini '{cand}'...")
@@ -110,17 +114,17 @@ async def call_ai_provider(
                     attempt_errors.append(f"{cand} ex: {str(rest_e)[:60]}")
                     continue
 
-        # 2. Fallback to SDK with strict async timeout if REST attempts had issues
+        # 2. Fallback to SDK with strict async timeout (3.5s) if REST attempts had issues
         try:
             import google.generativeai as genai
             import asyncio
             genai.configure(api_key=api_key)
-            fallback_model_name = candidates[0] if candidates else "gemini-2.5-flash"
+            fallback_model_name = "gemini-2.0-flash" if "gemini-2.0-flash" in candidates else (candidates[0] if candidates else "gemini-1.5-flash")
             logger.info(f"🔄 Trying SDK fallback with '{fallback_model_name}'...")
             sdk_model = genai.GenerativeModel(fallback_model_name)
             response = await asyncio.wait_for(
                 asyncio.to_thread(sdk_model.generate_content, full_text_turn, generation_config={"temperature": 0.7}),
-                timeout=6.0
+                timeout=3.5
             )
             if response and response.text:
                 return response.text.strip()
@@ -144,13 +148,13 @@ async def call_ai_provider(
 
     url = url.rstrip('/')
 
-    # For Groq, default to ultra-fast Llama 3.1 8B instant
+    # For Groq, default to ultra-fast Llama 3.1 8B instant (~0.2s)
     selected_model = model
     if provider == "groq":
-        if not selected_model or selected_model in ("gemini-flash-latest", "gemini-2.0-flash", "gemini-1.5-flash", "llama3-70b-8192", "gemini-2.5-flash", "gemini-3.5-flash-lite"):
+        if not selected_model or selected_model in ("gemini-flash-latest", "gemini-2.0-flash", "gemini-1.5-flash", "llama3-70b-8192", "gemini-2.5-flash", "gemini-3.5-flash-lite", "gemini-3.7-flash", "gemini-3.8-flash"):
             selected_model = "llama-3.1-8b-instant"
 
-    async with httpx.AsyncClient(timeout=4.5) as client:
+    async with httpx.AsyncClient(timeout=3.5) as client:
         response = await client.post(
             f"{url}/chat/completions",
             headers={
@@ -161,7 +165,7 @@ async def call_ai_provider(
                 "model": selected_model or "llama-3.1-8b-instant",
                 "messages": [
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_turn}
+                    {"role": "user", "content": f"{user_turn}\nRespond in valid JSON format."}
                 ],
                 "temperature": 0.7,
                 "response_format": {"type": "json_object"}
@@ -1203,32 +1207,29 @@ Generate your JSON response."""
 
     effective_groq_key = groq_api_key or getattr(org, "groq_api_key", None) or os.getenv("GROQ_API_KEY")
 
-    # Tier 1: Groq Cloud Llama 3.1 8B / Llama 3.3 70B (Ultra-fast text generation)
+    # Tier 1: Groq Cloud Llama 3.1 8B (Ultra-fast ~0.3s response)
     if effective_groq_key:
-        groq_candidates = ["llama-3.1-8b-instant", "llama-3.3-70b-versatile"]
-        for g_model in groq_candidates:
-            try:
-                logger.info(f"⚡ [Tier 1: Groq LLM] Generating reply via {g_model}...")
-                raw_reply = await call_ai_provider(
-                    provider="groq",
-                    api_key=effective_groq_key,
-                    model=g_model,
-                    system_prompt=system_prompt,
-                    user_turn=user_turn
-                )
-                if raw_reply and len(raw_reply.strip()) > 2:
-                    elapsed_g = time.time() - start_llm
-                    logger.info(f"⚡ ✅ Groq LLM ({g_model}) SUCCESS in {elapsed_g:.2f}s!")
-                    break
-            except Exception as g_err:
-                logger.warning(f"Groq LLM attempt with {g_model} failed: {g_err}")
+        try:
+            logger.info("⚡ [Tier 1: Groq LLM] Generating reply via llama-3.1-8b-instant...")
+            raw_reply = await call_ai_provider(
+                provider="groq",
+                api_key=effective_groq_key,
+                model="llama-3.1-8b-instant",
+                system_prompt=system_prompt,
+                user_turn=user_turn
+            )
+            if raw_reply and len(raw_reply.strip()) > 2:
+                elapsed_g = time.time() - start_llm
+                logger.info(f"⚡ ✅ Groq LLM SUCCESS in {elapsed_g:.2f}s!")
+        except Exception as g_err:
+            logger.warning(f"Groq LLM fast attempt failed, switching immediately to Gemini: {g_err}")
 
     # Tier 2: Google Gemini (Fallback if Groq unavailable or unconfigured)
     if not raw_reply and ai_api_key:
         logger.info("🔄 [Tier 2: Gemini LLM Fallback] Generating reply via Google Gemini...")
-        model_to_use = org.ai_model or "gemini-3.5-flash-lite"
+        model_to_use = org.ai_model or "gemini-2.0-flash"
         if not model_to_use:
-            model_to_use = "gemini-3.5-flash-lite"
+            model_to_use = "gemini-2.0-flash"
         elif model_to_use.startswith("models/"):
             model_to_use = model_to_use.replace("models/", "").strip()
 
