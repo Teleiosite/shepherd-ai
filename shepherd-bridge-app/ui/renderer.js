@@ -56,7 +56,7 @@ async function connectBridge() {
                         const qrImg = document.getElementById('qrImage');
                         const qrPlaceholder = document.getElementById('qrPlaceholder');
                         if (qrImg) {
-                            qrImg.src = data.qr;
+                            qrImg.src = data.qr.startsWith('data:') ? data.qr : ('data:image/png;base64,' + data.qr);
                             qrImg.style.display = 'block';
                         }
                         if (qrPlaceholder) qrPlaceholder.style.display = 'none';
@@ -67,7 +67,7 @@ async function connectBridge() {
                         showStep('step-connected');
                     }
                 } catch (e) {
-                    // Bridge REST not ready yet — keep polling silently
+                    // Bridge REST not ready yet â€” keep polling silently
                 }
             }, 2000);
 

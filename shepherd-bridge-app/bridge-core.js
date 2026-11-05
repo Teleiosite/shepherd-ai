@@ -1,4 +1,10 @@
-﻿// WPPConnect Bridge for Shepherd AI - With Simple Auto-Reconnect
+process.on('uncaughtException', (err) => {
+  console.error('⚠️ Bridge Uncaught Exception:', err.message || err);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('⚠️ Bridge Unhandled Rejection:', reason);
+});
+// WPPConnect Bridge for Shepherd AI - With Simple Auto-Reconnect
 const wppconnect = require('@wppconnect-team/wppconnect');
 const express = require('express');
 const cors = require('cors');
@@ -34,6 +40,9 @@ let latestQR = null; // Store latest QR for REST polling
 // WebSocket Server
 const wss = new WebSocket.Server({ port: WS_PORT });
 const wsClients = new Set();
+wss.on('error', (err) => {
+  console.warn('⚠️ WebSocket server warning:', err.message);
+});
 
 wss.on('connection', (ws) => {
   console.log('ðŸ”Œ WebSocket client connected');
@@ -481,8 +490,16 @@ app.get('/api/qr', (req, res) => {
   res.json({ qr: latestQR, status: bridgeStatus });
 });
 
-app.listen(PORT, '0.0.0.0', () => {
+const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`ðŸ“¡ REST: http://localhost:${PORT}`);
   console.log(`ðŸ”Œ WebSocket: ws://localhost:${WS_PORT}`);
 });
 
+
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.warn('⚠️ Port ' + PORT + ' is already in use by another instance.');
+  } else {
+    console.error('Server error:', err);
+  }
+});
