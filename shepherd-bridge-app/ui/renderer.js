@@ -10,6 +10,8 @@ function showStep(stepId) {
     document.getElementById(stepId).classList.add('active');
 }
 
+let qrPollInterval = null;
+
 async function connectBridge() {
     const codeInput = document.getElementById('connectionCode');
     const code = codeInput.value.trim().toUpperCase();
@@ -44,10 +46,38 @@ async function connectBridge() {
             // Success! Show QR code step
             showStep('step-qr');
 
-            // Listen for bridge status updates
+            // Poll the bridge REST API every 2 seconds for QR code
+            if (qrPollInterval) clearInterval(qrPollInterval);
+            qrPollInterval = setInterval(async () => {
+                try {
+                    const r = await fetch('http://localhost:3001/api/qr');
+                    const data = await r.json();
+                    if (data.qr) {
+                        const qrImg = document.getElementById('qrImage');
+                        const qrPlaceholder = document.getElementById('qrPlaceholder');
+                        if (qrImg) {
+                            qrImg.src = data.qr;
+                            qrImg.style.display = 'block';
+                        }
+                        if (qrPlaceholder) qrPlaceholder.style.display = 'none';
+                    }
+                    if (data.status === 'connected') {
+                        clearInterval(qrPollInterval);
+                        qrPollInterval = null;
+                        showStep('step-connected');
+                    }
+                } catch (e) {
+                    // Bridge REST not ready yet — keep polling silently
+                }
+            }, 2000);
+
+            // Also listen for bridge status updates via IPC (Electron)
             window.electronAPI.onBridgeStatus((status) => {
                 if (status.status === 'connected') {
-                    // WhatsApp connected!
+                    if (qrPollInterval) {
+                        clearInterval(qrPollInterval);
+                        qrPollInterval = null;
+                    }
                     showStep('step-connected');
                 }
             });

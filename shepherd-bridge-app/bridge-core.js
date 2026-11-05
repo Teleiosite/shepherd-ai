@@ -1,4 +1,4 @@
-// WPPConnect Bridge for Shepherd AI - With Simple Auto-Reconnect
+﻿// WPPConnect Bridge for Shepherd AI - With Simple Auto-Reconnect
 const wppconnect = require('@wppconnect-team/wppconnect');
 const express = require('express');
 const cors = require('cors');
@@ -29,13 +29,14 @@ const PORT = 3001;
 const WS_PORT = 3002;
 let clientSession = null;
 let bridgeStatus = 'initializing';
+let latestQR = null; // Store latest QR for REST polling
 
 // WebSocket Server
 const wss = new WebSocket.Server({ port: WS_PORT });
 const wsClients = new Set();
 
 wss.on('connection', (ws) => {
-  console.log('🔌 WebSocket client connected');
+  console.log('ðŸ”Œ WebSocket client connected');
   wsClients.add(ws);
   ws.send(JSON.stringify({ type: 'status', status: bridgeStatus }));
   ws.on('close', () => wsClients.delete(ws));
@@ -48,37 +49,53 @@ function broadcastToClients(data) {
   });
 }
 
-console.log('🚀 Shepherd AI WPPConnect Bridge Starting...');
+console.log('ðŸš€ Shepherd AI WPPConnect Bridge Starting...');
 
 // Initialize WPPConnect
 wppconnect.create({
   session: 'shepherd-session',
-  headless: false,
-  logQR: true,
+  headless: true,
+  logQR: false,
   autoClose: 0,
+  catchQR: (base64Qrimg, asciiQR, attempts) => {
+    console.log('📱 QR Code generated! Attempt:', attempts);
+    latestQR = base64Qrimg;
+    broadcastToClients({ type: 'qr', qr: base64Qrimg });
+  },
+  statusFind: (statusSession, session) => {
+    console.log('🔄 Status:', statusSession);
+    if (statusSession === 'inChat' || statusSession === 'isLogged') {
+      bridgeStatus = 'connected';
+      latestQR = null;
+      broadcastToClients({ type: 'status', status: 'connected' });
+    } else if (statusSession === 'notLogged' || statusSession === 'browserClose' || statusSession === 'qrReadError') {
+      bridgeStatus = 'disconnected';
+      broadcastToClients({ type: 'status', status: 'disconnected' });
+    }
+  },
   puppeteerOptions: {
-    args: ['--no-sandbox', '--disable-setuid-sandbox']
+    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
   }
 })
   .then((client) => {
     clientSession = client;
     bridgeStatus = 'connected';
-    console.log('✅ WPPConnect Bot connected!');
-    console.log('🔓 Bridge Status: CONNECTED');
+    console.log('âœ… WPPConnect Bot connected!');
+    console.log('ðŸ”“ Bridge Status: CONNECTED');
     broadcastToClients({ type: 'status', status: 'connected' });
 
     // Initialize polling with client session
     polling.initPolling(client, () => bridgeStatus);
-    console.log('✅ Polling initialized with client session');
+    console.log('âœ… Polling initialized with client session');
     polling.startPolling('1DCFEA1A');
 
     // Incoming messages
     client.onMessage(async (message) => {
       // DEBUG: Log EVERY message received (including groups) to diagnose the issue
-      console.log('🔔 onMessage TRIGGERED! From:', message.from, 'isGroup:', message.isGroupMsg, 'Body:', message.body?.substring(0, 30));
+      console.log('ðŸ”” onMessage TRIGGERED! From:', message.from, 'isGroup:', message.isGroupMsg, 'Body:', message.body?.substring(0, 30));
 
       if (!message.isGroupMsg && !message.from.includes('status@broadcast')) {
-        console.log('✅ Processing 1-on-1 message from:', message.from);
+        console.log('âœ… Processing 1-on-1 message from:', message.from);
 
         // Handle media messages properly
         let body = message.body || '';
@@ -93,46 +110,46 @@ wppconnect.create({
           mediaType = message.type;
 
           try {
-            console.log(`📥 Downloading ${mediaType} from WhatsApp...`);
+            console.log(`ðŸ“¥ Downloading ${mediaType} from WhatsApp...`);
 
             // Download media as base64
             const mediaBuffer = await client.decryptFile(message);
             mediaData = mediaBuffer.toString('base64');
 
-            console.log(`✅ Media downloaded (${Math.round(mediaData.length / 1024)}KB)`);
+            console.log(`âœ… Media downloaded (${Math.round(mediaData.length / 1024)}KB)`);
 
             // Set body with media indicator
             if (message.type === 'image') {
-              body = message.caption || '📷 Image';
+              body = message.caption || 'ðŸ“· Image';
               mediaUrl = `data:image/jpeg;base64,${mediaData}`;
             } else if (message.type === 'video') {
-              body = message.caption || '🎥 Video';
+              body = message.caption || 'ðŸŽ¥ Video';
               mediaUrl = `data:video/mp4;base64,${mediaData}`;
             } else if (message.type === 'audio' || message.type === 'ptt') {
-              body = '🎵 Audio';
+              body = 'ðŸŽµ Audio';
               mediaUrl = `data:audio/ogg;base64,${mediaData}`;
             } else if (message.type === 'document') {
-              body = message.filename || '📄 Document';
+              body = message.filename || 'ðŸ“„ Document';
               mediaUrl = `data:application/octet-stream;base64,${mediaData}`;
             } else if (message.type === 'sticker') {
-              body = '🎨 Sticker';
+              body = 'ðŸŽ¨ Sticker';
               mediaUrl = `data:image/webp;base64,${mediaData}`;
             }
 
-            console.log(`📩 INCOMING ${mediaType} from ${message.from}: ${body}`);
+            console.log(`ðŸ“© INCOMING ${mediaType} from ${message.from}: ${body}`);
           } catch (error) {
-            console.error(`❌ Error downloading media: ${error.message}`);
+            console.error(`âŒ Error downloading media: ${error.message}`);
             // Fallback to text indicator
             if (message.type === 'image') {
-              body = '📷 [Image - download failed]';
+              body = 'ðŸ“· [Image - download failed]';
             } else if (message.type === 'video') {
-              body = '🎥 [Video - download failed]';
+              body = 'ðŸŽ¥ [Video - download failed]';
             } else if (message.type === 'audio' || message.type === 'ptt') {
-              body = '🎵 [Audio - download failed]';
+              body = 'ðŸŽµ [Audio - download failed]';
             } else if (message.type === 'document') {
-              body = '📄 [Document - download failed]';
+              body = 'ðŸ“„ [Document - download failed]';
             } else if (message.type === 'sticker') {
-              body = '🎨 [Sticker - download failed]';
+              body = 'ðŸŽ¨ [Sticker - download failed]';
             }
           }
         } else if (message.hasMedia) {
@@ -141,19 +158,19 @@ wppconnect.create({
           mediaType = 'unknown';
 
           try {
-            console.log(`📥 Downloading media from WhatsApp...`);
+            console.log(`ðŸ“¥ Downloading media from WhatsApp...`);
             const mediaBuffer = await client.decryptFile(message);
             mediaData = mediaBuffer.toString('base64');
             mediaUrl = `data:application/octet-stream;base64,${mediaData}`;
-            body = '📎 Media';
-            console.log(`✅ Media downloaded (${Math.round(mediaData.length / 1024)}KB)`);
+            body = 'ðŸ“Ž Media';
+            console.log(`âœ… Media downloaded (${Math.round(mediaData.length / 1024)}KB)`);
           } catch (error) {
-            console.error(`❌ Error downloading media: ${error.message}`);
-            body = '📎 [Media - download failed]';
+            console.error(`âŒ Error downloading media: ${error.message}`);
+            body = 'ðŸ“Ž [Media - download failed]';
           }
         } else {
           body = message.body || '[No content]';
-          console.log(`📩 INCOMING from ${message.from}: ${body.substring(0, 50)}...`);
+          console.log(`ðŸ“© INCOMING from ${message.from}: ${body.substring(0, 50)}...`);
         }
 
         let phoneNumber = message.from.replace('@c.us', '').replace('@lid', '');
@@ -171,17 +188,17 @@ wppconnect.create({
               // PRIORITY 1: Check if contactName contains a phone number (most reliable for @lid)
               if (contactName && /^\+?\d{10,15}$/.test(contactName.replace(/[\s\-]/g, ''))) {
                 realPhone = contactName.replace(/\D/g, '');
-                console.log('✅ Extracted phone from contactName (Priority 1):', realPhone);
+                console.log('âœ… Extracted phone from contactName (Priority 1):', realPhone);
               }
               // PRIORITY 2: Try formattedNumber
               else if (contact.formattedNumber && contact.formattedNumber.trim()) {
                 realPhone = contact.formattedNumber.replace(/\D/g, '');
-                console.log('📱 Extracted from formattedNumber:', realPhone);
+                console.log('ðŸ“± Extracted from formattedNumber:', realPhone);
               }
               // PRIORITY 3: Try contact.number
               else if (contact.number && contact.number.trim()) {
                 realPhone = contact.number.replace(/\D/g, '');
-                console.log('📱 Extracted from contact.number:', realPhone);
+                console.log('ðŸ“± Extracted from contact.number:', realPhone);
               }
               // PRIORITY 4: Try id._serialized (might have phone)
               else if (contact.id && contact.id._serialized) {
@@ -189,23 +206,23 @@ wppconnect.create({
                 // Check if it looks like a phone (starts with country code pattern)
                 if (/^(1|2[0-9]{2}|3[0-9]{2}|4[0-9]{2}|5[0-9]{2}|6[0-9]{2}|7|8[0-9]{2}|9[0-9]{2})\d{8,13}$/.test(serialized)) {
                   realPhone = serialized;
-                  console.log('📱 Extracted from id._serialized:', realPhone);
+                  console.log('ðŸ“± Extracted from id._serialized:', realPhone);
                 } else {
-                  console.log(`⚠️ id._serialized "${serialized}" doesn't look like a valid phone`);
+                  console.log(`âš ï¸ id._serialized "${serialized}" doesn't look like a valid phone`);
                 }
               }
               // PRIORITY 5: Last resort - contact.id.user (might be WhatsApp ID)
               else if (contact.id && contact.id.user) {
                 realPhone = contact.id.user;
-                console.log('⚠️ Using contact.id.user as last resort:', realPhone);
+                console.log('âš ï¸ Using contact.id.user as last resort:', realPhone);
               }
 
               // Final validation: If we got something that looks like a WhatsApp ID (weird pattern), mark it
               if (realPhone && realPhone.length > 12 && !realPhone.match(/^(1|2[0-9]{2}|3[0-9]{2}|4[0-9]{2}|5[0-9]{2}|6[0-9]{2}|7|8[0-9]{2}|9[0-9]{2})\d{8,12}$/)) {
-                console.log(`⚠️ WARNING: "${realPhone}" might be a WhatsApp ID, not a real phone!`);
+                console.log(`âš ï¸ WARNING: "${realPhone}" might be a WhatsApp ID, not a real phone!`);
               }
 
-              console.log(`📛 Contact name: "${contactName}", Pushname: "${pushname}", Real Phone: "${realPhone}"`);
+              console.log(`ðŸ“› Contact name: "${contactName}", Pushname: "${pushname}", Real Phone: "${realPhone}"`);
             }
           } catch (e) {
             console.log('Could not get contact info:', e.message);
@@ -214,7 +231,7 @@ wppconnect.create({
           realPhone = phoneNumber;
         }
 
-        console.log('📤 Broadcasting to WebSocket clients...');
+        console.log('ðŸ“¤ Broadcasting to WebSocket clients...');
         broadcastToClients({
           type: 'incoming_message',
           from: message.from,
@@ -228,11 +245,11 @@ wppconnect.create({
           mediaUrl: mediaUrl,
           timestamp: message.timestamp || Date.now() / 1000
         });
-        console.log('✅ Broadcast complete!');
+        console.log('âœ… Broadcast complete!');
 
         // Also save to backend database via webhook
         try {
-          console.log('💾 Saving message to backend database...');
+          console.log('ðŸ’¾ Saving message to backend database...');
           const webhookData = {
             phone: realPhone || phoneNumber,
             whatsapp_id: message.from,
@@ -245,12 +262,12 @@ wppconnect.create({
           };
 
           await axios.post(`${BACKEND_URL}/api/whatsapp/webhook`, webhookData);
-          console.log('✅ Message saved to backend!');
+          console.log('âœ… Message saved to backend!');
         } catch (error) {
-          console.error('❌ Error saving message to backend:', error.message);
+          console.error('âŒ Error saving message to backend:', error.message);
         }
       } else {
-        console.log('⏭️ Skipping (group or broadcast):', message.from);
+        console.log('â­ï¸ Skipping (group or broadcast):', message.from);
       }
     });
 
@@ -268,24 +285,24 @@ wppconnect.create({
       try {
         const state = await client.getConnectionState();
         if (state !== 'CONNECTED') {
-          console.log('⚠️ Connection health check failed, state:', state);
+          console.log('âš ï¸ Connection health check failed, state:', state);
           bridgeStatus = 'disconnected';
           broadcastToClients({ type: 'status', status: 'disconnected' });
         } else if (bridgeStatus !== 'connected') {
           // Reconnected!
-          console.log('✅ Connection restored!');
+          console.log('âœ… Connection restored!');
           bridgeStatus = 'connected';
           broadcastToClients({ type: 'status', status: 'connected' });
         }
       } catch (error) {
-        console.log('⚠️ Health check error:', error.message);
+        console.log('âš ï¸ Health check error:', error.message);
         bridgeStatus = 'disconnected';
         broadcastToClients({ type: 'status', status: 'disconnected' });
       }
     }, 300000); // Check every 60 seconds
   })
   .catch((error) => {
-    console.error('❌ Error:', error);
+    console.error('âŒ Error:', error);
     bridgeStatus = 'disconnected';
     broadcastToClients({ type: 'status', status: 'disconnected' });
   });
@@ -314,7 +331,7 @@ app.post('/api/send', async (req, res) => {
 
     if (whatsappId && whatsappId.includes('@')) {
       chatId = whatsappId;
-      console.log(`📤 Replying to WhatsApp ID: ${chatId}...`);
+      console.log(`ðŸ“¤ Replying to WhatsApp ID: ${chatId}...`);
     } else {
       let cleanPhone = phone.replace(/\D/g, '');
 
@@ -324,16 +341,16 @@ app.post('/api/send', async (req, res) => {
       }
 
       chatId = `${cleanPhone}@c.us`;
-      console.log(`📤 Sending to phone: ${chatId}...`);
+      console.log(`ðŸ“¤ Sending to phone: ${chatId}...`);
     }
 
-    console.log(`📝 Message: ${message.substring(0, 50)}...`);
+    console.log(`ðŸ“ Message: ${message.substring(0, 50)}...`);
 
     const result = await clientSession.sendText(chatId, message);
-    console.log('✅ Sent successfully!', result?.id || '');
+    console.log('âœ… Sent successfully!', result?.id || '');
     res.json({ success: true, messageId: result?.id });
   } catch (error) {
-    console.error('❌ Send Error:', error.message || error);
+    console.error('âŒ Send Error:', error.message || error);
 
     // PHASE 2: Better error handling
     let errorType = 'unknown';
@@ -357,12 +374,12 @@ app.post('/api/sendMedia', async (req, res) => {
   // DEBUG: show incoming keys
   try {
     const incomingKeys = Object.keys(req.body || {});
-    console.log('📥 /api/sendMedia received keys:', incomingKeys);
+    console.log('ðŸ“¥ /api/sendMedia received keys:', incomingKeys);
     if (req.body && req.body.mediaData) {
-      console.log('📊 mediaData length:', typeof req.body.mediaData === 'string' ? req.body.mediaData.length : 'not-string');
-      console.log('📊 mediaData starts:', (req.body.mediaData || '').toString().substring(0, 40));
+      console.log('ðŸ“Š mediaData length:', typeof req.body.mediaData === 'string' ? req.body.mediaData.length : 'not-string');
+      console.log('ðŸ“Š mediaData starts:', (req.body.mediaData || '').toString().substring(0, 40));
     } else {
-      console.log('📊 mediaData: MISSING or EMPTY');
+      console.log('ðŸ“Š mediaData: MISSING or EMPTY');
     }
   } catch (e) {
     console.warn('Error logging incoming body:', e);
@@ -398,18 +415,18 @@ app.post('/api/sendMedia', async (req, res) => {
     try {
       buffer = Buffer.from(pureBase64, 'base64');
     } catch (err) {
-      console.error('❌ base64 -> buffer decode failed:', err.message);
+      console.error('âŒ base64 -> buffer decode failed:', err.message);
       return res.status(400).json({ success: false, error: 'Invalid base64' });
     }
 
-    console.log('📊 Decoded buffer length:', buffer.length);
+    console.log('ðŸ“Š Decoded buffer length:', buffer.length);
     if (!buffer || !buffer.length) {
       return res.status(400).json({ success: false, error: 'Empty decoded buffer' });
     }
 
     // 3) check magic bytes to infer file type (helpful for mismatched filenames)
     const header = buffer.slice(0, 8).toString('hex');
-    console.log('📊 Buffer header (hex):', header);
+    console.log('ðŸ“Š Buffer header (hex):', header);
     let inferredExt = '';
     if (header.startsWith('89504e47')) inferredExt = 'png';
     else if (header.startsWith('ffd8ff')) inferredExt = 'jpg';
@@ -424,12 +441,12 @@ app.post('/api/sendMedia', async (req, res) => {
 
     // 4) Try sendFileFromBase64 (preferred)
     try {
-      console.log(`📤 Attempting sendFileFromBase64 to ${chatId} as ${outFilename} (${mediaType})`);
+      console.log(`ðŸ“¤ Attempting sendFileFromBase64 to ${chatId} as ${outFilename} (${mediaType})`);
       const result = await clientSession.sendFileFromBase64(chatId, pureBase64, outFilename, caption || '');
-      console.log('✅ Media sent with sendFileFromBase64:', result?.id || result);
+      console.log('âœ… Media sent with sendFileFromBase64:', result?.id || result);
       return res.json({ success: true, messageId: result?.id || null });
     } catch (errSend) {
-      console.warn('⚠️ sendFileFromBase64 failed:', errSend && (errSend.message || errSend.toString()));
+      console.warn('âš ï¸ sendFileFromBase64 failed:', errSend && (errSend.message || errSend.toString()));
       // Fall through to fallback
     }
 
@@ -438,29 +455,34 @@ app.post('/api/sendMedia', async (req, res) => {
       const tmpDir = fs.existsSync(os.tmpdir()) ? os.tmpdir() : '.';
       const tmpPath = path.join(tmpDir, `upload-${Date.now()}.${inferredExt || 'bin'}`);
       fs.writeFileSync(tmpPath, buffer);
-      console.log('📂 Wrote temp file to', tmpPath, 'size:', fs.statSync(tmpPath).size);
+      console.log('ðŸ“‚ Wrote temp file to', tmpPath, 'size:', fs.statSync(tmpPath).size);
 
       // Use clientSession.sendFile (WPPConnect supports sending from file path or buffer)
       const result2 = await clientSession.sendFile(chatId, tmpPath, outFilename, caption || '');
-      console.log('✅ Media sent via file fallback:', result2?.id || result2);
+      console.log('âœ… Media sent via file fallback:', result2?.id || result2);
 
       // cleanup temp
       try { fs.unlinkSync(tmpPath); } catch (e) { /* ignore */ }
 
       return res.json({ success: true, messageId: result2?.id || null, fallback: true });
     } catch (errFallback) {
-      console.error('❌ Fallback file send failed:', errFallback && (errFallback.stack || errFallback.message || errFallback.toString()));
+      console.error('âŒ Fallback file send failed:', errFallback && (errFallback.stack || errFallback.message || errFallback.toString()));
       return res.status(500).json({ success: false, error: 'sendFile failed', detail: errFallback.message || String(errFallback) });
     }
   } catch (err) {
-    console.error('❌ Unexpected /api/sendMedia error:', err && (err.stack || err.message || err.toString()));
+    console.error('âŒ Unexpected /api/sendMedia error:', err && (err.stack || err.message || err.toString()));
     return res.status(500).json({ success: false, error: err.message || 'Internal Server Error' });
   }
 });
 
 
+// QR Code endpoint - UI polls this to show QR image
+app.get('/api/qr', (req, res) => {
+  res.json({ qr: latestQR, status: bridgeStatus });
+});
+
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`📡 REST: http://localhost:${PORT}`);
-  console.log(`🔌 WebSocket: ws://localhost:${WS_PORT}`);
+  console.log(`ðŸ“¡ REST: http://localhost:${PORT}`);
+  console.log(`ðŸ”Œ WebSocket: ws://localhost:${WS_PORT}`);
 });
 
