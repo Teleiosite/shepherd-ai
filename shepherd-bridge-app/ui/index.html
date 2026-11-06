@@ -8,402 +8,427 @@
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
         :root {
-            --wa-green: #25D366;
-            --wa-dark-green: #128C7E;
-            --wa-teal: #00a884;
-            --bg-dark: #0a1628;
-            --bg-mid: #111b2e;
-            --text-primary: #e9edef;
-            --text-secondary: #8696a0;
-            --card-bg: #1f2c37;
-            --card-border: #2a3942;
-            --accent: #25D366;
+            --green: #16a34a;
+            --green-dark: #15803d;
+            --green-light: #dcfce7;
+            --green-mid: #86efac;
+            --teal: #0d9488;
+            --white: #ffffff;
+            --gray-50: #f9fafb;
+            --gray-100: #f3f4f6;
+            --gray-200: #e5e7eb;
+            --gray-400: #9ca3af;
+            --gray-500: #6b7280;
+            --gray-700: #374151;
+            --gray-900: #111827;
+            --shadow-sm: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.05);
+            --shadow-md: 0 4px 16px rgba(0,0,0,0.08), 0 2px 6px rgba(0,0,0,0.05);
+            --shadow-lg: 0 10px 32px rgba(0,0,0,0.1), 0 4px 12px rgba(0,0,0,0.06);
         }
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: var(--bg-dark);
-            color: var(--text-primary);
+            background: var(--gray-50);
+            color: var(--gray-900);
             height: 100vh;
             overflow: hidden;
             display: flex;
             flex-direction: column;
         }
 
-        /* Animated background */
-        body::before {
-            content: '';
-            position: fixed;
-            inset: 0;
-            background:
-                radial-gradient(ellipse 60% 40% at 20% 10%, rgba(37,211,102,0.08) 0%, transparent 60%),
-                radial-gradient(ellipse 50% 60% at 80% 90%, rgba(18,140,126,0.06) 0%, transparent 60%);
-            pointer-events: none;
-        }
-
         /* ─── Title Bar ─── */
         .titlebar {
+            background: var(--white);
+            border-bottom: 1px solid var(--gray-200);
             display: flex;
             align-items: center;
             gap: 10px;
-            padding: 14px 20px 12px;
-            -webkit-app-region: drag;
-            border-bottom: 1px solid rgba(255,255,255,0.05);
+            padding: 0 16px;
+            height: 48px;
             flex-shrink: 0;
+            -webkit-app-region: drag;
         }
-        .titlebar-logo {
-            width: 22px; height: 22px;
-            background: var(--wa-green);
-            border-radius: 50%;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 12px;
-            -webkit-app-region: no-drag;
-        }
-        .titlebar h1 {
-            font-size: 13px;
-            font-weight: 600;
-            color: var(--text-primary);
-            letter-spacing: 0.3px;
-        }
-        .titlebar-status {
-            margin-left: auto;
-            display: flex; align-items: center; gap: 6px;
-            font-size: 11px;
-            color: var(--text-secondary);
-            -webkit-app-region: no-drag;
-        }
-        .status-dot {
-            width: 7px; height: 7px;
-            border-radius: 50%;
-            background: #555;
-        }
-        .status-dot.ready { background: #3b82f6; }
-        .status-dot.qr_ready { background: #f59e0b; animation: pulse 1.5s infinite; }
-        .status-dot.connected { background: var(--wa-green); animation: pulse 2s infinite; }
-        .status-dot.connecting { background: #f59e0b; animation: pulse 0.8s infinite; }
-        .status-dot.disconnected { background: #ef4444; }
-        .status-dot.logged_out { background: #ef4444; }
 
+        .logo-mark {
+            width: 28px; height: 28px;
+            background: linear-gradient(135deg, var(--green) 0%, var(--teal) 100%);
+            border-radius: 8px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 14px;
+            flex-shrink: 0;
+            -webkit-app-region: no-drag;
+        }
+
+        .brand-name {
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--gray-900);
+            letter-spacing: -0.1px;
+        }
+        .brand-name span { color: var(--green); }
+
+        .titlebar-right {
+            margin-left: auto;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            -webkit-app-region: no-drag;
+        }
+
+        .status-pill {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 500;
+            background: var(--gray-100);
+            color: var(--gray-500);
+            border: 1px solid var(--gray-200);
+            transition: all 0.3s;
+        }
+        .status-pill.connected {
+            background: var(--green-light);
+            color: var(--green-dark);
+            border-color: var(--green-mid);
+        }
+        .status-pill.qr_ready {
+            background: #fef3c7;
+            color: #92400e;
+            border-color: #fcd34d;
+        }
+        .status-pill.connecting {
+            background: #eff6ff;
+            color: #1d4ed8;
+            border-color: #bfdbfe;
+        }
+        .status-pill.error {
+            background: #fef2f2;
+            color: #dc2626;
+            border-color: #fecaca;
+        }
+
+        .status-dot {
+            width: 6px; height: 6px;
+            border-radius: 50%;
+            background: currentColor;
+        }
+        .status-dot.pulse {
+            animation: pulse 1.5s infinite;
+        }
         @keyframes pulse {
             0%, 100% { opacity: 1; }
-            50% { opacity: 0.4; }
+            50% { opacity: 0.3; }
+        }
+
+        /* ─── Hero Header ─── */
+        .hero {
+            background: linear-gradient(135deg, var(--green) 0%, var(--teal) 100%);
+            padding: 20px 20px 28px;
+            flex-shrink: 0;
+        }
+        .hero h1 {
+            font-size: 20px;
+            font-weight: 800;
+            color: var(--white);
+            margin-bottom: 3px;
+            letter-spacing: -0.3px;
+        }
+        .hero p {
+            font-size: 12px;
+            color: rgba(255,255,255,0.75);
         }
 
         /* ─── Main Content ─── */
         .main {
             flex: 1;
+            overflow-y: auto;
+            padding: 16px;
             display: flex;
             flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            padding: 16px 20px;
-            overflow-y: auto;
-            position: relative;
+            gap: 12px;
         }
 
         /* ─── Steps ─── */
-        .step { display: none; width: 100%; max-width: 380px; }
-        .step.active { display: flex; flex-direction: column; align-items: center; gap: 16px; }
+        .step { display: none; flex-direction: column; gap: 12px; }
+        .step.active { display: flex; }
 
-        /* ─── Step 1: Connect Code ─── */
-        .connect-card {
-            background: var(--card-bg);
-            border: 1px solid var(--card-border);
-            border-radius: 16px;
-            padding: 24px;
-            width: 100%;
+        /* ─── Cards ─── */
+        .card {
+            background: var(--white);
+            border-radius: 14px;
+            padding: 20px;
+            box-shadow: var(--shadow-sm);
+            border: 1px solid var(--gray-200);
         }
 
-        .connect-card h2 {
-            font-size: 16px;
-            font-weight: 600;
-            color: var(--text-primary);
-            margin-bottom: 4px;
-        }
-        .connect-card p {
-            font-size: 12px;
-            color: var(--text-secondary);
-            margin-bottom: 20px;
-            line-height: 1.5;
-        }
-
-        .instructions-mini {
+        /* ─── Step 1: Connect ─── */
+        .steps-list {
             display: flex;
             flex-direction: column;
-            gap: 8px;
-            margin-bottom: 20px;
-        }
-        .instruction-item {
-            display: flex;
-            align-items: center;
             gap: 10px;
-            font-size: 12px;
-            color: var(--text-secondary);
+            margin-bottom: 18px;
         }
-        .instruction-num {
-            width: 20px; height: 20px;
+        .step-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+        }
+        .step-num {
+            width: 22px; height: 22px;
             border-radius: 50%;
-            background: rgba(37,211,102,0.15);
-            color: var(--wa-green);
-            font-size: 10px;
+            background: var(--green-light);
+            color: var(--green-dark);
+            font-size: 11px;
             font-weight: 700;
             display: flex; align-items: center; justify-content: center;
             flex-shrink: 0;
         }
-
-        .input-group {
-            margin-bottom: 12px;
+        .step-text {
+            font-size: 12.5px;
+            color: var(--gray-700);
+            line-height: 1.5;
+            padding-top: 2px;
         }
-        .input-group label {
-            display: block;
+        .step-text strong { color: var(--gray-900); }
+
+        .field-label {
             font-size: 11px;
             font-weight: 600;
-            color: var(--text-secondary);
+            color: var(--gray-500);
             text-transform: uppercase;
-            letter-spacing: 0.8px;
-            margin-bottom: 8px;
+            letter-spacing: 0.7px;
+            margin-bottom: 6px;
         }
-        .input-group input {
+
+        .code-input {
             width: 100%;
-            background: var(--bg-mid);
-            border: 1.5px solid var(--card-border);
+            border: 2px solid var(--gray-200);
             border-radius: 10px;
             padding: 11px 14px;
-            font-size: 15px;
-            font-weight: 600;
-            color: var(--text-primary);
-            letter-spacing: 1px;
-            transition: border-color 0.2s;
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--gray-900);
+            letter-spacing: 1.5px;
             outline: none;
+            transition: border-color 0.2s, box-shadow 0.2s;
+            background: var(--white);
         }
-        .input-group input:focus { border-color: var(--wa-green); }
-        .input-group input::placeholder { color: #3d5260; font-weight: 400; letter-spacing: 0; }
+        .code-input:focus {
+            border-color: var(--green);
+            box-shadow: 0 0 0 3px rgba(22,163,74,0.1);
+        }
+        .code-input::placeholder {
+            color: var(--gray-400);
+            font-weight: 400;
+            letter-spacing: 0;
+            font-size: 14px;
+        }
 
-        .error-msg {
-            background: rgba(239,68,68,0.1);
-            border: 1px solid rgba(239,68,68,0.3);
+        .error-box {
+            background: #fef2f2;
+            border: 1px solid #fecaca;
             border-radius: 8px;
             padding: 10px 12px;
             font-size: 12px;
-            color: #fca5a5;
+            color: #dc2626;
             display: none;
         }
 
-        .btn-connect {
+        .btn-primary {
             width: 100%;
-            padding: 13px;
+            padding: 13px 20px;
+            background: linear-gradient(135deg, var(--green) 0%, var(--teal) 100%);
+            color: var(--white);
             border: none;
             border-radius: 10px;
             font-size: 14px;
             font-weight: 600;
             cursor: pointer;
             transition: all 0.2s;
-            background: var(--wa-green);
-            color: #fff;
-            letter-spacing: 0.3px;
+            letter-spacing: 0.2px;
         }
-        .btn-connect:hover { background: #22c55e; transform: translateY(-1px); }
-        .btn-connect:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+        .btn-primary:hover { opacity: 0.92; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(22,163,74,0.3); }
+        .btn-primary:active { transform: translateY(0); }
+        .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
+
+        .btn-secondary {
+            width: 100%;
+            padding: 11px 20px;
+            background: var(--white);
+            color: var(--gray-700);
+            border: 1.5px solid var(--gray-200);
+            border-radius: 10px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-secondary:hover { border-color: var(--green); color: var(--green); }
 
         /* ─── Step 2: Connecting ─── */
-        .connecting-card {
-            background: var(--card-bg);
-            border: 1px solid var(--card-border);
-            border-radius: 16px;
-            padding: 32px 24px;
-            width: 100%;
+        .connecting-state {
             text-align: center;
+            padding: 20px 0;
         }
-        .connecting-spinner {
-            width: 48px; height: 48px;
-            border: 3px solid rgba(37,211,102,0.15);
-            border-top-color: var(--wa-green);
+        .ring-spinner {
+            width: 52px; height: 52px;
+            border: 3px solid var(--green-light);
+            border-top-color: var(--green);
             border-radius: 50%;
-            animation: spin 0.8s linear infinite;
-            margin: 0 auto 20px;
+            animation: spin 0.75s linear infinite;
+            margin: 0 auto 16px;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
-        .connecting-card h3 { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
-        .connecting-card p { font-size: 12px; color: var(--text-secondary); }
+        .connecting-state h3 {
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--gray-900);
+            margin-bottom: 4px;
+        }
+        .connecting-state p { font-size: 12px; color: var(--gray-500); }
 
         /* ─── Step 3: QR ─── */
-        .qr-header {
-            text-align: center;
-            width: 100%;
-        }
-        .qr-header h2 { font-size: 17px; font-weight: 700; margin-bottom: 4px; }
-        .qr-header p { font-size: 12px; color: var(--text-secondary); }
-
-        .qr-card {
-            background: var(--card-bg);
-            border: 1px solid var(--card-border);
-            border-radius: 20px;
-            padding: 20px;
-            width: 100%;
+        .qr-wrapper {
             display: flex;
             flex-direction: column;
             align-items: center;
             gap: 16px;
         }
 
-        .qr-frame {
+        .qr-frame-outer {
             position: relative;
-            width: 240px; height: 240px;
+            padding: 3px;
+            background: linear-gradient(135deg, var(--green) 0%, var(--teal) 100%);
+            border-radius: 16px;
         }
-        .qr-corner {
-            position: absolute;
-            width: 20px; height: 20px;
-            border-color: var(--wa-green);
-            border-style: solid;
+        .qr-frame-inner {
+            background: var(--white);
+            border-radius: 13px;
+            padding: 10px;
+            width: 230px; height: 230px;
+            display: flex; align-items: center; justify-content: center;
         }
-        .qr-corner.tl { top: 0; left: 0; border-width: 3px 0 0 3px; border-radius: 4px 0 0 0; }
-        .qr-corner.tr { top: 0; right: 0; border-width: 3px 3px 0 0; border-radius: 0 4px 0 0; }
-        .qr-corner.bl { bottom: 0; left: 0; border-width: 0 0 3px 3px; border-radius: 0 0 0 4px; }
-        .qr-corner.br { bottom: 0; right: 0; border-width: 0 3px 3px 0; border-radius: 0 0 4px 0; }
 
         #qrImage {
             width: 100%; height: 100%;
-            border-radius: 10px;
+            border-radius: 8px;
             display: none;
             object-fit: contain;
         }
 
-        .qr-placeholder-inner {
-            width: 100%; height: 100%;
-            background: var(--bg-mid);
-            border-radius: 10px;
+        .qr-loading {
             display: flex;
             flex-direction: column;
             align-items: center;
-            justify-content: center;
-            gap: 12px;
+            gap: 14px;
         }
-        .qr-placeholder-inner.hidden { display: none; }
+        .qr-loading.hidden { display: none; }
 
-        .qr-loading-dots {
-            display: flex; gap: 6px;
+        .qr-dots {
+            display: flex; gap: 7px;
         }
-        .qr-loading-dots span {
-            width: 8px; height: 8px;
-            background: var(--wa-green);
+        .qr-dots span {
+            width: 9px; height: 9px;
+            background: var(--green);
             border-radius: 50%;
-            animation: bounce 1.2s infinite;
-            opacity: 0.7;
+            animation: bounce 1.3s ease-in-out infinite;
         }
-        .qr-loading-dots span:nth-child(2) { animation-delay: 0.2s; }
-        .qr-loading-dots span:nth-child(3) { animation-delay: 0.4s; }
+        .qr-dots span:nth-child(2) { animation-delay: 0.15s; }
+        .qr-dots span:nth-child(3) { animation-delay: 0.3s; }
         @keyframes bounce {
-            0%, 100% { transform: translateY(0); opacity: 0.7; }
-            50% { transform: translateY(-6px); opacity: 1; }
+            0%, 100% { transform: translateY(0); opacity: 0.6; }
+            50% { transform: translateY(-7px); opacity: 1; }
         }
 
-        .qr-placeholder-text {
+        .qr-loading-text {
             font-size: 12px;
-            color: var(--text-secondary);
+            color: var(--gray-500);
             text-align: center;
-            line-height: 1.5;
         }
 
-        .scan-steps {
+        .phone-steps {
             width: 100%;
             display: flex;
             flex-direction: column;
             gap: 8px;
         }
-        .scan-step {
+        .phone-step {
             display: flex;
             align-items: flex-start;
             gap: 10px;
-            font-size: 12px;
-            color: var(--text-secondary);
-            line-height: 1.4;
+            padding: 10px 12px;
+            background: var(--gray-50);
+            border-radius: 10px;
         }
-        .scan-step-num {
-            width: 18px; height: 18px; min-width: 18px;
-            background: rgba(37,211,102,0.12);
-            color: var(--wa-green);
+        .phone-step-num {
+            width: 20px; height: 20px;
+            background: var(--green);
+            color: var(--white);
             border-radius: 50%;
             font-size: 10px;
             font-weight: 700;
             display: flex; align-items: center; justify-content: center;
+            flex-shrink: 0;
         }
-
-        .qr-timer {
-            font-size: 11px;
-            color: var(--text-secondary);
-            display: flex; align-items: center; gap: 6px;
+        .phone-step-text {
+            font-size: 12px;
+            color: var(--gray-700);
+            line-height: 1.4;
         }
-        .qr-timer-bar {
-            width: 100px; height: 3px;
-            background: rgba(255,255,255,0.08);
-            border-radius: 2px;
-            overflow: hidden;
-        }
-        .qr-timer-fill {
-            height: 100%;
-            width: 100%;
-            background: var(--wa-green);
-            border-radius: 2px;
-            transition: width linear;
-        }
+        .phone-step-text strong { color: var(--gray-900); }
 
         /* ─── Step 4: Connected ─── */
-        .connected-card {
-            background: var(--card-bg);
-            border: 1px solid rgba(37,211,102,0.2);
-            border-radius: 20px;
-            padding: 28px 24px;
-            width: 100%;
+        .success-banner {
+            background: linear-gradient(135deg, var(--green) 0%, var(--teal) 100%);
+            border-radius: 12px;
+            padding: 20px;
             text-align: center;
+            color: var(--white);
         }
-
-        .connected-icon {
-            width: 64px; height: 64px;
-            background: rgba(37,211,102,0.12);
+        .success-icon {
+            width: 56px; height: 56px;
+            background: rgba(255,255,255,0.2);
             border-radius: 50%;
             display: flex; align-items: center; justify-content: center;
-            margin: 0 auto 16px;
-            font-size: 28px;
+            font-size: 24px;
+            margin: 0 auto 12px;
         }
+        .success-banner h2 { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
+        .success-banner p { font-size: 12px; opacity: 0.85; }
 
-        .connected-card h2 { font-size: 18px; font-weight: 700; margin-bottom: 6px; color: var(--wa-green); }
-        .connected-card p { font-size: 13px; color: var(--text-secondary); margin-bottom: 20px; }
-
-        .stats-grid {
+        .stats-row {
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 10px;
-            margin-bottom: 20px;
         }
-        .stat-box {
-            background: var(--bg-mid);
-            border: 1px solid var(--card-border);
+        .stat-card {
+            background: var(--white);
+            border: 1px solid var(--gray-200);
             border-radius: 10px;
-            padding: 12px;
-            text-align: left;
+            padding: 12px 14px;
         }
-        .stat-label { font-size: 10px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 4px; }
-        .stat-value { font-size: 14px; font-weight: 600; color: var(--text-primary); }
-        .stat-value.online { color: var(--wa-green); }
-
-        .btn-minimize {
-            width: 100%;
-            padding: 11px;
-            border: 1.5px solid var(--card-border);
-            border-radius: 10px;
-            font-size: 13px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.2s;
-            background: transparent;
-            color: var(--text-secondary);
+        .stat-label {
+            font-size: 10px;
+            font-weight: 600;
+            color: var(--gray-400);
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            margin-bottom: 3px;
         }
-        .btn-minimize:hover { border-color: var(--wa-green); color: var(--wa-green); }
+        .stat-value {
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--gray-900);
+        }
+        .stat-value.green { color: var(--green); }
 
         /* ─── Footer ─── */
         .footer {
-            padding: 10px 20px;
-            border-top: 1px solid rgba(255,255,255,0.04);
+            background: var(--white);
+            border-top: 1px solid var(--gray-200);
+            padding: 8px 16px;
             display: flex;
             align-items: center;
             justify-content: space-between;
@@ -411,23 +436,30 @@
         }
         .footer-brand {
             font-size: 11px;
-            color: var(--text-secondary);
-            display: flex; align-items: center; gap: 5px;
+            color: var(--gray-400);
         }
-        .footer-brand span { color: var(--wa-green); font-weight: 600; }
-        .footer-version { font-size: 10px; color: #3d5260; }
+        .footer-brand strong { color: var(--green); font-weight: 700; }
+        .footer-ver { font-size: 10px; color: var(--gray-400); }
     </style>
 </head>
 <body>
 
     <!-- Title Bar -->
     <div class="titlebar">
-        <div class="titlebar-logo">🐑</div>
-        <h1>Shepherd AI Bridge</h1>
-        <div class="titlebar-status">
-            <div class="status-dot" id="statusDot"></div>
-            <span id="statusLabel">Initializing...</span>
+        <div class="logo-mark">🐑</div>
+        <div class="brand-name"><span>Shepherd</span> AI Bridge</div>
+        <div class="titlebar-right">
+            <div class="status-pill" id="statusPill">
+                <div class="status-dot pulse" id="statusDot"></div>
+                <span id="statusLabel">Not connected</span>
+            </div>
         </div>
+    </div>
+
+    <!-- Hero -->
+    <div class="hero">
+        <h1>WhatsApp Bridge</h1>
+        <p>Connect your WhatsApp to Shepherd AI automation</p>
     </div>
 
     <!-- Main -->
@@ -435,86 +467,76 @@
 
         <!-- Step 1: Enter Code -->
         <div class="step active" id="step-code">
-            <div class="connect-card">
-                <h2>Connect WhatsApp</h2>
-                <p>Enter your Shepherd AI connection code to link your WhatsApp account.</p>
-
-                <div class="instructions-mini">
-                    <div class="instruction-item">
-                        <div class="instruction-num">1</div>
-                        <span>Log in to <strong style="color:#e9edef">shepherdai.app</strong></span>
+            <div class="card">
+                <div class="steps-list">
+                    <div class="step-item">
+                        <div class="step-num">1</div>
+                        <div class="step-text">Log in at <strong>shepherdai.app</strong></div>
                     </div>
-                    <div class="instruction-item">
-                        <div class="instruction-num">2</div>
-                        <span>Go to <strong style="color:#e9edef">Settings → WhatsApp</strong></span>
+                    <div class="step-item">
+                        <div class="step-num">2</div>
+                        <div class="step-text">Go to <strong>Settings → WhatsApp</strong></div>
                     </div>
-                    <div class="instruction-item">
-                        <div class="instruction-num">3</div>
-                        <span>Copy your connection code and paste below</span>
+                    <div class="step-item">
+                        <div class="step-num">3</div>
+                        <div class="step-text">Copy your <strong>connection code</strong> and paste below</div>
                     </div>
                 </div>
 
-                <div class="input-group">
-                    <label>Connection Code</label>
-                    <input type="text" id="connectionCode" placeholder="e.g. ABC12345" autocomplete="off" spellcheck="false">
-                </div>
-
-                <div id="codeError" class="error-msg" style="margin-bottom:12px;"></div>
-
-                <button onclick="connectBridge()" class="btn-connect" id="connectBtn">
-                    Connect to Shepherd AI
-                </button>
+                <div class="field-label">Connection Code</div>
+                <input type="text" id="connectionCode" class="code-input" placeholder="e.g. ABC12345" autocomplete="off" spellcheck="false">
             </div>
+
+            <div id="codeError" class="error-box"></div>
+
+            <button class="btn-primary" id="connectBtn" onclick="connectBridge()">
+                Connect to Shepherd AI
+            </button>
         </div>
 
         <!-- Step 2: Connecting -->
         <div class="step" id="step-connecting">
-            <div class="connecting-card">
-                <div class="connecting-spinner"></div>
-                <h3>Connecting...</h3>
-                <p>Verifying your connection code</p>
+            <div class="card">
+                <div class="connecting-state">
+                    <div class="ring-spinner"></div>
+                    <h3>Verifying code...</h3>
+                    <p>Connecting to Shepherd AI backend</p>
+                </div>
             </div>
         </div>
 
         <!-- Step 3: Scan QR -->
         <div class="step" id="step-qr">
-            <div class="qr-header">
-                <h2>Scan QR Code</h2>
-                <p>Open WhatsApp on your phone to continue</p>
-            </div>
-
-            <div class="qr-card">
-                <div class="qr-frame">
-                    <div class="qr-corner tl"></div>
-                    <div class="qr-corner tr"></div>
-                    <div class="qr-corner bl"></div>
-                    <div class="qr-corner br"></div>
-
-                    <img id="qrImage" alt="WhatsApp QR Code">
-
-                    <div class="qr-placeholder-inner" id="qrPlaceholder">
-                        <div class="qr-loading-dots">
-                            <span></span><span></span><span></span>
-                        </div>
-                        <div class="qr-placeholder-text">
-                            Generating QR code...<br>
-                            <span style="font-size:11px;opacity:0.6;">Usually takes 5–15 seconds</span>
+            <div class="card">
+                <div class="qr-wrapper">
+                    <div class="qr-frame-outer">
+                        <div class="qr-frame-inner">
+                            <img id="qrImage" alt="WhatsApp QR Code">
+                            <div class="qr-loading" id="qrPlaceholder">
+                                <div class="qr-dots">
+                                    <span></span><span></span><span></span>
+                                </div>
+                                <div class="qr-loading-text">
+                                    Generating QR code...<br>
+                                    <span style="font-size:11px;color:#9ca3af;">Usually takes 5–15 seconds</span>
+                                </div>
+                            </div>
                         </div>
                     </div>
-                </div>
 
-                <div class="scan-steps">
-                    <div class="scan-step">
-                        <div class="scan-step-num">1</div>
-                        <span>Open <strong style="color:#e9edef">WhatsApp</strong> on your phone</span>
-                    </div>
-                    <div class="scan-step">
-                        <div class="scan-step-num">2</div>
-                        <span>Tap <strong style="color:#e9edef">Settings → Linked Devices</strong></span>
-                    </div>
-                    <div class="scan-step">
-                        <div class="scan-step-num">3</div>
-                        <span>Tap <strong style="color:#e9edef">Link a Device</strong> and scan</span>
+                    <div class="phone-steps">
+                        <div class="phone-step">
+                            <div class="phone-step-num">1</div>
+                            <div class="phone-step-text">Open <strong>WhatsApp</strong> on your phone</div>
+                        </div>
+                        <div class="phone-step">
+                            <div class="phone-step-num">2</div>
+                            <div class="phone-step-text">Tap <strong>Settings → Linked Devices</strong></div>
+                        </div>
+                        <div class="phone-step">
+                            <div class="phone-step-num">3</div>
+                            <div class="phone-step-text">Tap <strong>Link a Device</strong> and scan the QR code</div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -522,42 +544,42 @@
 
         <!-- Step 4: Connected -->
         <div class="step" id="step-connected">
-            <div class="connected-card">
-                <div class="connected-icon">✓</div>
+            <div class="success-banner">
+                <div class="success-icon">✓</div>
                 <h2>WhatsApp Connected!</h2>
-                <p>Your AI assistant is now live and responding to messages.</p>
-
-                <div class="stats-grid">
-                    <div class="stat-box">
-                        <div class="stat-label">Status</div>
-                        <div class="stat-value online">● Online</div>
-                    </div>
-                    <div class="stat-box">
-                        <div class="stat-label">Messages Sent</div>
-                        <div class="stat-value" id="messageCount">0</div>
-                    </div>
-                    <div class="stat-box">
-                        <div class="stat-label">Bridge Port</div>
-                        <div class="stat-value">3001</div>
-                    </div>
-                    <div class="stat-box">
-                        <div class="stat-label">Session</div>
-                        <div class="stat-value" style="color:#25D366;font-size:12px;">Active</div>
-                    </div>
-                </div>
-
-                <button onclick="minimizeToTray()" class="btn-minimize">
-                    Minimize to System Tray
-                </button>
+                <p>Your AI is now responding to messages automatically</p>
             </div>
+
+            <div class="stats-row">
+                <div class="stat-card">
+                    <div class="stat-label">Status</div>
+                    <div class="stat-value green">● Active</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Messages Sent</div>
+                    <div class="stat-value" id="messageCount">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Bridge Port</div>
+                    <div class="stat-value">3001</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Session</div>
+                    <div class="stat-value green">Saved ✓</div>
+                </div>
+            </div>
+
+            <button class="btn-secondary" onclick="minimizeToTray()">
+                Minimize to System Tray
+            </button>
         </div>
 
     </div>
 
     <!-- Footer -->
     <div class="footer">
-        <div class="footer-brand">Powered by <span>Shepherd AI</span></div>
-        <div class="footer-version">v1.2.0</div>
+        <div class="footer-brand">Powered by <strong>Shepherd AI</strong></div>
+        <div class="footer-ver">v1.2.0</div>
     </div>
 
     <script src="renderer.js"></script>
