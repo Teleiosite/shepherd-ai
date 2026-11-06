@@ -1,5 +1,5 @@
 const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage } = require('electron');
-const { spawn } = require('child_process');
+const { spawn, exec } = require('child_process');
 const path = require('path');
 const axios = require('axios');
 
@@ -7,6 +7,7 @@ let mainWindow;
 let tray;
 let bridgeProcess = null;
 let bridgeReady = false;
+let qrPollTimer = null;
 
 const BACKEND_URL = 'https://shepherd-ai-backend.onrender.com';
 
@@ -74,20 +75,9 @@ function createTray() {
     tray.on('double-click', () => mainWindow.show());
 }
 
-// ─── Bridge Process ────────────────────────────────────────────
-function killBridge() {
-    if (bridgeProcess) {
-        try { bridgeProcess.kill('SIGTERM'); } catch (e) {}
-        try { bridgeProcess.kill('SIGKILL'); } catch (e) {}
-        bridgeProcess = null;
-        bridgeReady = false;
-    }
-}
-
-// Free a port by killing the process using it (Windows: netstat + taskkill)
+// ─── Port Killer ───────────────────────────────────────────────
 function freePort(port) {
     return new Promise((resolve) => {
-        const { exec } = require('child_process');
         exec(`netstat -ano | findstr :${port}`, (err, stdout) => {
             if (err || !stdout) return resolve();
             const lines = stdout.trim().split('\n');
@@ -98,20 +88,66 @@ function freePort(port) {
                 if (pid && /^\d+$/.test(pid) && pid !== '0') pids.add(pid);
             });
             if (pids.size === 0) return resolve();
-            const pidList = [...pids].join(' ');
-            console.log(`[Main] Freeing port ${port}, killing PIDs: ${pidList}`);
-            exec(`taskkill /F /PID ${pidList.split(' ').join(' /PID ')}`, () => {
-                setTimeout(resolve, 500);
-            });
+            const pidArgs = [...pids].map(p => `/PID ${p}`).join(' ');
+            console.log(`[Main] Freeing port ${port}, killing PIDs: ${[...pids].join(', ')}`);
+            exec(`taskkill /F ${pidArgs}`, () => setTimeout(resolve, 600));
         });
     });
 }
 
+// ─── Bridge Process ────────────────────────────────────────────
+function killBridge() {
+    stopQRPoll();
+    if (bridgeProcess) {
+        try { bridgeProcess.kill('SIGTERM'); } catch (e) {}
+        try { bridgeProcess.kill('SIGKILL'); } catch (e) {}
+        bridgeProcess = null;
+        bridgeReady = false;
+    }
+}
+
+// Poll /api/qr from MAIN process and push QR to renderer via IPC
+// This avoids any renderer fetch/CSP issues entirely
+function startQRPoll() {
+    stopQRPoll();
+    let attempts = 0;
+    const maxAttempts = 90; // 3 min max (every 2s)
+
+    qrPollTimer = setInterval(async () => {
+        attempts++;
+        if (attempts > maxAttempts) {
+            stopQRPoll();
+            return;
+        }
+        try {
+            const r = await axios.get('http://localhost:3001/api/qr', { timeout: 2000 });
+            if (r.data.qr && mainWindow) {
+                console.log('[Main] QR received! Pushing to renderer...');
+                mainWindow.webContents.send('qr-received', { qr: r.data.qr });
+                // Keep polling to refresh QR if it expires (every 30s WhatsApp rotates QR)
+            }
+            if (r.data.status === 'connected' && mainWindow) {
+                mainWindow.webContents.send('bridge-status', { status: 'connected' });
+                stopQRPoll();
+            }
+        } catch (e) {
+            // Bridge not ready yet, keep polling
+        }
+    }, 2000);
+}
+
+function stopQRPoll() {
+    if (qrPollTimer) {
+        clearInterval(qrPollTimer);
+        qrPollTimer = null;
+    }
+}
+
 function startBridgeProcess(connectionCode) {
     return new Promise(async (resolve, reject) => {
-        killBridge(); // kill our own tracked process
+        killBridge(); // kill our tracked process + stop QR poll
 
-        // Also free ports 3001/3002 from any zombie processes
+        // Free ports from any zombie processes
         await freePort(3001);
         await freePort(3002);
 
@@ -131,15 +167,33 @@ function startBridgeProcess(connectionCode) {
         });
 
         bridgeProcess.stdout.on('data', (data) => {
-            const line = data.toString().trim();
-            console.log('[Bridge]', line);
-            if (line.includes('Ready! Waiting') || line.includes('REST API:')) {
+            const lines = data.toString().split('\n');
+            lines.forEach(line => {
+                const trimmed = line.trim();
+                if (trimmed) console.log('[Bridge]', trimmed);
+                // Immediately push QR when bridge signals it's ready
+                if (trimmed.includes('QR image ready')) {
+                    console.log('[Main] QR ready signal! Fetching immediately...');
+                    axios.get('http://localhost:3001/api/qr', { timeout: 3000 })
+                        .then(r => {
+                            if (r.data.qr && mainWindow) {
+                                mainWindow.webContents.send('qr-received', { qr: r.data.qr });
+                            }
+                        }).catch(() => {});
+                }
+                if (trimmed.includes('WhatsApp connected')) {
+                    if (mainWindow) mainWindow.webContents.send('bridge-status', { status: 'connected' });
+                    stopQRPoll();
+                }
+            });
+            if (data.toString().includes('Ready! Waiting') || data.toString().includes('REST API:')) {
                 bridgeReady = true;
             }
         });
 
         bridgeProcess.stderr.on('data', (data) => {
-            console.error('[Bridge ERR]', data.toString().trim());
+            const msg = data.toString().trim();
+            if (msg) console.error('[Bridge ERR]', msg);
         });
 
         bridgeProcess.on('error', (err) => {
@@ -151,12 +205,13 @@ function startBridgeProcess(connectionCode) {
             console.log('[Main] Bridge exited with code:', code);
             bridgeProcess = null;
             bridgeReady = false;
+            stopQRPoll();
             if (mainWindow) {
                 mainWindow.webContents.send('bridge-status', { status: 'disconnected' });
             }
         });
 
-        // Wait up to 8 seconds for bridge REST API to be ready
+        // Wait up to 10 seconds for bridge REST API to be ready
         let waited = 0;
         const checkInterval = setInterval(async () => {
             waited += 500;
@@ -168,10 +223,9 @@ function startBridgeProcess(connectionCode) {
                     resolve(true);
                 }
             } catch (e) {
-                if (waited >= 8000) {
+                if (waited >= 10000) {
                     clearInterval(checkInterval);
-                    // Resolve anyway — bridge may still be starting
-                    resolve(true);
+                    resolve(true); // proceed anyway
                 }
             }
         }, 500);
@@ -198,14 +252,18 @@ ipcMain.handle('connect-bridge', async (event, connectionCode) => {
         // Step 2: Spawn bridge process using system Node.js
         await startBridgeProcess(connectionCode);
 
-        // Step 3: Tell bridge to connect to WhatsApp with this code
-        await new Promise(res => setTimeout(res, 1500)); // let bridge REST boot
+        // Step 3: Tell bridge to connect to WhatsApp
+        await new Promise(res => setTimeout(res, 2000)); // let bridge REST boot fully
         try {
-            await axios.post('http://localhost:3001/api/connect', { code: connectionCode }, { timeout: 5000 });
+            await axios.post('http://localhost:3001/api/connect', { code: connectionCode }, { timeout: 8000 });
             console.log('[Main] Bridge told to connect to WhatsApp');
         } catch (e) {
-            console.warn('[Main] /api/connect call failed (bridge may auto-connect):', e.message);
+            console.warn('[Main] /api/connect call failed:', e.message);
         }
+
+        // Step 4: Start QR polling from main process — push to renderer via IPC
+        // This is more reliable than renderer fetch() to localhost
+        startQRPoll();
 
         return { success: true, message: 'Bridge started! Scan the QR code with WhatsApp.' };
 

@@ -2,7 +2,8 @@
 
 function showStep(id) {
     document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
-    document.getElementById(id).classList.add('active');
+    const el = document.getElementById(id);
+    if (el) el.classList.add('active');
 }
 
 function setStatus(status, label) {
@@ -12,26 +13,31 @@ function setStatus(status, label) {
     if (lbl) lbl.textContent = label;
 }
 
+function displayQR(qrDataUrl) {
+    const img = document.getElementById('qrImage');
+    const placeholder = document.getElementById('qrPlaceholder');
+    if (img) {
+        img.src = qrDataUrl.startsWith('data:') ? qrDataUrl : ('data:image/png;base64,' + qrDataUrl);
+        img.style.display = 'block';
+        img.style.width = '220px';
+        img.style.height = '220px';
+    }
+    if (placeholder) placeholder.style.display = 'none';
+    setStatus('qr_ready', 'Scan with WhatsApp');
+}
+
+// Also keep a fallback fetch poll in case IPC is slow
 let qrPollInterval = null;
 
-function startQRPolling() {
+function startQRFallbackPoll() {
     if (qrPollInterval) clearInterval(qrPollInterval);
     qrPollInterval = setInterval(async () => {
         try {
             const r = await fetch('http://localhost:3001/api/qr');
             const data = await r.json();
-
             if (data.qr) {
-                const img = document.getElementById('qrImage');
-                const placeholder = document.getElementById('qrPlaceholder');
-                if (img) {
-                    img.src = data.qr.startsWith('data:') ? data.qr : ('data:image/png;base64,' + data.qr);
-                    img.style.display = 'block';
-                }
-                if (placeholder) placeholder.style.display = 'none';
-                setStatus('qr_ready', 'Waiting for scan');
+                displayQR(data.qr);
             }
-
             if (data.status === 'connected') {
                 clearInterval(qrPollInterval);
                 qrPollInterval = null;
@@ -41,7 +47,14 @@ function startQRPolling() {
         } catch (e) {
             // Bridge not yet ready — keep polling
         }
-    }, 2000);
+    }, 3000);
+}
+
+function stopQRFallbackPoll() {
+    if (qrPollInterval) {
+        clearInterval(qrPollInterval);
+        qrPollInterval = null;
+    }
 }
 
 async function connectBridge() {
@@ -74,12 +87,21 @@ async function connectBridge() {
         if (result.success) {
             showStep('step-qr');
             setStatus('ready', 'Waiting for QR');
-            startQRPolling();
 
-            // Also listen for IPC status updates
+            // Listen for QR pushed from main process via IPC
+            window.electronAPI.onQRReceived((data) => {
+                if (data && data.qr) {
+                    displayQR(data.qr);
+                }
+            });
+
+            // Also run a fallback poll in case IPC misses
+            startQRFallbackPoll();
+
+            // Listen for status updates (connected/disconnected)
             window.electronAPI.onBridgeStatus((status) => {
                 if (status.status === 'connected') {
-                    if (qrPollInterval) { clearInterval(qrPollInterval); qrPollInterval = null; }
+                    stopQRFallbackPoll();
                     showStep('step-connected');
                     setStatus('connected', 'WhatsApp connected');
                 } else if (status.status === 'disconnected' || status.status === 'logged_out') {
@@ -109,20 +131,19 @@ function minimizeToTray() {
 }
 
 // Enter key support
-document.getElementById('connectionCode')?.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') connectBridge();
-});
+document.addEventListener('DOMContentLoaded', () => {
+    const input = document.getElementById('connectionCode');
+    if (input) input.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') connectBridge();
+    });
 
-// Check if already connected on load
-window.addEventListener('DOMContentLoaded', async () => {
     setStatus('ready', 'Ready');
-    try {
-        const status = await window.electronAPI.checkStatus();
-        if (status && status.running) {
+
+    // Check if already connected on load
+    window.electronAPI.checkStatus().then(status => {
+        if (status && status.running && status.status === 'connected') {
             showStep('step-connected');
             setStatus('connected', 'WhatsApp connected');
         }
-    } catch (e) {
-        // Not connected yet
-    }
+    }).catch(() => {});
 });

@@ -11,6 +11,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // Stop bridge
     stopBridge: () => ipcRenderer.invoke('stop-bridge'),
 
+    // Listen for QR code pushed from main process
+    onQRReceived: (callback) => {
+        ipcRenderer.on('qr-received', (event, data) => callback(data));
+    },
+
     // Listen for bridge status updates
     onBridgeStatus: (callback) => {
         ipcRenderer.on('bridge-status', (event, status) => callback(status));
