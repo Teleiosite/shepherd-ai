@@ -1,55 +1,59 @@
-process.on('uncaughtException', (err) => {
-  console.error('⚠️ Bridge Uncaught Exception:', err.message || err);
-});
-process.on('unhandledRejection', (reason) => {
-  console.error('⚠️ Bridge Unhandled Rejection:', reason);
-});
-// WPPConnect Bridge for Shepherd AI - With Simple Auto-Reconnect
-const wppconnect = require('@wppconnect-team/wppconnect');
+// Shepherd AI WhatsApp Bridge - Baileys Edition (No Chrome Required)
+const { default: makeWASocket, DisconnectReason, useMultiFileAuthState, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
+const { Boom } = require('@hapi/boom');
+const QRCode = require('qrcode');
 const express = require('express');
 const cors = require('cors');
 const WebSocket = require('ws');
+const path = require('path');
 const fs = require('fs');
 const os = require('os');
-const path = require('path');
 const axios = require('axios');
+const pino = require('pino');
 const polling = require('./bridge-polling');
 
+// ─── Global error guards ────────────────────────────────────────
+process.on('uncaughtException', (err) => {
+  console.error('[Bridge] Uncaught Exception:', err.message || err);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[Bridge] Unhandled Rejection:', reason?.message || reason);
+});
+
 const BACKEND_URL = 'https://shepherd-ai-backend.onrender.com';
+const PORT = 3001;
+const WS_PORT = 3002;
+const AUTH_STATE_DIR = path.join(__dirname, 'tokens', 'auth_state');
 
+let latestQR = null;
+let bridgeStatus = 'initializing';
+let waSocket = null;
+let connectionCode = null;
+let reconnectAttempts = 0;
+
+// ─── Express ───────────────────────────────────────────────────
 const app = express();
-
-// CORS setup
 app.use((req, res, next) => {
-  res.header("Access-Control-Allow-Origin", "*");
-  res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PUT, PATCH, DELETE");
-  res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Authorization");
-  res.header("Access-Control-Allow-Private-Network", "true");
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, PATCH, DELETE');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  res.header('Access-Control-Allow-Private-Network', 'true');
   if (req.method === 'OPTIONS') return res.sendStatus(200);
   next();
 });
-app.use(express.json({ limit: '50mb' })); // Increase limit for Base64 images
+app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-const PORT = 3001;
-const WS_PORT = 3002;
-let clientSession = null;
-let bridgeStatus = 'initializing';
-let latestQR = null; // Store latest QR for REST polling
-
-// WebSocket Server
+// ─── WebSocket Server ──────────────────────────────────────────
 const wss = new WebSocket.Server({ port: WS_PORT });
 const wsClients = new Set();
-wss.on('error', (err) => {
-  console.warn('⚠️ WebSocket server warning:', err.message);
-});
-
 wss.on('connection', (ws) => {
-  console.log('ðŸ”Œ WebSocket client connected');
   wsClients.add(ws);
-  ws.send(JSON.stringify({ type: 'status', status: bridgeStatus }));
+  ws.send(JSON.stringify({ type: 'status', status: bridgeStatus, qr: latestQR }));
   ws.on('close', () => wsClients.delete(ws));
+  ws.on('error', () => wsClients.delete(ws));
 });
+wss.on('error', (err) => console.warn('[WS] Server error:', err.message));
 
 function broadcastToClients(data) {
   const message = JSON.stringify(data);
@@ -58,448 +62,304 @@ function broadcastToClients(data) {
   });
 }
 
-console.log('ðŸš€ Shepherd AI WPPConnect Bridge Starting...');
+// ─── Baileys Connection ────────────────────────────────────────
+async function connectToWhatsApp(code) {
+  connectionCode = code;
+  reconnectAttempts++;
+  console.log(`[Bridge] Connecting to WhatsApp... (attempt ${reconnectAttempts})`);
+  bridgeStatus = 'connecting';
+  broadcastToClients({ type: 'status', status: 'connecting' });
 
-// Initialize WPPConnect
-wppconnect.create({
-  session: 'shepherd-session',
-  headless: true,
-  logQR: false,
-  autoClose: 0,
-  catchQR: (base64Qrimg, asciiQR, attempts) => {
-    console.log('📱 QR Code generated! Attempt:', attempts);
-    latestQR = base64Qrimg;
-    broadcastToClients({ type: 'qr', qr: base64Qrimg });
-  },
-  statusFind: (statusSession, session) => {
-    console.log('🔄 Status:', statusSession);
-    if (statusSession === 'inChat' || statusSession === 'isLogged') {
-      bridgeStatus = 'connected';
-      latestQR = null;
-      broadcastToClients({ type: 'status', status: 'connected' });
-    } else if (statusSession === 'notLogged' || statusSession === 'browserClose' || statusSession === 'qrReadError') {
-      bridgeStatus = 'disconnected';
-      broadcastToClients({ type: 'status', status: 'disconnected' });
-    }
-  },
-  puppeteerOptions: {
-    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
+  // Ensure auth state directory exists
+  if (!fs.existsSync(AUTH_STATE_DIR)) {
+    fs.mkdirSync(AUTH_STATE_DIR, { recursive: true });
   }
-})
-  .then((client) => {
-    clientSession = client;
-    bridgeStatus = 'connected';
-    console.log('âœ… WPPConnect Bot connected!');
-    console.log('ðŸ”“ Bridge Status: CONNECTED');
-    broadcastToClients({ type: 'status', status: 'connected' });
 
-    // Initialize polling with client session
-    polling.initPolling(client, () => bridgeStatus);
-    console.log('âœ… Polling initialized with client session');
-    polling.startPolling('1DCFEA1A');
+  const { state, saveCreds } = await useMultiFileAuthState(AUTH_STATE_DIR);
 
-    // Incoming messages
-    client.onMessage(async (message) => {
-      // DEBUG: Log EVERY message received (including groups) to diagnose the issue
-      console.log('ðŸ”” onMessage TRIGGERED! From:', message.from, 'isGroup:', message.isGroupMsg, 'Body:', message.body?.substring(0, 30));
+  let baileysVersion;
+  try {
+    const fetched = await fetchLatestBaileysVersion();
+    baileysVersion = fetched.version;
+    console.log('[Bridge] Using Baileys version:', baileysVersion.join('.'));
+  } catch (e) {
+    baileysVersion = [2, 3000, 1023630996];
+    console.log('[Bridge] Using fallback Baileys version');
+  }
 
-      if (!message.isGroupMsg && !message.from.includes('status@broadcast')) {
-        console.log('âœ… Processing 1-on-1 message from:', message.from);
+  // Silent logger
+  const logger = pino({ level: 'silent' });
 
-        // Handle media messages properly
-        let body = message.body || '';
-        let mediaType = null;
-        let isMedia = false;
-        let mediaData = null;
-        let mediaUrl = null;
-
-        // Check if it's a media message (image, video, audio, etc.)
-        if (message.type && ['image', 'video', 'audio', 'ptt', 'document', 'sticker'].includes(message.type)) {
-          isMedia = true;
-          mediaType = message.type;
-
-          try {
-            console.log(`ðŸ“¥ Downloading ${mediaType} from WhatsApp...`);
-
-            // Download media as base64
-            const mediaBuffer = await client.decryptFile(message);
-            mediaData = mediaBuffer.toString('base64');
-
-            console.log(`âœ… Media downloaded (${Math.round(mediaData.length / 1024)}KB)`);
-
-            // Set body with media indicator
-            if (message.type === 'image') {
-              body = message.caption || 'ðŸ“· Image';
-              mediaUrl = `data:image/jpeg;base64,${mediaData}`;
-            } else if (message.type === 'video') {
-              body = message.caption || 'ðŸŽ¥ Video';
-              mediaUrl = `data:video/mp4;base64,${mediaData}`;
-            } else if (message.type === 'audio' || message.type === 'ptt') {
-              body = 'ðŸŽµ Audio';
-              mediaUrl = `data:audio/ogg;base64,${mediaData}`;
-            } else if (message.type === 'document') {
-              body = message.filename || 'ðŸ“„ Document';
-              mediaUrl = `data:application/octet-stream;base64,${mediaData}`;
-            } else if (message.type === 'sticker') {
-              body = 'ðŸŽ¨ Sticker';
-              mediaUrl = `data:image/webp;base64,${mediaData}`;
-            }
-
-            console.log(`ðŸ“© INCOMING ${mediaType} from ${message.from}: ${body}`);
-          } catch (error) {
-            console.error(`âŒ Error downloading media: ${error.message}`);
-            // Fallback to text indicator
-            if (message.type === 'image') {
-              body = 'ðŸ“· [Image - download failed]';
-            } else if (message.type === 'video') {
-              body = 'ðŸŽ¥ [Video - download failed]';
-            } else if (message.type === 'audio' || message.type === 'ptt') {
-              body = 'ðŸŽµ [Audio - download failed]';
-            } else if (message.type === 'document') {
-              body = 'ðŸ“„ [Document - download failed]';
-            } else if (message.type === 'sticker') {
-              body = 'ðŸŽ¨ [Sticker - download failed]';
-            }
-          }
-        } else if (message.hasMedia) {
-          // Fallback for hasMedia flag
-          isMedia = true;
-          mediaType = 'unknown';
-
-          try {
-            console.log(`ðŸ“¥ Downloading media from WhatsApp...`);
-            const mediaBuffer = await client.decryptFile(message);
-            mediaData = mediaBuffer.toString('base64');
-            mediaUrl = `data:application/octet-stream;base64,${mediaData}`;
-            body = 'ðŸ“Ž Media';
-            console.log(`âœ… Media downloaded (${Math.round(mediaData.length / 1024)}KB)`);
-          } catch (error) {
-            console.error(`âŒ Error downloading media: ${error.message}`);
-            body = 'ðŸ“Ž [Media - download failed]';
-          }
-        } else {
-          body = message.body || '[No content]';
-          console.log(`ðŸ“© INCOMING from ${message.from}: ${body.substring(0, 50)}...`);
-        }
-
-        let phoneNumber = message.from.replace('@c.us', '').replace('@lid', '');
-        let contactName = null;
-        let pushname = null;
-        let realPhone = null;
-
-        if (message.from.includes('@lid')) {
-          try {
-            const contact = await client.getContact(message.from);
-            if (contact) {
-              contactName = contact.name || contact.shortName || contact.formattedName;
-              pushname = contact.pushname;
-
-              // PRIORITY 1: Check if contactName contains a phone number (most reliable for @lid)
-              if (contactName && /^\+?\d{10,15}$/.test(contactName.replace(/[\s\-]/g, ''))) {
-                realPhone = contactName.replace(/\D/g, '');
-                console.log('âœ… Extracted phone from contactName (Priority 1):', realPhone);
-              }
-              // PRIORITY 2: Try formattedNumber
-              else if (contact.formattedNumber && contact.formattedNumber.trim()) {
-                realPhone = contact.formattedNumber.replace(/\D/g, '');
-                console.log('ðŸ“± Extracted from formattedNumber:', realPhone);
-              }
-              // PRIORITY 3: Try contact.number
-              else if (contact.number && contact.number.trim()) {
-                realPhone = contact.number.replace(/\D/g, '');
-                console.log('ðŸ“± Extracted from contact.number:', realPhone);
-              }
-              // PRIORITY 4: Try id._serialized (might have phone)
-              else if (contact.id && contact.id._serialized) {
-                const serialized = contact.id._serialized.replace(/@.*$/, ''); // Remove @lid/@c.us
-                // Check if it looks like a phone (starts with country code pattern)
-                if (/^(1|2[0-9]{2}|3[0-9]{2}|4[0-9]{2}|5[0-9]{2}|6[0-9]{2}|7|8[0-9]{2}|9[0-9]{2})\d{8,13}$/.test(serialized)) {
-                  realPhone = serialized;
-                  console.log('ðŸ“± Extracted from id._serialized:', realPhone);
-                } else {
-                  console.log(`âš ï¸ id._serialized "${serialized}" doesn't look like a valid phone`);
-                }
-              }
-              // PRIORITY 5: Last resort - contact.id.user (might be WhatsApp ID)
-              else if (contact.id && contact.id.user) {
-                realPhone = contact.id.user;
-                console.log('âš ï¸ Using contact.id.user as last resort:', realPhone);
-              }
-
-              // Final validation: If we got something that looks like a WhatsApp ID (weird pattern), mark it
-              if (realPhone && realPhone.length > 12 && !realPhone.match(/^(1|2[0-9]{2}|3[0-9]{2}|4[0-9]{2}|5[0-9]{2}|6[0-9]{2}|7|8[0-9]{2}|9[0-9]{2})\d{8,12}$/)) {
-                console.log(`âš ï¸ WARNING: "${realPhone}" might be a WhatsApp ID, not a real phone!`);
-              }
-
-              console.log(`ðŸ“› Contact name: "${contactName}", Pushname: "${pushname}", Real Phone: "${realPhone}"`);
-            }
-          } catch (e) {
-            console.log('Could not get contact info:', e.message);
-          }
-        } else {
-          realPhone = phoneNumber;
-        }
-
-        console.log('ðŸ“¤ Broadcasting to WebSocket clients...');
-        broadcastToClients({
-          type: 'incoming_message',
-          from: message.from,
-          phone: phoneNumber,
-          realPhone: realPhone,
-          contactName: contactName,
-          pushname: pushname,
-          body: body,
-          hasMedia: isMedia,
-          mediaType: mediaType,
-          mediaUrl: mediaUrl,
-          timestamp: message.timestamp || Date.now() / 1000
-        });
-        console.log('âœ… Broadcast complete!');
-
-        // Also save to backend database via webhook
-        try {
-          console.log('ðŸ’¾ Saving message to backend database...');
-          const webhookData = {
-            phone: realPhone || phoneNumber,
-            whatsapp_id: message.from,
-            content: body,
-            contact_name: contactName,
-            pushname: pushname,
-            has_media: isMedia,
-            media_type: mediaType,
-            media_url: mediaUrl
-          };
-
-          await axios.post(`${BACKEND_URL}/api/whatsapp/webhook`, webhookData);
-          console.log('âœ… Message saved to backend!');
-        } catch (error) {
-          console.error('âŒ Error saving message to backend:', error.message);
-        }
-      } else {
-        console.log('â­ï¸ Skipping (group or broadcast):', message.from);
-      }
-    });
-
-    // Message acknowledgments
-    client.onAck((ack) => {
-      broadcastToClients({
-        type: 'message_ack',
-        messageId: ack.id?._serialized,
-        ack: ack.ack
-      });
-    });
-
-    // PHASE 2: Connection health monitoring (every 60 seconds)
-    setInterval(async () => {
-      try {
-        const state = await client.getConnectionState();
-        if (state !== 'CONNECTED') {
-          console.log('âš ï¸ Connection health check failed, state:', state);
-          bridgeStatus = 'disconnected';
-          broadcastToClients({ type: 'status', status: 'disconnected' });
-        } else if (bridgeStatus !== 'connected') {
-          // Reconnected!
-          console.log('âœ… Connection restored!');
-          bridgeStatus = 'connected';
-          broadcastToClients({ type: 'status', status: 'connected' });
-        }
-      } catch (error) {
-        console.log('âš ï¸ Health check error:', error.message);
-        bridgeStatus = 'disconnected';
-        broadcastToClients({ type: 'status', status: 'disconnected' });
-      }
-    }, 300000); // Check every 60 seconds
-  })
-  .catch((error) => {
-    console.error('âŒ Error:', error);
-    bridgeStatus = 'disconnected';
-    broadcastToClients({ type: 'status', status: 'disconnected' });
+  waSocket = makeWASocket({
+    version: baileysVersion,
+    auth: state,
+    logger,
+    printQRInTerminal: false,
+    browser: ['Shepherd AI', 'Chrome', '120.0.0'],
+    connectTimeoutMs: 60000,
+    defaultQueryTimeoutMs: 60000,
+    keepAliveIntervalMs: 30000,
+    retryRequestDelayMs: 2000,
+    maxMsgRetryCount: 3,
+    markOnlineOnConnect: false,
+    syncFullHistory: false,
   });
 
-// Logging
-app.use((req, res, next) => {
-  console.log(`[${new Date().toLocaleTimeString()}] ${req.method} ${req.path}`);
-  next();
-});
+  // Save credentials on update
+  waSocket.ev.on('creds.update', saveCreds);
 
-// Status endpoint
+  // Connection state changes
+  waSocket.ev.on('connection.update', async (update) => {
+    const { connection, lastDisconnect, qr } = update;
+
+    if (qr) {
+      console.log('[Bridge] QR code received! Generating image...');
+      try {
+        const qrPng = await QRCode.toDataURL(qr, {
+          width: 300,
+          margin: 2,
+          color: { dark: '#128C7E', light: '#FFFFFF' }
+        });
+        latestQR = qrPng;
+        bridgeStatus = 'qr_ready';
+        broadcastToClients({ type: 'qr', qr: qrPng, status: 'qr_ready' });
+        console.log('[Bridge] QR image ready for display');
+      } catch (err) {
+        console.error('[Bridge] QR generation error:', err.message);
+      }
+    }
+
+    if (connection === 'open') {
+      console.log('[Bridge] WhatsApp connected!');
+      latestQR = null;
+      bridgeStatus = 'connected';
+      reconnectAttempts = 0;
+      broadcastToClients({ type: 'status', status: 'connected' });
+
+      // Start message polling
+      polling.initPolling(waSocket, () => bridgeStatus);
+      polling.startPolling(connectionCode);
+      console.log('[Bridge] Message polling started');
+    }
+
+    if (connection === 'close') {
+      const statusCode = lastDisconnect?.error?.output?.statusCode;
+      const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+
+      console.log('[Bridge] Connection closed. Status code:', statusCode, '| Reconnect:', shouldReconnect);
+      bridgeStatus = 'disconnected';
+      broadcastToClients({ type: 'status', status: 'disconnected', code: statusCode });
+
+      if (shouldReconnect && reconnectAttempts < 10) {
+        const delay = Math.min(reconnectAttempts * 3000, 15000);
+        console.log(`[Bridge] Reconnecting in ${delay}ms...`);
+        setTimeout(() => connectToWhatsApp(connectionCode), delay);
+      } else if (statusCode === DisconnectReason.loggedOut) {
+        console.log('[Bridge] Logged out. Clearing auth state...');
+        clearAuthState();
+        bridgeStatus = 'logged_out';
+        broadcastToClients({ type: 'status', status: 'logged_out' });
+      }
+    }
+  });
+
+  // Incoming messages
+  waSocket.ev.on('messages.upsert', async ({ messages, type }) => {
+    if (type !== 'notify') return;
+
+    for (const msg of messages) {
+      if (msg.key.fromMe) continue;
+      const remoteJid = msg.key.remoteJid;
+      if (!remoteJid || remoteJid === 'status@broadcast') continue;
+      if (remoteJid.endsWith('@g.us')) continue; // skip groups
+
+      const phone = remoteJid.replace('@s.whatsapp.net', '').replace('@c.us', '');
+      let body = '';
+      let mediaUrl = null;
+      let mediaType = null;
+      let isMedia = false;
+
+      const msgContent = msg.message;
+      if (!msgContent) continue;
+
+      if (msgContent.conversation) {
+        body = msgContent.conversation;
+      } else if (msgContent.extendedTextMessage) {
+        body = msgContent.extendedTextMessage.text;
+      } else if (msgContent.imageMessage) {
+        body = msgContent.imageMessage.caption || '📷 Image';
+        isMedia = true; mediaType = 'image';
+      } else if (msgContent.videoMessage) {
+        body = msgContent.videoMessage.caption || '🎥 Video';
+        isMedia = true; mediaType = 'video';
+      } else if (msgContent.audioMessage) {
+        body = '🎵 Audio';
+        isMedia = true; mediaType = 'audio';
+      } else if (msgContent.documentMessage) {
+        body = msgContent.documentMessage.fileName || '📄 Document';
+        isMedia = true; mediaType = 'document';
+      } else {
+        body = '[Message]';
+      }
+
+      console.log(`[Bridge] Incoming from ${phone}: ${body.substring(0, 50)}`);
+
+      broadcastToClients({
+        type: 'incoming_message',
+        from: remoteJid,
+        phone,
+        realPhone: phone,
+        contactName: msg.pushName || null,
+        pushname: msg.pushName || null,
+        body,
+        hasMedia: isMedia,
+        mediaType,
+        mediaUrl,
+        timestamp: msg.messageTimestamp || Date.now() / 1000
+      });
+
+      // Save to backend
+      try {
+        await axios.post(`${BACKEND_URL}/api/whatsapp/webhook`, {
+          phone,
+          whatsapp_id: remoteJid,
+          content: body,
+          contact_name: msg.pushName || null,
+          pushname: msg.pushName || null,
+          has_media: isMedia,
+          media_type: mediaType,
+          media_url: mediaUrl
+        });
+      } catch (err) {
+        console.error('[Bridge] Webhook error:', err.message);
+      }
+    }
+  });
+}
+
+function clearAuthState() {
+  try {
+    if (fs.existsSync(AUTH_STATE_DIR)) {
+      fs.rmSync(AUTH_STATE_DIR, { recursive: true, force: true });
+    }
+  } catch (e) {
+    console.error('[Bridge] Error clearing auth state:', e.message);
+  }
+}
+
+// ─── REST Endpoints ────────────────────────────────────────────
 app.get('/api/status', (req, res) => {
   res.json({ status: bridgeStatus, wsPort: WS_PORT });
 });
 
-// Send message
-app.post('/api/send', async (req, res) => {
-  const { phone, message, whatsappId } = req.body;
-
-  if (bridgeStatus !== 'connected' || !clientSession) {
-    return res.status(503).json({ success: false, error: 'Bridge not connected. Please wait for reconnection.' });
-  }
-
-  try {
-    let chatId;
-
-    if (whatsappId && whatsappId.includes('@')) {
-      chatId = whatsappId;
-      console.log(`ðŸ“¤ Replying to WhatsApp ID: ${chatId}...`);
-    } else {
-      let cleanPhone = phone.replace(/\D/g, '');
-
-      // Add country code if missing (Nigerian numbers)
-      if (cleanPhone.startsWith('0')) {
-        cleanPhone = '234' + cleanPhone.substring(1);
-      }
-
-      chatId = `${cleanPhone}@c.us`;
-      console.log(`ðŸ“¤ Sending to phone: ${chatId}...`);
-    }
-
-    console.log(`ðŸ“ Message: ${message.substring(0, 50)}...`);
-
-    const result = await clientSession.sendText(chatId, message);
-    console.log('âœ… Sent successfully!', result?.id || '');
-    res.json({ success: true, messageId: result?.id });
-  } catch (error) {
-    console.error('âŒ Send Error:', error.message || error);
-
-    // PHASE 2: Better error handling
-    let errorType = 'unknown';
-    if (error.message && error.message.includes('detached')) {
-      errorType = 'session_detached';
-      bridgeStatus = 'disconnected';
-      broadcastToClients({ type: 'status', status: 'disconnected' });
-    }
-
-    res.status(500).json({
-      success: false,
-      error: error.message || error.toString(),
-      errorType: errorType
-    });
-  }
-});
-
-// Send media (image, video, document)
-// Robust /api/sendMedia endpoint - PASTE THIS TO REPLACE OLD ONE
-app.post('/api/sendMedia', async (req, res) => {
-  // DEBUG: show incoming keys
-  try {
-    const incomingKeys = Object.keys(req.body || {});
-    console.log('ðŸ“¥ /api/sendMedia received keys:', incomingKeys);
-    if (req.body && req.body.mediaData) {
-      console.log('ðŸ“Š mediaData length:', typeof req.body.mediaData === 'string' ? req.body.mediaData.length : 'not-string');
-      console.log('ðŸ“Š mediaData starts:', (req.body.mediaData || '').toString().substring(0, 40));
-    } else {
-      console.log('ðŸ“Š mediaData: MISSING or EMPTY');
-    }
-  } catch (e) {
-    console.warn('Error logging incoming body:', e);
-  }
-
-  const { phone, whatsappId, mediaType, mediaData, caption, filename } = req.body;
-
-  if (bridgeStatus !== 'connected' || !clientSession) {
-    return res.status(503).json({ success: false, error: 'Bridge not connected' });
-  }
-  if (!mediaData) {
-    return res.status(400).json({ success: false, error: 'Media data required' });
-  }
-
-  // Normalize chat id
-  let chatId;
-  if (whatsappId && whatsappId.includes('@')) chatId = whatsappId;
-  else {
-    let cleanPhone = (phone || '').replace(/\D/g, '');
-    if (cleanPhone.startsWith('0')) cleanPhone = '234' + cleanPhone.substring(1);
-    chatId = `${cleanPhone}@c.us`;
-  }
-
-  try {
-    // 1) sanitize base64 (strip data url prefix + whitespace/newlines)
-    let pureBase64 = String(mediaData || '');
-    if (pureBase64.startsWith('data:')) pureBase64 = pureBase64.split(',')[1] || '';
-    // Remove whitespace/newlines that may break decoding
-    pureBase64 = pureBase64.replace(/\s+/g, '');
-
-    // 2) decode to Buffer and validate
-    let buffer;
-    try {
-      buffer = Buffer.from(pureBase64, 'base64');
-    } catch (err) {
-      console.error('âŒ base64 -> buffer decode failed:', err.message);
-      return res.status(400).json({ success: false, error: 'Invalid base64' });
-    }
-
-    console.log('ðŸ“Š Decoded buffer length:', buffer.length);
-    if (!buffer || !buffer.length) {
-      return res.status(400).json({ success: false, error: 'Empty decoded buffer' });
-    }
-
-    // 3) check magic bytes to infer file type (helpful for mismatched filenames)
-    const header = buffer.slice(0, 8).toString('hex');
-    console.log('ðŸ“Š Buffer header (hex):', header);
-    let inferredExt = '';
-    if (header.startsWith('89504e47')) inferredExt = 'png';
-    else if (header.startsWith('ffd8ff')) inferredExt = 'jpg';
-    else if (header.startsWith('25504446')) inferredExt = 'pdf';
-    else if (header.startsWith('00000018') || header.includes('66747970')) inferredExt = 'mp4'; // rough mp4
-    else inferredExt = '';
-
-    // Compose a safe filename
-    let outFilename = filename || `file.${inferredExt || 'bin'}`;
-    // Ensure extension exists
-    if (!path.extname(outFilename) && inferredExt) outFilename = `${outFilename}.${inferredExt}`;
-
-    // 4) Try sendFileFromBase64 (preferred)
-    try {
-      console.log(`ðŸ“¤ Attempting sendFileFromBase64 to ${chatId} as ${outFilename} (${mediaType})`);
-      const result = await clientSession.sendFileFromBase64(chatId, pureBase64, outFilename, caption || '');
-      console.log('âœ… Media sent with sendFileFromBase64:', result?.id || result);
-      return res.json({ success: true, messageId: result?.id || null });
-    } catch (errSend) {
-      console.warn('âš ï¸ sendFileFromBase64 failed:', errSend && (errSend.message || errSend.toString()));
-      // Fall through to fallback
-    }
-
-    // 5) FALLBACK: write buffer to tmp file and send file by path / buffer
-    try {
-      const tmpDir = fs.existsSync(os.tmpdir()) ? os.tmpdir() : '.';
-      const tmpPath = path.join(tmpDir, `upload-${Date.now()}.${inferredExt || 'bin'}`);
-      fs.writeFileSync(tmpPath, buffer);
-      console.log('ðŸ“‚ Wrote temp file to', tmpPath, 'size:', fs.statSync(tmpPath).size);
-
-      // Use clientSession.sendFile (WPPConnect supports sending from file path or buffer)
-      const result2 = await clientSession.sendFile(chatId, tmpPath, outFilename, caption || '');
-      console.log('âœ… Media sent via file fallback:', result2?.id || result2);
-
-      // cleanup temp
-      try { fs.unlinkSync(tmpPath); } catch (e) { /* ignore */ }
-
-      return res.json({ success: true, messageId: result2?.id || null, fallback: true });
-    } catch (errFallback) {
-      console.error('âŒ Fallback file send failed:', errFallback && (errFallback.stack || errFallback.message || errFallback.toString()));
-      return res.status(500).json({ success: false, error: 'sendFile failed', detail: errFallback.message || String(errFallback) });
-    }
-  } catch (err) {
-    console.error('âŒ Unexpected /api/sendMedia error:', err && (err.stack || err.message || err.toString()));
-    return res.status(500).json({ success: false, error: err.message || 'Internal Server Error' });
-  }
-});
-
-
-// QR Code endpoint - UI polls this to show QR image
 app.get('/api/qr', (req, res) => {
   res.json({ qr: latestQR, status: bridgeStatus });
 });
 
-const server = app.listen(PORT, '0.0.0.0', () => {
-  console.log(`ðŸ“¡ REST: http://localhost:${PORT}`);
-  console.log(`ðŸ”Œ WebSocket: ws://localhost:${WS_PORT}`);
+app.post('/api/connect', async (req, res) => {
+  const { code } = req.body;
+  if (!code) return res.status(400).json({ success: false, error: 'code required' });
+  connectionCode = code;
+  reconnectAttempts = 0;
+  connectToWhatsApp(code).catch(err => console.error('[Bridge] Connect error:', err.message));
+  res.json({ success: true });
 });
 
+app.post('/api/disconnect', async (req, res) => {
+  try {
+    if (waSocket) await waSocket.logout();
+    clearAuthState();
+    bridgeStatus = 'disconnected';
+    latestQR = null;
+    res.json({ success: true });
+  } catch (err) {
+    res.json({ success: true });
+  }
+});
+
+// Send text message
+app.post('/api/send', async (req, res) => {
+  const { phone, message, whatsappId } = req.body;
+
+  if (bridgeStatus !== 'connected' || !waSocket) {
+    return res.status(503).json({ success: false, error: 'Bridge not connected' });
+  }
+
+  try {
+    let jid = whatsappId && whatsappId.includes('@')
+      ? whatsappId
+      : (() => {
+          let p = phone.replace(/\D/g, '');
+          if (p.startsWith('0')) p = '234' + p.substring(1);
+          return p + '@s.whatsapp.net';
+        })();
+
+    console.log(`[Bridge] Sending to ${jid}: ${String(message).substring(0, 50)}`);
+    const result = await waSocket.sendMessage(jid, { text: message });
+    console.log('[Bridge] Sent! ID:', result?.key?.id);
+    res.json({ success: true, messageId: result?.key?.id });
+  } catch (err) {
+    console.error('[Bridge] Send error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Send media
+app.post('/api/sendMedia', async (req, res) => {
+  const { phone, whatsappId, mediaType, mediaData, caption, filename } = req.body;
+
+  if (bridgeStatus !== 'connected' || !waSocket) {
+    return res.status(503).json({ success: false, error: 'Bridge not connected' });
+  }
+  if (!mediaData) return res.status(400).json({ success: false, error: 'mediaData required' });
+
+  try {
+    let jid = whatsappId && whatsappId.includes('@')
+      ? whatsappId
+      : (() => {
+          let p = phone.replace(/\D/g, '');
+          if (p.startsWith('0')) p = '234' + p.substring(1);
+          return p + '@s.whatsapp.net';
+        })();
+
+    let pureBase64 = String(mediaData);
+    if (pureBase64.startsWith('data:')) pureBase64 = pureBase64.split(',')[1] || '';
+    pureBase64 = pureBase64.replace(/\s+/g, '');
+    const buffer = Buffer.from(pureBase64, 'base64');
+
+    let msgContent = {};
+    const type = (mediaType || '').toLowerCase();
+    if (type.includes('image')) {
+      msgContent = { image: buffer, caption: caption || '' };
+    } else if (type.includes('video')) {
+      msgContent = { video: buffer, caption: caption || '' };
+    } else if (type.includes('audio')) {
+      msgContent = { audio: buffer, mimetype: 'audio/ogg; codecs=opus' };
+    } else {
+      msgContent = { document: buffer, fileName: filename || 'file', caption: caption || '' };
+    }
+
+    const result = await waSocket.sendMessage(jid, msgContent);
+    console.log('[Bridge] Media sent! ID:', result?.key?.id);
+    res.json({ success: true, messageId: result?.key?.id });
+  } catch (err) {
+    console.error('[Bridge] Media send error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ─── Start Server ──────────────────────────────────────────────
+const server = app.listen(PORT, '0.0.0.0', () => {
+  console.log(`[Bridge] REST API: http://localhost:${PORT}`);
+  console.log(`[Bridge] WebSocket: ws://localhost:${WS_PORT}`);
+  console.log('[Bridge] Ready! Waiting for connection code...');
+  bridgeStatus = 'ready';
+});
 
 server.on('error', (err) => {
   if (err.code === 'EADDRINUSE') {
-    console.warn('⚠️ Port ' + PORT + ' is already in use by another instance.');
+    console.warn(`[Bridge] Port ${PORT} in use by another instance`);
   } else {
-    console.error('Server error:', err);
+    console.error('[Bridge] Server error:', err);
   }
 });

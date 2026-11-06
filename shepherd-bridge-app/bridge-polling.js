@@ -95,7 +95,7 @@ async function sendPendingMessage(msg) {
             if (cleanPhone.startsWith('0')) {
                 cleanPhone = '234' + cleanPhone.substring(1);
             }
-            chatId = `${cleanPhone}@c.us`;
+            chatId = `${cleanPhone}@s.whatsapp.net`;
         }
 
         console.log(`📤 Sending queued message to ${chatId}...`);
