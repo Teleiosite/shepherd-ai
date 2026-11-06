@@ -106,12 +106,13 @@ function killBridge() {
     }
 }
 
-// Poll /api/qr from MAIN process and push QR to renderer via IPC
-// This avoids any renderer fetch/CSP issues entirely
+// Poll /api/qr and check tokens/last_qr.txt from MAIN process and push QR to renderer via IPC
 function startQRPoll() {
     stopQRPoll();
     let attempts = 0;
-    const maxAttempts = 90; // 3 min max (every 2s)
+    const maxAttempts = 120; // 4 min max (every 1s)
+    const fs = require('fs');
+    const qrFile = path.join(__dirname, 'tokens', 'last_qr.txt');
 
     qrPollTimer = setInterval(async () => {
         attempts++;
@@ -119,21 +120,33 @@ function startQRPoll() {
             stopQRPoll();
             return;
         }
+
+        // Method 1: Check disk file (zero network overhead, instant)
         try {
-            const r = await axios.get('http://localhost:3001/api/qr', { timeout: 2000 });
+            if (fs.existsSync(qrFile)) {
+                const fileContent = fs.readFileSync(qrFile, 'utf8').trim();
+                if (fileContent && fileContent.length > 50 && mainWindow) {
+                    console.log('[Main] Found QR in tokens/last_qr.txt! Pushing to renderer...');
+                    mainWindow.webContents.send('qr-received', { qr: fileContent });
+                }
+            }
+        } catch (e) {}
+
+        // Method 2: Check HTTP endpoint on 127.0.0.1
+        try {
+            const r = await axios.get('http://127.0.0.1:3001/api/qr', { timeout: 1500 });
             if (r.data.qr && mainWindow) {
-                console.log('[Main] QR received! Pushing to renderer...');
+                console.log('[Main] QR received from REST! Pushing to renderer...');
                 mainWindow.webContents.send('qr-received', { qr: r.data.qr });
-                // Keep polling to refresh QR if it expires (every 30s WhatsApp rotates QR)
             }
             if (r.data.status === 'connected' && mainWindow) {
                 mainWindow.webContents.send('bridge-status', { status: 'connected' });
                 stopQRPoll();
             }
         } catch (e) {
-            // Bridge not ready yet, keep polling
+            // Bridge still starting or reconnecting
         }
-    }, 2000);
+    }, 1000);
 }
 
 function stopQRPoll() {
@@ -174,7 +187,18 @@ function startBridgeProcess(connectionCode) {
                 // Immediately push QR when bridge signals it's ready
                 if (trimmed.includes('QR image ready')) {
                     console.log('[Main] QR ready signal! Fetching immediately...');
-                    axios.get('http://localhost:3001/api/qr', { timeout: 3000 })
+                    const fs = require('fs');
+                    const qrFile = path.join(__dirname, 'tokens', 'last_qr.txt');
+                    try {
+                        if (fs.existsSync(qrFile)) {
+                            const qrData = fs.readFileSync(qrFile, 'utf8').trim();
+                            if (qrData && mainWindow) {
+                                mainWindow.webContents.send('qr-received', { qr: qrData });
+                            }
+                        }
+                    } catch (e) {}
+
+                    axios.get('http://127.0.0.1:3001/api/qr', { timeout: 2000 })
                         .then(r => {
                             if (r.data.qr && mainWindow) {
                                 mainWindow.webContents.send('qr-received', { qr: r.data.qr });
@@ -216,7 +240,7 @@ function startBridgeProcess(connectionCode) {
         const checkInterval = setInterval(async () => {
             waited += 500;
             try {
-                const r = await axios.get('http://localhost:3001/api/status', { timeout: 1000 });
+                const r = await axios.get('http://127.0.0.1:3001/api/status', { timeout: 1000 });
                 if (r.data.status) {
                     clearInterval(checkInterval);
                     bridgeReady = true;
@@ -240,7 +264,7 @@ ipcMain.handle('connect-bridge', async (event, connectionCode) => {
         // Step 1: Register with Shepherd AI backend
         const response = await axios.post(`${BACKEND_URL}/api/bridge/register`, {
             code: connectionCode,
-            bridge_url: 'http://localhost:3001'
+            bridge_url: 'http://127.0.0.1:3001'
         }, { timeout: 15000 });
 
         console.log('[Main] Backend response:', response.data);
@@ -250,19 +274,19 @@ ipcMain.handle('connect-bridge', async (event, connectionCode) => {
         }
 
         // Step 2: Spawn bridge process using system Node.js
+        // The bridge will auto-connect via CONNECTION_CODE in env
         await startBridgeProcess(connectionCode);
 
-        // Step 3: Tell bridge to connect to WhatsApp
-        await new Promise(res => setTimeout(res, 2000)); // let bridge REST boot fully
+        // Step 3: Also call /api/connect just in case
+        await new Promise(res => setTimeout(res, 1000));
         try {
-            await axios.post('http://localhost:3001/api/connect', { code: connectionCode }, { timeout: 8000 });
-            console.log('[Main] Bridge told to connect to WhatsApp');
+            await axios.post('http://127.0.0.1:3001/api/connect', { code: connectionCode }, { timeout: 5000 });
+            console.log('[Main] Bridge /api/connect confirmed');
         } catch (e) {
-            console.warn('[Main] /api/connect call failed:', e.message);
+            console.warn('[Main] /api/connect fallback warning:', e.message);
         }
 
-        // Step 4: Start QR polling from main process — push to renderer via IPC
-        // This is more reliable than renderer fetch() to localhost
+        // Step 4: Start aggressive QR polling from main process
         startQRPoll();
 
         return { success: true, message: 'Bridge started! Scan the QR code with WhatsApp.' };
@@ -279,7 +303,7 @@ ipcMain.handle('connect-bridge', async (event, connectionCode) => {
 ipcMain.handle('check-status', async () => {
     if (!bridgeProcess) return { running: false, status: 'stopped' };
     try {
-        const r = await axios.get('http://localhost:3001/api/status', { timeout: 2000 });
+        const r = await axios.get('http://127.0.0.1:3001/api/status', { timeout: 2000 });
         return { running: true, status: r.data.status };
     } catch (e) {
         return { running: bridgeReady, status: 'starting' };

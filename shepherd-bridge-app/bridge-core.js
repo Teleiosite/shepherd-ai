@@ -70,6 +70,14 @@ async function connectToWhatsApp(code) {
   bridgeStatus = 'connecting';
   broadcastToClients({ type: 'status', status: 'connecting' });
 
+  if (waSocket) {
+    try {
+      waSocket.ev.removeAllListeners();
+      waSocket.end(undefined);
+    } catch (e) {}
+    waSocket = null;
+  }
+
   // Ensure auth state directory exists
   if (!fs.existsSync(AUTH_STATE_DIR)) {
     fs.mkdirSync(AUTH_STATE_DIR, { recursive: true });
@@ -123,6 +131,13 @@ async function connectToWhatsApp(code) {
         latestQR = qrPng;
         bridgeStatus = 'qr_ready';
         broadcastToClients({ type: 'qr', qr: qrPng, status: 'qr_ready' });
+
+        // Also write QR dataURL to tokens/last_qr.txt for reliable disk reading
+        try {
+          const qrFile = path.join(__dirname, 'tokens', 'last_qr.txt');
+          fs.writeFileSync(qrFile, qrPng, 'utf8');
+        } catch (err) {}
+
         console.log('[Bridge] QR image ready for display');
       } catch (err) {
         console.error('[Bridge] QR generation error:', err.message);
@@ -136,6 +151,12 @@ async function connectToWhatsApp(code) {
       reconnectAttempts = 0;
       broadcastToClients({ type: 'status', status: 'connected' });
 
+      // Clean up last_qr.txt
+      try {
+        const qrFile = path.join(__dirname, 'tokens', 'last_qr.txt');
+        if (fs.existsSync(qrFile)) fs.unlinkSync(qrFile);
+      } catch (e) {}
+
       // Start message polling
       polling.initPolling(waSocket, () => bridgeStatus);
       polling.startPolling(connectionCode);
@@ -144,18 +165,23 @@ async function connectToWhatsApp(code) {
 
     if (connection === 'close') {
       const statusCode = lastDisconnect?.error?.output?.statusCode;
-      const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+      const isRegistered = state?.creds?.registered;
 
-      console.log('[Bridge] Connection closed. Status code:', statusCode, '| Reconnect:', shouldReconnect);
+      console.log(`[Bridge] Connection closed. Status: ${statusCode}, registered: ${isRegistered}`);
       bridgeStatus = 'disconnected';
       broadcastToClients({ type: 'status', status: 'disconnected', code: statusCode });
 
-      if (shouldReconnect && reconnectAttempts < 10) {
+      if (!isRegistered) {
+        // While pairing, QR code expires or disconnects every 20-30s. Reconnect immediately to generate fresh QR!
+        console.log('[Bridge] Pairing in progress - reconnecting for fresh QR in 1.5s...');
+        bridgeStatus = 'connecting';
+        setTimeout(() => connectToWhatsApp(connectionCode), 1500);
+      } else if (statusCode !== DisconnectReason.loggedOut) {
         const delay = Math.min(reconnectAttempts * 3000, 15000);
         console.log(`[Bridge] Reconnecting in ${delay}ms...`);
         setTimeout(() => connectToWhatsApp(connectionCode), delay);
-      } else if (statusCode === DisconnectReason.loggedOut) {
-        console.log('[Bridge] Logged out. Clearing auth state...');
+      } else {
+        console.log('[Bridge] Device was logged out. Clearing auth state...');
         clearAuthState();
         bridgeStatus = 'logged_out';
         broadcastToClients({ type: 'status', status: 'logged_out' });
@@ -363,3 +389,13 @@ server.on('error', (err) => {
     console.error('[Bridge] Server error:', err);
   }
 });
+
+// Auto-connect if CONNECTION_CODE passed in env
+if (process.env.CONNECTION_CODE) {
+  console.log('[Bridge] Auto-connecting with CONNECTION_CODE from env:', process.env.CONNECTION_CODE);
+  setTimeout(() => {
+    connectToWhatsApp(process.env.CONNECTION_CODE).catch(err => {
+      console.error('[Bridge] Auto-connect error:', err.message);
+    });
+  }, 500);
+}

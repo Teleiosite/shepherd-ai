@@ -33,21 +33,20 @@ function startQRFallbackPoll() {
     if (qrPollInterval) clearInterval(qrPollInterval);
     qrPollInterval = setInterval(async () => {
         try {
-            const r = await fetch('http://localhost:3001/api/qr');
+            const r = await fetch('http://127.0.0.1:3001/api/qr');
             const data = await r.json();
             if (data.qr) {
                 displayQR(data.qr);
             }
             if (data.status === 'connected') {
-                clearInterval(qrPollInterval);
-                qrPollInterval = null;
+                stopQRFallbackPoll();
                 showStep('step-connected');
                 setStatus('connected', 'WhatsApp connected');
             }
         } catch (e) {
             // Bridge not yet ready — keep polling
         }
-    }, 3000);
+    }, 1500);
 }
 
 function stopQRFallbackPoll() {
